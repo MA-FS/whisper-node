@@ -14,7 +14,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 | Task | Title | Priority | Status | Progress | Notes |
 |------|-------|----------|--------|----------|-------|
-| T01 | [Project Setup & Foundation](tasks/T01-project-setup.md) | High | ⏳ WIP | 0% | Xcode project initialization |
+| T01 | [Project Setup & Foundation](tasks/T01-project-setup.md) | High | ✅ Done | 100% | Swift Package Manager setup complete |
 | T02 | [Rust FFI Integration Setup](tasks/T02-rust-ffi-integration.md) | High | ⏳ WIP | 0% | whisper.cpp + Apple Silicon |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ⏳ WIP | 0% | Security & distribution |
 
@@ -73,8 +73,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary
 
 **Total Tasks**: 25  
-**Completed**: 0 (0%)  
-**In Progress**: 25 (100%)  
+**Completed**: 1 (4%)  
+**In Progress**: 24 (96%)  
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  

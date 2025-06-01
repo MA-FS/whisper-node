@@ -32,11 +32,14 @@ Whisper Node is a blazingly fast, resource-light macOS utility that converts spe
 
 ### Development Workflow
 
-#### Task Management
+#### Task Management & Git Workflow
 - **Task Files**: Located in `docs/tasks/T01-T25.md`
 - **Progress Tracking**: `docs/Progress.md` with status indicators
-- **Workflow Phases**: TodoWrite → Read Task → Implement → Progress Doc → PR
-- **Status Legend**: ⏳ WIP, ✅ Done, 🛂 Blocked, 🧪 Testing
+- **Git Workflow**: Create feature branch → Implement → Push → Create PR → Review → Merge
+- **Branch Naming**: `feature/t01-project-setup`, `feature/t02-rust-ffi`, etc.
+- **Commit Format**: `T01: Add Swift Package Manager project structure`
+- **PR Process**: Each task requires a separate PR for review before merge
+- **Status Legend**: ⏳ WIP, ✅ Done, 🛂 Blocked, 🧪 Testing, 🔄 Review
 
 #### Development Phases
 1. **Phase 1 (Foundation)**: T01-T02, T20 - Project setup, Rust FFI, code signing
@@ -80,11 +83,25 @@ WhisperNode/
 - **Store Learnings**: Use `mcp__memory__create_entities` for new patterns/workflows
 
 ### Development Guidelines
+
+#### Git Workflow for Each Task
+1. **Create Feature Branch**: `git checkout -b feature/t01-project-setup`
+2. **Read Task File**: Start by reading the relevant `docs/tasks/T0X.md` file
+3. **Implement Changes**: Follow task acceptance criteria and implementation details
+4. **Commit Changes**: Use format `T01: Add Swift Package Manager project structure`
+5. **Push Branch**: `git push -u origin feature/t01-project-setup`
+6. **Create Pull Request**: Use GitHub CLI or web interface
+7. **Request Review**: Wait for code review approval
+8. **Merge to Main**: After approval, merge PR and delete feature branch
+9. **Update Progress**: Mark task as ✅ Done in `docs/Progress.md`
+
+#### General Development Rules
 1. **Always Read Task File First**: Start each work session by reading the relevant T0X.md file
 2. **Update Progress Immediately**: Mark todos as completed as soon as work finishes
 3. **Follow Dependencies**: Respect task dependencies mapped in Progress.md
 4. **Test Early**: Implement testing alongside feature development
 5. **Document Decisions**: Update task files with implementation decisions and learnings
+6. **Never Commit to Main**: All changes must go through feature branch → PR → review workflow
 
 ### Quality Standards
 - **Code Coverage**: Aim for 80%+ test coverage
