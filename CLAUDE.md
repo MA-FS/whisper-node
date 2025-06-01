@@ -101,7 +101,7 @@ Claude will automatically execute steps 1-4 for each task implementation:
 9. **Update Progress**: Mark task as ✅ Done in `docs/Progress.md`
 
 **WORKFLOW INTEGRATION STATUS:**
-- ✅ Git remote configured: https://github.com/MA-FS/whisper-node.git
+- ✅ Git remote configured: <https://github.com/MA-FS/whisper-node.git>
 - ✅ GitHub CLI authenticated: MA-FS account with repo permissions
 - ✅ Automation ready: Steps 1-6 fully integrated and tested
 - 🔄 Review process: Steps 7-9 remain manual for quality control

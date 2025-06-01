@@ -1,8 +1,7 @@
 use std::env;
-use std::path::PathBuf;
 
 fn main() {
-    let target = env::var("TARGET").unwrap();
+    let target = env::var("TARGET").expect("TARGET environment variable not set");
     
     if target.contains("aarch64-apple-darwin") {
         // Apple Silicon optimizations

@@ -1,15 +1,7 @@
 [target.aarch64-apple-darwin]
 rustflags = [
     "-C", "target-feature=+neon",
-    "-C", "target-cpu=apple-m1",
-    "-C", "link-arg=-framework",
-    "-C", "link-arg=Foundation",
-    "-C", "link-arg=-framework", 
-    "-C", "link-arg=Metal",
-    "-C", "link-arg=-framework",
-    "-C", "link-arg=MetalKit",
-    "-C", "link-arg=-framework",
-    "-C", "link-arg=Accelerate"
+    "-C", "target-cpu=apple-m1"
 ]
 
 [build]

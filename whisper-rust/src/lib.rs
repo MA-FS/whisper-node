@@ -1,5 +1,6 @@
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_float};
+use std::os::raw::{c_char, c_float};
+use libc::size_t;
 use whisper_rs::{WhisperContext, WhisperContextParameters};
 
 /// Opaque pointer to WhisperContext for FFI
@@ -40,12 +41,23 @@ pub extern "C" fn whisper_init(model_path: *const c_char) -> *mut WhisperHandle 
     }
 }
 
-/// Transcribe audio data (placeholder implementation)
+/// Transcribe audio data
+/// 
+/// Currently returns placeholder text until whisper-rs API integration is completed.
+/// The final implementation will:
+/// 1. Convert the raw audio data into whisper-rs format
+/// 2. Run inference using the loaded model
+/// 3. Extract and return the transcribed text
+/// 
+/// # Safety
+/// - handle must be a valid pointer returned by whisper_init
+/// - audio_data must point to valid f32 audio samples
+/// - audio_len must accurately represent the length of audio_data
 #[no_mangle]
 pub extern "C" fn whisper_transcribe(
     handle: *mut WhisperHandle,
     audio_data: *const c_float,
-    audio_len: c_int,
+    audio_len: size_t,
 ) -> WhisperResult {
     if handle.is_null() || audio_data.is_null() || audio_len <= 0 {
         return WhisperResult {
@@ -126,7 +138,7 @@ mod tests {
         let result = whisper_transcribe(
             std::ptr::null_mut(), // This will trigger placeholder
             test_audio.as_ptr(),
-            test_audio.len() as c_int,
+            test_audio.len(),
         );
         
         // Should fail with null handle
@@ -136,5 +148,24 @@ mod tests {
         if !result.error.is_null() {
             whisper_free_string(result.error);
         }
+    }
+    
+    #[test]
+    #[ignore] // Enable when real transcription is implemented
+    fn test_successful_transcription() {
+        // This test should be enabled once whisper_init works with valid models
+        // and whisper_transcribe performs actual transcription
+        
+        // let model_path = CString::new("path/to/test/model").unwrap();
+        // let handle = whisper_init(model_path.as_ptr());
+        // assert!(!handle.is_null());
+        
+        // let test_audio = vec![0.1f32; 16000]; // 1 second of audio at 16kHz
+        // let result = whisper_transcribe(handle, test_audio.as_ptr(), test_audio.len());
+        // assert!(result.success);
+        // assert!(!result.text.is_null());
+        
+        // whisper_free_string(result.text);
+        // whisper_free(handle);
     }
 }

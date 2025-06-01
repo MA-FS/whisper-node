@@ -10,18 +10,21 @@ public class WhisperSwift {
             return nil
         }
         
-        // TODO: Enable when Rust library linking is fixed
-        // handle = whisper_init(cPath)
-        // guard handle != nil else {
-        //     return nil
-        // }
+        #if RUST_FFI_ENABLED
+        handle = whisper_init(cPath)
+        guard handle != nil else {
+            return nil
+        }
+        #else
         handle = OpaquePointer(bitPattern: 0x1) // Placeholder non-null handle
+        #endif
     }
     
     deinit {
         if let handle = handle {
-            // TODO: Enable when Rust library linking is fixed
-            // whisper_free(handle)
+            #if RUST_FFI_ENABLED
+            whisper_free(handle)
+            #endif
         }
     }
     
@@ -32,13 +35,39 @@ public class WhisperSwift {
         guard let handle = handle else { return nil }
         guard !audioData.isEmpty else { return nil }
         
-        // TODO: Enable when Rust library linking is fixed
-        // let result = audioData.withUnsafeBufferPointer { buffer in
-        //     whisper_transcribe(handle, buffer.baseAddress, Int32(buffer.count))
-        // }
+        #if RUST_FFI_ENABLED
+        let result = audioData.withUnsafeBufferPointer { buffer in
+            whisper_transcribe(handle, buffer.baseAddress, buffer.count)
+        }
+        
+        defer {
+            // Clean up memory
+            if result.text != nil {
+                whisper_free_string(result.text)
+            }
+            if result.error != nil {
+                whisper_free_string(result.error)
+            }
+        }
+        
+        guard result.success else {
+            if let errorPtr = result.error {
+                let errorString = String(cString: errorPtr)
+                print("Whisper transcription error: \(errorString)")
+            }
+            return nil
+        }
+        
+        guard let textPtr = result.text else {
+            return nil
+        }
+        
+        return String(cString: textPtr)
+        #else
         
         // Placeholder implementation
         return "FFI placeholder - Rust integration pending"
+        #endif
     }
 }
 
