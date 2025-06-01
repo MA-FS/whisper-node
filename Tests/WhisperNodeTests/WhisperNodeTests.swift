@@ -3,6 +3,7 @@ import XCTest
 
 final class WhisperNodeTests: XCTestCase {
     func testCoreInitialization() throws {
-        XCTAssertNoThrow(WhisperNodeCore.initialize())
+        let core = WhisperNodeCore.shared
+        XCTAssertTrue(core.isInitialized)
     }
 }

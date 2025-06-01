@@ -1,6 +1,6 @@
 # Task 03: Global Hotkey System
 
-**Status**: ⏳ WIP  
+**Status**: ✅ Done  
 **Priority**: High  
 **Estimated Hours**: 10  
 **Dependencies**: T01  
@@ -11,11 +11,11 @@ Implement system-wide hotkey registration using CGEventTap for press-and-hold vo
 
 ## Acceptance Criteria
 
-- [ ] CGEventTap implementation for global hotkey capture
-- [ ] Press-and-hold detection (no click-to-start)
-- [ ] Customizable hotkey configuration
-- [ ] Conflict detection with system shortcuts
-- [ ] Accessibility permissions handling
+- [x] CGEventTap implementation for global hotkey capture
+- [x] Press-and-hold detection (no click-to-start)
+- [x] Customizable hotkey configuration
+- [x] Conflict detection with system shortcuts
+- [x] Accessibility permissions handling
 
 ## Implementation Details
 
@@ -39,10 +39,10 @@ func createEventTap() -> CFMachPort? {
 
 ## Testing Plan
 
-- [ ] Global hotkey works across all applications
-- [ ] Press-and-hold timing is accurate
-- [ ] Conflicts are properly detected
-- [ ] Accessibility permissions flow works
+- [x] Global hotkey works across all applications
+- [x] Press-and-hold timing is accurate
+- [x] Conflicts are properly detected
+- [x] Accessibility permissions flow works
 
 ## Tags
 `hotkey`, `cgeventtap`, `input`, `accessibility`
