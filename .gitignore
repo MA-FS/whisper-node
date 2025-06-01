@@ -1,0 +1,155 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+*.xcscheme
+!*.xcscheme
+
+# Xcode Patch
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+
+# CocoaPods
+Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj/
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Rust FFI
+*.a
+*.dylib
+*.so
+
+# Whisper Models (downloaded at runtime)
+Models/
+*.bin
+*.ggml
+whisper-models/
+
+# Task Master (may contain local paths)
+.taskmaster/
+taskmaster.json
+
+# Personal Configuration Files
+config.json
+settings.plist
+user-preferences.json
+local-config.*
+
+# Development Tools
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and Debugging
+*.log
+crash-reports/
+debug-output/
+performance-logs/
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.cache
+
+# Code Signing and Certificates
+*.p12
+*.cer
+*.mobileprovision
+secrets/
+private-keys/
+certificates/
+
+# Distribution
+*.dmg
+*.pkg
+*.app
+release/
+dist/
+
+# Documentation Generation
+docs/generated/
+api-docs/
+
+# Test Coverage
+coverage/
+*.profraw
+*.profdata
+
+# Personal Notes and TODOs
+NOTES.md
+TODO.personal
+*.personal.*
+
+# Environment Variables
+.env
+.env.local
+.env.production
+
+# Backup Files
+*.backup
+*.bak
+
+# IDE and Editor Files
+.vscode/settings.json
+.vscode/launch.json
+.idea/workspace.xml
