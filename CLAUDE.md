@@ -84,16 +84,27 @@ WhisperNode/
 
 ### Development Guidelines
 
-#### Git Workflow for Each Task
-1. **Create Feature Branch**: `git checkout -b feature/t01-project-setup`
+#### Git Workflow for Each Task (AUTOMATED STEPS 1-4)
+**PREFERRED WORKFLOW - INTEGRATED AUTOMATION:**
+Claude will automatically execute steps 1-4 for each task implementation:
+
+1. **Create Feature Branch**: `git checkout -b feature/tXX-description`
 2. **Read Task File**: Start by reading the relevant `docs/tasks/T0X.md` file
 3. **Implement Changes**: Follow task acceptance criteria and implementation details
-4. **Commit Changes**: Use format `T01: Add Swift Package Manager project structure`
-5. **Push Branch**: `git push -u origin feature/t01-project-setup`
-6. **Create Pull Request**: Use GitHub CLI or web interface
-7. **Request Review**: Wait for code review approval
-8. **Merge to Main**: After approval, merge PR and delete feature branch
+4. **Commit Changes**: Use format `TXX: Add [description]` with proper commit messages
+5. **Push Branch**: `git push -u origin feature/tXX-description`
+6. **Create Pull Request**: `gh pr create --title "TXX: [Title]" --body "[Description]"`
+
+**MANUAL REVIEW STEPS:**
+7. **Request Review**: Wait for code review approval (MANUAL)
+8. **Merge to Main**: After approval, merge PR and delete feature branch (MANUAL)
 9. **Update Progress**: Mark task as ✅ Done in `docs/Progress.md`
+
+**WORKFLOW INTEGRATION STATUS:**
+- ✅ Git remote configured: <https://github.com/MA-FS/whisper-node.git>
+- ✅ GitHub CLI authenticated: MA-FS account with repo permissions
+- ✅ Automation ready: Steps 1-6 fully integrated and tested
+- 🔄 Review process: Steps 7-9 remain manual for quality control
 
 #### General Development Rules
 1. **Always Read Task File First**: Start each work session by reading the relevant T0X.md file

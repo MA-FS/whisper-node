@@ -140,6 +140,10 @@ NOTES.md
 TODO.personal
 *.personal.*
 
+# AI Review Tools
+coderabbit-claude.md
+ai-review-temp.md
+
 # Environment Variables
 .env
 .env.local
