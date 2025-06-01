@@ -6,6 +6,7 @@ struct PreferencesView: View {
             Image(systemName: "mic.circle.fill")
                 .font(.system(size: 64))
                 .foregroundColor(.blue)
+                .accessibilityLabel("Microphone icon")
             
             Text("Whisper Node")
                 .font(.largeTitle)
