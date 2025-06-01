@@ -15,7 +15,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | Task | Title | Priority | Status | Progress | Notes |
 |------|-------|----------|--------|----------|-------|
 | T01 | [Project Setup & Foundation](tasks/T01-project-setup.md) | High | ✅ Done | 100% | Swift Package Manager setup complete |
-| T02 | [Rust FFI Integration Setup](tasks/T02-rust-ffi-integration.md) | High | ⏳ WIP | 0% | whisper.cpp + Apple Silicon |
+| T02 | [Rust FFI Integration Setup](tasks/T02-rust-ffi-integration.md) | High | ✅ Done | 100% | whisper.cpp + Apple Silicon optimizations complete |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ⏳ WIP | 0% | Security & distribution |
 
 ## Audio & Input System
@@ -73,8 +73,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary
 
 **Total Tasks**: 25  
-**Completed**: 1 (4%)  
-**In Progress**: 24 (96%)  
+**Completed**: 2 (8%)  
+**In Progress**: 23 (92%)  
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  
@@ -84,7 +84,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 ## Key Milestones
 
-- [ ] **Foundation Complete** - Xcode project + Rust FFI working
+- [x] **Foundation Complete** - Xcode project + Rust FFI working
 - [ ] **Audio Pipeline** - Voice capture to text insertion working end-to-end  
 - [ ] **UI Complete** - All interface components functional
 - [ ] **Alpha Release** - Internal testing ready
