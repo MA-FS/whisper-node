@@ -1,0 +1,24 @@
+[package]
+name = "whisper-rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "whisper_rust"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+libc = "0.2"
+whisper-rs = { version = "0.14", features = ["metal"] }
+
+[target.'cfg(target_arch = "aarch64")']
+rustflags = ["-C", "target-feature=+neon", "-C", "target-cpu=apple-m1"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
