@@ -3,10 +3,18 @@ import CoreGraphics
 @testable import WhisperNode
 
 final class GlobalHotkeyManagerTests: XCTestCase {
+    // MARK: - Key Code Constants
+    private enum KeyCode {
+        static let space: UInt16 = 49
+        static let f: UInt16 = 3
+        static let backtick: UInt16 = 50
+    }
+    
     var hotkeyManager: GlobalHotkeyManager!
     var mockDelegate: MockGlobalHotkeyManagerDelegate!
     
     override func setUpWithError() throws {
+        try super.setUpWithError()
         hotkeyManager = GlobalHotkeyManager()
         mockDelegate = MockGlobalHotkeyManagerDelegate()
         hotkeyManager.delegate = mockDelegate
@@ -16,19 +24,20 @@ final class GlobalHotkeyManagerTests: XCTestCase {
         hotkeyManager.stopListening()
         hotkeyManager = nil
         mockDelegate = nil
+        try super.tearDownWithError()
     }
     
     // MARK: - Configuration Tests
     
     func testDefaultConfiguration() {
-        XCTAssertEqual(hotkeyManager.currentHotkey.keyCode, 49) // Space bar
+        XCTAssertEqual(hotkeyManager.currentHotkey.keyCode, KeyCode.space)
         XCTAssertEqual(hotkeyManager.currentHotkey.modifierFlags, .maskAlternate)
         XCTAssertEqual(hotkeyManager.currentHotkey.description, "Option+Space")
     }
     
     func testUpdateHotkey() {
         let newConfig = HotkeyConfiguration(
-            keyCode: 3, // F key
+            keyCode: KeyCode.f,
             modifierFlags: [.maskCommand, .maskShift],
             description: "Cmd+Shift+F"
         )
@@ -43,7 +52,7 @@ final class GlobalHotkeyManagerTests: XCTestCase {
     func testSystemShortcutConflictDetection() {
         // Test Cmd+Space (Spotlight) conflict
         let conflictingConfig = HotkeyConfiguration(
-            keyCode: 49, // Space
+            keyCode: KeyCode.space,
             modifierFlags: .maskCommand,
             description: "Cmd+Space"
         )
@@ -58,7 +67,7 @@ final class GlobalHotkeyManagerTests: XCTestCase {
     
     func testValidHotkeyNoConflict() {
         let validConfig = HotkeyConfiguration(
-            keyCode: 49, // Space
+            keyCode: KeyCode.space,
             modifierFlags: [.maskAlternate, .maskShift],
             description: "Option+Shift+Space"
         )
@@ -78,9 +87,9 @@ final class GlobalHotkeyManagerTests: XCTestCase {
     // MARK: - Configuration Equality Tests
     
     func testHotkeyConfigurationEquality() {
-        let config1 = HotkeyConfiguration(keyCode: 49, modifierFlags: .maskAlternate, description: "Option+Space")
-        let config2 = HotkeyConfiguration(keyCode: 49, modifierFlags: .maskAlternate, description: "Option+Space")
-        let config3 = HotkeyConfiguration(keyCode: 50, modifierFlags: .maskAlternate, description: "Option+`")
+        let config1 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: .maskAlternate, description: "Option+Space")
+        let config2 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: .maskAlternate, description: "Option+Space")
+        let config3 = HotkeyConfiguration(keyCode: KeyCode.backtick, modifierFlags: .maskAlternate, description: "Option+`")
         
         XCTAssertEqual(config1, config2)
         XCTAssertNotEqual(config1, config3)

@@ -4,7 +4,27 @@ import AppKit
 import os.log
 
 /// Manager for global hotkey detection using CGEventTap
-/// Handles press-and-hold voice activation with accessibility permissions
+/// 
+/// This class provides system-wide hotkey monitoring for press-and-hold voice activation.
+/// It handles accessibility permissions, conflict detection with system shortcuts,
+/// and provides a delegate-based interface for hotkey events.
+///
+/// ## Features
+/// - Global hotkey capture using CGEventTap
+/// - Press-and-hold detection with configurable minimum duration
+/// - Conflict detection against common system shortcuts
+/// - Accessibility permission management
+/// - Customizable hotkey configuration
+///
+/// ## Usage
+/// ```swift
+/// let manager = GlobalHotkeyManager()
+/// manager.delegate = self
+/// manager.startListening()
+/// ```
+///
+/// - Important: Requires accessibility permissions to function properly
+/// - Warning: Only one instance should be active at a time
 public class GlobalHotkeyManager: ObservableObject {
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "hotkey")
     
@@ -36,6 +56,12 @@ public class GlobalHotkeyManager: ObservableObject {
     // MARK: - Public Methods
     
     /// Request accessibility permissions and start listening for global hotkeys
+    ///
+    /// This method sets up a global event tap to monitor keyboard events.
+    /// It will automatically request accessibility permissions if not already granted.
+    ///
+    /// - Important: Accessibility permissions are required for this to work
+    /// - Throws: No exceptions, but failures are reported through delegate callbacks
     public func startListening() {
         guard !isListening else {
             Self.logger.warning("Already listening for hotkeys")
@@ -77,6 +103,9 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     /// Stop listening for global hotkeys
+    ///
+    /// Cleanly removes the event tap and cleans up resources.
+    /// Safe to call multiple times or when not currently listening.
     public func stopListening() {
         guard isListening else { return }
         
@@ -98,6 +127,12 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     /// Update the current hotkey configuration
+    ///
+    /// Changes the hotkey that triggers voice recording. The new configuration
+    /// is validated against known system shortcuts to prevent conflicts.
+    ///
+    /// - Parameter configuration: The new hotkey configuration to use
+    /// - Note: If a conflict is detected, the change is rejected and alternatives are suggested via delegate
     public func updateHotkey(_ configuration: HotkeyConfiguration) {
         let wasListening = isListening
         
@@ -249,6 +284,10 @@ public class GlobalHotkeyManager: ObservableObject {
 
 // MARK: - Supporting Types
 
+/// Configuration for a global hotkey
+///
+/// Represents a keyboard shortcut that can trigger voice recording.
+/// Consists of a key code and modifier flags (Command, Option, etc.)
 public struct HotkeyConfiguration: Equatable {
     public let keyCode: UInt16
     public let modifierFlags: CGEventFlags
@@ -267,6 +306,10 @@ public struct HotkeyConfiguration: Equatable {
     )
 }
 
+/// Represents a detected hotkey conflict
+///
+/// Contains information about a conflict between the desired hotkey
+/// and an existing system or application shortcut.
 public struct HotkeyConflict {
     public let description: String
     public let type: ConflictType
@@ -277,6 +320,7 @@ public struct HotkeyConflict {
     }
 }
 
+/// Errors that can occur during hotkey management
 public enum HotkeyError: Error, LocalizedError {
     case eventTapCreationFailed
     case accessibilityPermissionDenied
@@ -294,6 +338,7 @@ public enum HotkeyError: Error, LocalizedError {
     }
 }
 
+/// Reasons why a recording session was cancelled
 public enum RecordingCancelReason {
     case tooShort
     case interrupted
@@ -301,6 +346,10 @@ public enum RecordingCancelReason {
 
 // MARK: - Delegate Protocol
 
+/// Delegate protocol for hotkey manager events
+///
+/// Implement this protocol to receive notifications about hotkey events,
+/// recording sessions, errors, and permission requirements.
 public protocol GlobalHotkeyManagerDelegate: AnyObject {
     func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening: Bool)
     func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording: Bool)
