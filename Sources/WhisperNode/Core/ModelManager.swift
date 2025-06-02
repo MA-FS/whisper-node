@@ -79,6 +79,12 @@ public class ModelManager: ObservableObject {
     @Published public var totalStorageUsed: UInt64 = 0
     @Published public var availableDiskSpace: UInt64 = 0
     
+    // MARK: - Constants
+    
+    private static let requestTimeout: TimeInterval = 30 // 30 seconds for request timeout
+    private static let resourceTimeout: TimeInterval = 3600 // 1 hour for large downloads
+    private static let modelFileExtension = ".bin"
+    
     // MARK: - Private Properties
     
     private let modelsDirectory: URL
@@ -99,17 +105,23 @@ public class ModelManager: ObservableObject {
     
     private init() {
         // Set up models directory in Application Support
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Unable to access Application Support directory - this is required for model storage")
+        }
         let whisperNodeDir = appSupport.appendingPathComponent("WhisperNode")
         self.modelsDirectory = whisperNodeDir.appendingPathComponent("Models")
         
         // Create models directory if it doesn't exist
-        try? fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("Warning: Failed to create models directory: \(error)")
+        }
         
         // Configure URL session with progress tracking
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 3600 // 1 hour for large downloads
+        config.timeoutIntervalForRequest = Self.requestTimeout
+        config.timeoutIntervalForResource = Self.resourceTimeout
         self.urlSession = URLSession(configuration: config)
         
         // Load active model preference
@@ -145,7 +157,12 @@ public class ModelManager: ObservableObject {
                     await refreshModels()
                 } else {
                     // Delete corrupted file
-                    try? fileManager.removeItem(atPath: filePath)
+                    do {
+                        try fileManager.removeItem(atPath: filePath)
+                        print("Removed corrupted file: \(filePath)")
+                    } catch {
+                        print("Warning: Failed to remove corrupted file \(filePath): \(error)")
+                    }
                     updateModelStatus(model.name, status: .failed, progress: 0.0, error: "Checksum verification failed")
                 }
             } else {
@@ -161,8 +178,13 @@ public class ModelManager: ObservableObject {
         guard model.status == .failed else { return }
         
         // Clean up any partial files
-        let modelPath = modelsDirectory.appendingPathComponent("\(model.name).bin")
-        try? fileManager.removeItem(at: modelPath)
+        let modelPath = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
+        do {
+            try fileManager.removeItem(at: modelPath)
+            print("Cleaned up partial file: \(modelPath.path)")
+        } catch {
+            print("Note: No partial file to clean up or removal failed: \(error)")
+        }
         
         await downloadModel(model)
     }
@@ -171,7 +193,7 @@ public class ModelManager: ObservableObject {
     public func deleteModel(_ model: ModelInfo) async {
         guard model.status == .installed else { return }
         
-        let modelPath = modelsDirectory.appendingPathComponent("\(model.name).bin")
+        let modelPath = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
         
         do {
             try fileManager.removeItem(at: modelPath)
@@ -197,10 +219,10 @@ public class ModelManager: ObservableObject {
         
         if activeModel.status == .bundled {
             // Return bundled model path from app bundle
-            return Bundle.main.path(forResource: activeModel.name, ofType: "bin")
+            return Bundle.main.path(forResource: activeModel.name, ofType: String(Self.modelFileExtension.dropFirst()))
         } else {
             // Return downloaded model path
-            return modelsDirectory.appendingPathComponent("\(activeModel.name).bin").path
+            return modelsDirectory.appendingPathComponent("\(activeModel.name)\(Self.modelFileExtension)").path
         }
     }
     
@@ -225,7 +247,7 @@ public class ModelManager: ObservableObject {
                 downloadSize: 39 * 1024 * 1024,      // 39MB
                 fileSize: 39 * 1024 * 1024,
                 downloadURL: "\(baseDownloadURL)/ggml-tiny.en.bin",
-                checksum: "d6a14c3a48a3e6739df9db90d03984b03cf9c41b6b7b29a8da8c7bbace5fefb4", // Placeholder
+                checksum: "REPLACE_WITH_ACTUAL_TINY_EN_SHA256_HASH", // TODO: Replace with real checksum
                 status: .bundled  // Bundled with app
             ),
             ModelInfo(
@@ -235,7 +257,7 @@ public class ModelManager: ObservableObject {
                 downloadSize: 244 * 1024 * 1024,     // 244MB
                 fileSize: 244 * 1024 * 1024,
                 downloadURL: "\(baseDownloadURL)/ggml-small.en.bin",
-                checksum: "d6a14c3a48a3e6739df9db90d03984b03cf9c41b6b7b29a8da8c7bbace5fefb5", // Placeholder
+                checksum: "REPLACE_WITH_ACTUAL_SMALL_EN_SHA256_HASH", // TODO: Replace with real checksum
                 status: .available
             ),
             ModelInfo(
@@ -245,7 +267,7 @@ public class ModelManager: ObservableObject {
                 downloadSize: 769 * 1024 * 1024,     // 769MB
                 fileSize: 769 * 1024 * 1024,
                 downloadURL: "\(baseDownloadURL)/ggml-medium.en.bin",
-                checksum: "d6a14c3a48a3e6739df9db90d03984b03cf9c41b6b7b29a8da8c7bbace5fefb6", // Placeholder
+                checksum: "REPLACE_WITH_ACTUAL_MEDIUM_EN_SHA256_HASH", // TODO: Replace with real checksum
                 status: .available
             )
         ]
@@ -259,7 +281,7 @@ public class ModelManager: ObservableObject {
                 continue // Skip bundled models
             }
             
-            let modelPath = modelsDirectory.appendingPathComponent("\(model.name).bin")
+            let modelPath = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
             
             if fileManager.fileExists(atPath: modelPath.path) {
                 // Check if file size matches expected
@@ -271,7 +293,12 @@ public class ModelManager: ObservableObject {
                         availableModels[i].status = .installed
                     } else {
                         // File size mismatch, mark as available for re-download
-                        try? fileManager.removeItem(at: modelPath)
+                        do {
+                            try fileManager.removeItem(at: modelPath)
+                            print("Removed invalid model file: \(modelPath.path)")
+                        } catch {
+                            print("Warning: Failed to remove invalid model file \(modelPath.path): \(error)")
+                        }
                         availableModels[i].status = .available
                     }
                 } catch {
@@ -288,10 +315,16 @@ public class ModelManager: ObservableObject {
             return DownloadResult(success: false, error: "Invalid download URL")
         }
         
-        let destinationURL = modelsDirectory.appendingPathComponent("\(model.name).bin")
+        let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
         
         // Remove any existing file
-        try? fileManager.removeItem(at: destinationURL)
+        do {
+            try fileManager.removeItem(at: destinationURL)
+            print("Removed existing file: \(destinationURL.path)")
+        } catch {
+            // This is expected if the file doesn't exist
+            print("Note: No existing file to remove at \(destinationURL.path)")
+        }
         
         do {
             let (tempURL, response) = try await urlSession.download(from: url)
@@ -321,8 +354,20 @@ public class ModelManager: ObservableObject {
     
     private func verifyChecksum(filePath: String, expectedChecksum: String) async -> Bool {
         do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: filePath))
-            let hash = SHA256.hash(data: data)
+            // Use streaming verification to avoid loading large files into memory
+            let fileHandle = try FileHandle(forReadingFrom: URL(fileURLWithPath: filePath))
+            defer { fileHandle.closeFile() }
+            
+            var hasher = SHA256()
+            let bufferSize = 1024 * 1024 // 1MB chunks
+            
+            while true {
+                let chunk = fileHandle.readData(ofLength: bufferSize)
+                if chunk.isEmpty { break }
+                hasher.update(data: chunk)
+            }
+            
+            let hash = hasher.finalize()
             let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
             return hashString.lowercased() == expectedChecksum.lowercased()
         } catch {
@@ -343,7 +388,7 @@ public class ModelManager: ObservableObject {
         totalStorageUsed = 0
         
         for model in availableModels where model.status == .installed {
-            let modelPath = modelsDirectory.appendingPathComponent("\(model.name).bin")
+            let modelPath = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
             
             do {
                 let attributes = try fileManager.attributesOfItem(atPath: modelPath.path)
