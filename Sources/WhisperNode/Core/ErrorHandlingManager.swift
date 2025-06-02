@@ -3,6 +3,12 @@ import AppKit
 import UserNotifications
 import os.log
 
+/// Protocol for recording indicator management to enable dependency injection
+protocol RecordingIndicatorWindowManagerProtocol {
+    func showError()
+    func hideIndicator()
+}
+
 /// Centralized error handling and recovery system for WhisperNode
 ///
 /// Provides comprehensive error management with user-friendly messaging, 
@@ -38,9 +44,35 @@ public class ErrorHandlingManager: ObservableObject {
     
     private static let logger = Logger(subsystem: "com.whispernode.error", category: "handling")
     
+    // MARK: - Constants
+    
     // Error display configuration
     private static let errorOrbDisplayDuration: UInt64 = 3_000_000_000 // 3 seconds
     private static let criticalNotificationDelay: TimeInterval = 0.5 // Delay before showing notifications
+    
+    // Disk space management
+    /// Buffer space to maintain after downloads to prevent system instability
+    /// This accounts for temporary files, system operations, and user comfort margin
+    private static let diskSpaceBuffer: UInt64 = 500_000_000 // 500MB
+    
+    /// Warning threshold for low disk space notifications
+    private static let lowSpaceThreshold: UInt64 = 1_000_000_000 // 1GB
+    
+    // MARK: - Dependency Injection
+    
+    /// Optional indicator manager for dependency injection (improves testability)
+    /// Using Any to avoid circular dependency issues
+    public var indicatorManager: Any?
+    
+    // MARK: - Degradation State Tracking
+    
+    /// Internal state tracking for graceful degradation
+    private var degradationState: [String: Bool] = [
+        "voiceInput": true,
+        "modelDownload": true,
+        "transcription": true,
+        "hotkey": true
+    ]
     
     private init() {
         setupNotificationPermissions()
@@ -211,7 +243,7 @@ public class ErrorHandlingManager: ObservableObject {
             
             if let availableSpace = resourceValues.volumeAvailableCapacity {
                 let availableBytes = UInt64(availableSpace)
-                let bufferSpace: UInt64 = 500_000_000 // 500MB buffer
+                let bufferSpace = Self.diskSpaceBuffer
                 let totalRequired = requiredBytes + bufferSpace
                 
                 if availableBytes < totalRequired {
@@ -242,22 +274,45 @@ public class ErrorHandlingManager: ObservableObject {
     
     /// Handle microphone access denial with system preferences link
     public func handleMicrophoneAccessDenied() {
+        degradationState["voiceInput"] = false
         handleError(.microphoneAccessDenied)
     }
     
     /// Handle model download failure with automatic retry and fallback
     public func handleModelDownloadFailure(_ details: String, retryAction: @escaping () async -> Void) {
+        degradationState["modelDownload"] = false
         handleError(.modelDownloadFailed(details), recovery: retryAction)
     }
     
     /// Handle transcription failure with silent error and visual feedback
     public func handleTranscriptionFailure() {
+        degradationState["transcription"] = false
         handleError(.transcriptionFailed)
     }
     
     /// Handle hotkey conflicts with non-blocking notification
     public func handleHotkeyConflict(_ conflictDetails: String) {
+        degradationState["hotkey"] = false
         handleError(.hotkeyConflict(conflictDetails))
+    }
+    
+    // MARK: - Recovery Methods
+    
+    /// Restore functionality when issues are resolved
+    public func restoreFunctionality(for component: String) {
+        degradationState[component] = true
+        Self.logger.info("Functionality restored for component: \(component)")
+    }
+    
+    /// Restore all functionality (e.g., after app restart or successful recovery)
+    public func restoreAllFunctionality() {
+        degradationState = [
+            "voiceInput": true,
+            "modelDownload": true,
+            "transcription": true,
+            "hotkey": true
+        ]
+        Self.logger.info("All functionality restored")
     }
     
     // MARK: - Private Implementation
@@ -294,7 +349,8 @@ public class ErrorHandlingManager: ObservableObject {
         
         // Execute recovery if available
         if let recovery = recovery {
-            Task {
+            Task { [weak self] in
+                guard self != nil else { return }
                 await recovery()
             }
         }
@@ -306,7 +362,8 @@ public class ErrorHandlingManager: ObservableObject {
         
         // Execute recovery if available and error is recoverable
         if error.isRecoverable, let recovery = recovery {
-            Task {
+            Task { [weak self] in
+                guard self != nil else { return }
                 await recovery()
             }
         }
@@ -320,12 +377,19 @@ public class ErrorHandlingManager: ObservableObject {
     private func showErrorOrb() {
         // Get the recording indicator manager and show error state
         Task { @MainActor [weak self] in
-            guard self != nil else { return }
-            WhisperNodeCore.shared.indicatorManager.showError()
+            guard let self = self else { return }
             
-            // Hide after delay
-            try? await Task.sleep(nanoseconds: Self.errorOrbDisplayDuration)
-            WhisperNodeCore.shared.indicatorManager.hideIndicator()
+            if let customManager = self.indicatorManager as? RecordingIndicatorWindowManagerProtocol {
+                // Use injected manager
+                customManager.showError()
+                try? await Task.sleep(nanoseconds: Self.errorOrbDisplayDuration)
+                customManager.hideIndicator()
+            } else {
+                // Use default manager
+                WhisperNodeCore.shared.indicatorManager.showError()
+                try? await Task.sleep(nanoseconds: Self.errorOrbDisplayDuration)
+                WhisperNodeCore.shared.indicatorManager.hideIndicator()
+            }
         }
     }
     
@@ -457,12 +521,7 @@ extension ErrorHandlingManager {
     /// - Important: Call this after major error events to update UI state
     /// - Note: Returns current degradation state, not future predictions
     public func getCurrentDegradationState() -> [String: Bool] {
-        return [
-            "voiceInput": true,  // Will be updated based on microphone access
-            "modelDownload": true,  // Will be updated based on network/space
-            "transcription": true,  // Will be updated based on model availability
-            "hotkey": true  // Will be updated based on conflict detection
-        ]
+        return degradationState
     }
     
     /// Check if critical functionality is available

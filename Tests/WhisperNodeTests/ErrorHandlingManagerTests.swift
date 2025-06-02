@@ -13,15 +13,17 @@ import XCTest
 @MainActor
 final class ErrorHandlingManagerTests: XCTestCase {
     
-    var errorManager: ErrorHandlingManager!
+    var errorManager: ErrorHandlingManager {
+        return ErrorHandlingManager.shared
+    }
     
     override func setUp() async throws {
         try await super.setUp()
-        errorManager = ErrorHandlingManager.shared
+        // Reset degradation state for clean test environment
+        errorManager.restoreAllFunctionality()
     }
     
     override func tearDown() async throws {
-        errorManager = nil
         try await super.tearDown()
     }
     
@@ -235,24 +237,98 @@ final class ErrorHandlingManagerTests: XCTestCase {
 /// Tests that validate error handling integrates properly with core components
 extension ErrorHandlingManagerTests {
     
-    func testAudioCaptureErrorIntegration() {
+    func testAudioCaptureErrorIntegration() async {
         // Test that audio capture errors are properly handled
-        let audioEngine = AudioCaptureEngine()
+        let initialVoiceState = errorManager.getCurrentDegradationState()["voiceInput"]
+        XCTAssertTrue(initialVoiceState == true, "Voice input should start enabled")
         
-        // Check permission status without requesting
-        let permissionStatus = audioEngine.checkPermissionStatus()
-        XCTAssertTrue([.granted, .denied, .undetermined].contains(permissionStatus),
-                     "Permission status should be one of the expected values")
+        // Simulate microphone access denial
+        errorManager.handleMicrophoneAccessDenied()
+        
+        // Verify degradation state is updated
+        let degradedState = errorManager.getCurrentDegradationState()["voiceInput"]
+        XCTAssertFalse(degradedState!, "Voice input should be disabled after access denied")
+        
+        // Test recovery
+        errorManager.restoreFunctionality(for: "voiceInput")
+        let recoveredState = errorManager.getCurrentDegradationState()["voiceInput"]
+        XCTAssertTrue(recoveredState!, "Voice input should be restored")
     }
     
-    func testModelManagerErrorIntegration() {
+    func testModelManagerErrorIntegration() async {
         // Test that model manager integrates with error handling
-        let modelManager = ModelManager.shared
+        let initialDownloadState = errorManager.getCurrentDegradationState()["modelDownload"]
+        XCTAssertTrue(initialDownloadState == true, "Model download should start enabled")
         
-        Task {
-            await modelManager.refreshModels()
-            let availableModels = modelManager.availableModels
-            XCTAssertFalse(availableModels.isEmpty, "Should have at least bundled models available")
+        // Simulate model download failure
+        var retryExecuted = false
+        let retryAction = {
+            retryExecuted = true
         }
+        
+        errorManager.handleModelDownloadFailure("Simulated network error", retryAction: retryAction)
+        
+        // Verify degradation state is updated
+        let degradedState = errorManager.getCurrentDegradationState()["modelDownload"]
+        XCTAssertFalse(degradedState!, "Model download should be disabled after failure")
+        
+        // Test recovery
+        errorManager.restoreFunctionality(for: "modelDownload")
+        let recoveredState = errorManager.getCurrentDegradationState()["modelDownload"]
+        XCTAssertTrue(recoveredState!, "Model download should be restored")
+    }
+    
+    func testTranscriptionErrorIntegration() async {
+        // Test transcription error handling and degradation
+        let initialTranscriptionState = errorManager.getCurrentDegradationState()["transcription"]
+        XCTAssertTrue(initialTranscriptionState == true, "Transcription should start enabled")
+        
+        // Simulate transcription failure
+        errorManager.handleTranscriptionFailure()
+        
+        // Verify degradation state is updated
+        let degradedState = errorManager.getCurrentDegradationState()["transcription"]
+        XCTAssertFalse(degradedState!, "Transcription should be disabled after failure")
+        
+        // Test recovery
+        errorManager.restoreFunctionality(for: "transcription")
+        let recoveredState = errorManager.getCurrentDegradationState()["transcription"]
+        XCTAssertTrue(recoveredState!, "Transcription should be restored")
+    }
+    
+    func testHotkeyConflictIntegration() async {
+        // Test hotkey conflict handling
+        let initialHotkeyState = errorManager.getCurrentDegradationState()["hotkey"]
+        XCTAssertTrue(initialHotkeyState == true, "Hotkey should start enabled")
+        
+        // Simulate hotkey conflict
+        errorManager.handleHotkeyConflict("Cmd+Space conflicts with Spotlight")
+        
+        // Verify degradation state is updated
+        let degradedState = errorManager.getCurrentDegradationState()["hotkey"]
+        XCTAssertFalse(degradedState!, "Hotkey should be disabled after conflict")
+        
+        // Test recovery
+        errorManager.restoreFunctionality(for: "hotkey")
+        let recoveredState = errorManager.getCurrentDegradationState()["hotkey"]
+        XCTAssertTrue(recoveredState!, "Hotkey should be restored")
+    }
+    
+    func testCriticalFunctionalityAvailability() async {
+        // Test critical functionality detection
+        XCTAssertTrue(errorManager.isCriticalFunctionalityAvailable, "All functionality should be available initially")
+        
+        // Disable voice input (critical)
+        errorManager.handleMicrophoneAccessDenied()
+        XCTAssertFalse(errorManager.isCriticalFunctionalityAvailable, "Critical functionality should be unavailable without voice input")
+        
+        // Restore voice input but disable transcription
+        errorManager.restoreFunctionality(for: "voiceInput")
+        errorManager.handleTranscriptionFailure()
+        XCTAssertFalse(errorManager.isCriticalFunctionalityAvailable, "Critical functionality should be unavailable without transcription")
+        
+        // Restore all
+        errorManager.restoreAllFunctionality()
+        XCTAssertTrue(errorManager.isCriticalFunctionalityAvailable, "Critical functionality should be available after full restore")
     }
 }
