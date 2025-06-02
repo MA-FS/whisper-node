@@ -152,13 +152,11 @@ final class TextInsertionEngineTests: XCTestCase {
     
     /// Helper to test smart formatting without actually inserting text
     private func getFormattedText(_ input: String) async -> String {
-        // Use reflection to access the private formatting method
-        // This is a test-only approach to verify formatting logic
-        let mirror = Mirror(reflecting: textEngine)
-        
-        // For testing purposes, we'll simulate the formatting
-        // In a real implementation, you might expose a public formatting method for testing
+        #if DEBUG
+        return await textEngine.testApplySmartFormatting(input)
+        #else
         return simulateSmartFormatting(input)
+        #endif
     }
     
     /// Simulate the smart formatting logic for testing
@@ -224,10 +222,18 @@ final class TextInsertionEngineTests: XCTestCase {
     
     /// Helper to check if characters have key code mappings
     private func checkCharacterMapping(_ characters: String) async -> Bool {
-        // This would need access to the private keyCodeMap
-        // For testing purposes, we assume basic characters are mapped
+        #if DEBUG
+        for character in characters {
+            if !await textEngine.testHasKeyCodeMapping(for: character) {
+                return false
+            }
+        }
+        return true
+        #else
+        // Fallback for release builds
         let basicMappedChars = Set("abcdefghijklmnopqrstuvwxyz0123456789 .,!?;:'\"-_=[]\\/ \n\r")
         return characters.allSatisfy { basicMappedChars.contains(Character($0.lowercased())) }
+        #endif
     }
 }
 

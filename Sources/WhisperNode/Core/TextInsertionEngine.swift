@@ -26,6 +26,10 @@ import os.log
 public actor TextInsertionEngine {
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "text-insertion")
     
+    // Timing constants
+    private static let characterInsertionDelay: UInt64 = 1_000_000 // 1ms between characters
+    private static let pasteboardRestoreDelay: UInt64 = 100_000_000 // 100ms delay before pasteboard restore
+    
     /// Key code mapping for common characters
     private let keyCodeMap: [Character: CGKeyCode] = [
         // Letters
@@ -40,12 +44,12 @@ public actor TextInsertionEngine {
         
         // Common punctuation
         " ": 0x31, // Space
-        ".": 0x2F, ",": 0x2B, "?": 0x2C, "!": 0x1E,
+        ".": 0x2F, ",": 0x2B, "/": 0x2C, "?": 0x2C, "!": 0x12, // ? is shift + /, ! is shift + 1
         ";": 0x29, ":": 0x29, // : requires shift
         "'": 0x27, "\"": 0x27, // " requires shift
         "-": 0x1B, "=": 0x18,
-        "[": 0x21, "]": 0x1E, // ] requires shift
-        "\\": 0x2A, "/": 0x2C,
+        "[": 0x21, "]": 0x1E,
+        "\\": 0x2A,
         "`": 0x32, "~": 0x32, // ~ requires shift
         
         // Return/Enter
@@ -57,7 +61,7 @@ public actor TextInsertionEngine {
         "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
         "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
         "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+",
-        "{", "}", "|", ":", "\"", "<", ">", "?", "~"
+        "{", "}", "|", ":", "\"", "<", ">", "?", "~", "]"
     ]
     
     public init() {}
@@ -89,7 +93,7 @@ public actor TextInsertionEngine {
             if await insertCharacter(character) {
                 insertedCount += 1
                 // Small delay between characters to ensure proper registration
-                try? await Task.sleep(nanoseconds: 1_000_000) // 1ms
+                try? await Task.sleep(nanoseconds: Self.characterInsertionDelay)
             } else {
                 Self.logger.warning("Failed to insert character: '\(character)'")
                 return false
@@ -111,11 +115,11 @@ public actor TextInsertionEngine {
         
         let needsShift = shiftRequiredChars.contains(character)
         
-        return await MainActor.run {
+        return await MainActor.run { @MainActor in
             // Create key events
             guard let keyDownEvent = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true),
                   let keyUpEvent = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) else {
-                Self.logger.error("Failed to create CGEvent for character: '\(character)'")
+                Self.logger.error("Failed to create CGEvent for character: '\(character)' - check accessibility permissions")
                 return false
             }
             
@@ -155,10 +159,14 @@ public actor TextInsertionEngine {
             
             // Restore previous clipboard contents after a delay
             Task {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                if let previous = previousContents {
-                    pasteboard.clearContents()
-                    pasteboard.setString(previous, forType: .string)
+                try? await Task.sleep(nanoseconds: Self.pasteboardRestoreDelay)
+                await MainActor.run {
+                    let currentContents = pasteboard.string(forType: .string)
+                    // Only restore if our text is still there
+                    if currentContents == text, let previous = previousContents {
+                        pasteboard.clearContents()
+                        pasteboard.setString(previous, forType: .string)
+                    }
                 }
             }
         }
@@ -212,21 +220,38 @@ public actor TextInsertionEngine {
         
         // Convert straight quotes to smart quotes (basic implementation)
         // Note: This is a simplified implementation - full smart quotes require context analysis
+        // TODO: Implement context-aware smart quote conversion (T07-enhancement)
         result = result.replacingOccurrences(of: " '", with: " '")
         result = result.replacingOccurrences(of: "' ", with: "' ")
         
-        // Ensure proper spacing around punctuation
-        result = result.replacingOccurrences(of: " ,", with: ",")
-        result = result.replacingOccurrences(of: " .", with: ".")
-        result = result.replacingOccurrences(of: " !", with: "!")
-        result = result.replacingOccurrences(of: " ?", with: "?")
+        // Remove spaces before punctuation (including colons and semicolons)
+        result = result.replacingOccurrences(of: " ([,.!?;:])", with: "$1", options: .regularExpression)
         
         // Add space after punctuation if missing
-        result = result.replacingOccurrences(of: ",([^ ])", with: ", $1", options: .regularExpression)
-        result = result.replacingOccurrences(of: "\\.([^ ])", with: ". $1", options: .regularExpression)
-        result = result.replacingOccurrences(of: "!([^ ])", with: "! $1", options: .regularExpression)
-        result = result.replacingOccurrences(of: "\\?([^ ])", with: "? $1", options: .regularExpression)
+        result = result.replacingOccurrences(of: "([,.!?;:])([^ ])", with: "$1 $2", options: .regularExpression)
         
         return result
     }
 }
+
+// MARK: - Testing Interfaces
+
+#if DEBUG
+extension TextInsertionEngine {
+    /// Test-only interface for smart formatting validation
+    public func testApplySmartFormatting(_ text: String) -> String {
+        return applySmartFormatting(text)
+    }
+    
+    /// Test-only interface for key code mapping validation
+    public func testHasKeyCodeMapping(for character: Character) -> Bool {
+        let lowercaseChar = Character(character.lowercased())
+        return keyCodeMap[lowercaseChar] != nil
+    }
+    
+    /// Test-only interface for shift requirement validation
+    public func testRequiresShift(for character: Character) -> Bool {
+        return shiftRequiredChars.contains(character)
+    }
+}
+#endif
