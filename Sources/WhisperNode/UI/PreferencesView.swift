@@ -29,18 +29,11 @@ struct PreferencesView: View {
             }
             .tag("models")
             
-            VStack {
-                Text("Shortcuts")
-                    .font(.title2)
-                Text("Coming soon...")
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.windowBackgroundColor))
-            .tabItem {
-                Label("Shortcuts", systemImage: "command")
-            }
-            .tag("shortcuts")
+            ShortcutTab()
+                .tabItem {
+                    Label("Shortcuts", systemImage: "command")
+                }
+                .tag("shortcuts")
             
             VStack {
                 Text("About")

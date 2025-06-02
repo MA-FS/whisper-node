@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import AppKit
 import os.log
+import Combine
 
 /// Manager for global hotkey detection using CGEventTap
 /// 
@@ -25,7 +26,9 @@ import os.log
 ///
 /// - Important: Requires accessibility permissions to function properly
 /// - Warning: Only one instance should be active at a time
+@MainActor
 public class GlobalHotkeyManager: ObservableObject {
+    public static let shared = GlobalHotkeyManager()
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "hotkey")
     
     // MARK: - Properties
@@ -37,6 +40,10 @@ public class GlobalHotkeyManager: ObservableObject {
     @Published public var currentHotkey: HotkeyConfiguration = .defaultConfiguration
     @Published public var isRecording = false
     
+    // Settings integration
+    private var settingsManager = SettingsManager.shared
+    private var cancellables = Set<AnyCancellable>()
+    
     // Press-and-hold tracking
     private var keyDownTime: CFTimeInterval?
     private let minimumHoldDuration: CFTimeInterval = 0.1 // 100ms minimum hold
@@ -46,11 +53,158 @@ public class GlobalHotkeyManager: ObservableObject {
     
     // MARK: - Initialization
     public init() {
+        // Load hotkey configuration from SettingsManager
+        loadHotkeyFromSettings()
+        
+        // Set up settings synchronization
+        setupSettingsObservation()
+        
         Self.logger.info("GlobalHotkeyManager initialized")
     }
     
     deinit {
-        cleanup()
+        // Cleanup resources synchronously
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+        }
+        
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+    }
+    
+    // MARK: - Settings Integration
+    
+    private func loadHotkeyFromSettings() {
+        let keyCode = settingsManager.hotkeyKeyCode
+        let modifierFlags = CGEventFlags(rawValue: settingsManager.hotkeyModifierFlags)
+        let description = formatHotkeyDescription(keyCode: keyCode, modifiers: modifierFlags)
+        
+        currentHotkey = HotkeyConfiguration(
+            keyCode: keyCode,
+            modifierFlags: modifierFlags,
+            description: description
+        )
+    }
+    
+    private func setupSettingsObservation() {
+        // Observe hotkey changes in SettingsManager
+        Publishers.CombineLatest(
+            settingsManager.$hotkeyKeyCode,
+            settingsManager.$hotkeyModifierFlags
+        )
+        .dropFirst() // Skip initial value since we loaded it manually
+        .sink { [weak self] _, _ in
+            self?.loadHotkeyFromSettings()
+        }
+        .store(in: &cancellables)
+    }
+    
+    private func saveHotkeyToSettings() {
+        settingsManager.hotkeyKeyCode = currentHotkey.keyCode
+        settingsManager.hotkeyModifierFlags = currentHotkey.modifierFlags.rawValue
+    }
+    
+    private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
+        var parts: [String] = []
+        
+        // Add modifier symbols in standard order
+        if modifiers.contains(.maskControl) { parts.append("⌃") }
+        if modifiers.contains(.maskAlternate) { parts.append("⌥") }
+        if modifiers.contains(.maskShift) { parts.append("⇧") }
+        if modifiers.contains(.maskCommand) { parts.append("⌘") }
+        
+        // Add key name
+        parts.append(keyCodeToDisplayString(keyCode))
+        
+        return parts.joined()
+    }
+    
+    private func keyCodeToDisplayString(_ keyCode: UInt16) -> String {
+        switch keyCode {
+        // Letters (QWERTY keyboard layout order)
+        case 0: return "A"
+        case 1: return "S"
+        case 2: return "D"
+        case 3: return "F"
+        case 4: return "H"
+        case 5: return "G"
+        case 6: return "Z"
+        case 7: return "X"
+        case 8: return "C"
+        case 9: return "V"
+        case 11: return "B"
+        case 12: return "Q"
+        case 13: return "W"
+        case 14: return "E"
+        case 15: return "R"
+        case 16: return "Y"
+        case 17: return "T"
+        case 31: return "O"
+        case 32: return "U"
+        case 34: return "I"
+        case 35: return "P"
+        case 37: return "L"
+        case 38: return "J"
+        case 40: return "K"
+        case 45: return "N"
+        case 46: return "M"
+        
+        // Numbers
+        case 18: return "1"
+        case 19: return "2"
+        case 20: return "3"
+        case 21: return "4"
+        case 22: return "6"
+        case 23: return "5"
+        case 25: return "9"
+        case 26: return "7"
+        case 28: return "8"
+        case 29: return "0"
+        
+        // Special keys
+        case 49: return "Space"
+        case 36: return "Return"
+        case 48: return "Tab"
+        case 51: return "Delete"
+        case 53: return "Escape"
+        case 76: return "Enter"
+        
+        // Punctuation
+        case 24: return "="
+        case 27: return "-"
+        case 30: return "]"
+        case 33: return "["
+        case 39: return "'"
+        case 41: return ";"
+        case 42: return "\\"
+        case 43: return ","
+        case 44: return "/"
+        case 47: return "."
+        case 50: return "`"
+        
+        // Function keys
+        case 122: return "F1"
+        case 120: return "F2"
+        case 99: return "F3"
+        case 118: return "F4"
+        case 96: return "F5"
+        case 97: return "F6"
+        case 98: return "F7"
+        case 100: return "F8"
+        case 101: return "F9"
+        case 109: return "F10"
+        case 103: return "F11"
+        case 111: return "F12"
+        
+        // Arrow keys
+        case 123: return "←"
+        case 124: return "→"
+        case 125: return "↓"
+        case 126: return "↑"
+        
+        default: return "Key\(keyCode)"
+        }
     }
     
     // MARK: - Public Methods
@@ -154,6 +308,10 @@ public class GlobalHotkeyManager: ObservableObject {
         }
         
         currentHotkey = configuration
+        
+        // Save to persistent settings
+        saveHotkeyToSettings()
+        
         Self.logger.info("Updated hotkey configuration: \(configuration.description)")
         
         if wasListening {

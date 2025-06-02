@@ -24,8 +24,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T08 | [Menu Bar Application Framework](tasks/T08-menubar-app.md) | Medium | ✅ Done | 100% | SF Symbols + dropdown complete |
 | T09 | [Preferences Window - General Tab](tasks/T09-preferences-general.md) | Medium | ✅ Done | 100% | Launch at login + settings |
 | T10 | [Preferences Window - Voice Tab](tasks/T10-preferences-voice.md) | Medium | ✅ Done | 100% | Microphone + level meter |
-| T11 | [Preferences Window - Models Tab](tasks/T11-preferences-models.md) | High | ⏳ WIP | 0% | Model download + management |
-| T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ⏳ WIP | 0% | Hotkey customization |
+| T11 | [Preferences Window - Models Tab](tasks/T11-preferences-models.md) | High | ✅ Done | 100% | Model download + management |
+| T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ✅ Done | 100% | Hotkey recording & conflicts |
 | T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | ⏳ WIP | 0% | Version info + Sparkle |
 | T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | ⏳ WIP | 0% | Setup wizard + permissions |
 | T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | ⏳ WIP | 0% | User-friendly error states |
@@ -49,7 +49,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 **Status**: 4/5 complete - Hotkey, audio capture, ML inference, and visual indicator done; text insertion pending
 
 ### Phase 3 - User Interface (T05, T08-T13)
-**Status**: 4/7 complete - Visual indicator, menu bar, general and voice preferences done
+**Status**: 6/7 complete - Visual indicator, menu bar, general, voice, models, and shortcut preferences done
 
 ### Phase 4 - Polish & Distribution (T14-T19, T21-T25)
 **Status**: 0/12 complete - All polish and distribution tasks pending
@@ -57,8 +57,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary
 
 **Total Tasks**: 25  
-**Completed**: 10 (40%)  
-**In Progress**: 15 (60%)  
+**Completed**: 12 (48%)  
+**In Progress**: 13 (52%)  
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  

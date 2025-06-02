@@ -19,6 +19,10 @@ class SettingsManager: ObservableObject {
         static let preferredInputDevice = "preferredInputDevice"
         static let vadThreshold = "vadThreshold"
         static let enableTestRecording = "enableTestRecording"
+        
+        // Hotkey Settings
+        static let hotkeyKeyCode = "hotkeyKeyCode"
+        static let hotkeyModifierFlags = "hotkeyModifierFlags"
     }
     
     // MARK: - Published Properties
@@ -72,6 +76,18 @@ class SettingsManager: ObservableObject {
         }
     }
     
+    @Published var hotkeyKeyCode: UInt16 {
+        didSet {
+            UserDefaults.standard.set(hotkeyKeyCode, forKey: UserDefaultsKeys.hotkeyKeyCode)
+        }
+    }
+    
+    @Published var hotkeyModifierFlags: UInt64 {
+        didSet {
+            UserDefaults.standard.set(hotkeyModifierFlags, forKey: UserDefaultsKeys.hotkeyModifierFlags)
+        }
+    }
+    
     // MARK: - Private Properties
     
     private let defaults = UserDefaults.standard
@@ -105,6 +121,13 @@ class SettingsManager: ObservableObject {
         
         self.vadThreshold = defaults.object(forKey: UserDefaultsKeys.vadThreshold) as? Float ?? -40.0
         self.enableTestRecording = defaults.bool(forKey: UserDefaultsKeys.enableTestRecording)
+        
+        // Load hotkey settings with defaults (Option+Space)
+        let storedKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
+        self.hotkeyKeyCode = storedKeyCode == 0 ? 49 : storedKeyCode // Default to Space key
+        
+        let storedModifierFlags = UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags))
+        self.hotkeyModifierFlags = storedModifierFlags == 0 ? CGEventFlags.maskAlternate.rawValue : storedModifierFlags // Default to Option key
     }
     
     // MARK: - Login Item Management
