@@ -234,6 +234,24 @@ final class CircularAudioBufferTests: XCTestCase {
         let finalCount = buffer.availableDataCount()
         XCTAssertTrue(finalCount <= testCapacity, "Buffer count should not exceed capacity")
     }
+    
+    func testBufferOverrunCallback() {
+        var overrunCount = 0
+        var droppedSamplesTotal = 0
+        
+        buffer.onOverrun = { droppedSamples in
+            overrunCount += 1
+            droppedSamplesTotal += droppedSamples
+        }
+        
+        // Fill buffer beyond capacity to trigger overrun
+        let largeSamples = Array(1...20).map(Float.init)
+        buffer.write(largeSamples)
+        
+        // Should have triggered overrun callback
+        XCTAssertGreaterThan(overrunCount, 0, "Overrun callback should have been called")
+        XCTAssertGreaterThan(droppedSamplesTotal, 0, "Some samples should have been dropped")
+    }
 }
 
 // MARK: - VoiceActivityDetector Tests

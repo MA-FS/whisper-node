@@ -130,6 +130,7 @@ public class AudioCaptureEngine: ObservableObject {
         self.vadDetector = VoiceActivityDetector(threshold: vadThreshold)
         
         setupNotifications()
+        setupBufferOverrunHandling()
     }
     
     deinit {
@@ -143,15 +144,17 @@ public class AudioCaptureEngine: ObservableObject {
     /// Request microphone permission from the user
     /// 
     /// This method handles platform-specific permission requests. On macOS,
-    /// permission is typically checked during audio engine initialization.
+    /// permission is requested using AVCaptureDevice authorization.
     /// 
     /// - Returns: True if permission is granted, false otherwise
     public func requestPermission() async -> Bool {
         return await withCheckedContinuation { continuation in
             #if os(macOS)
-            // On macOS, check system preferences privacy settings
-            let status = checkPermissionStatus()
-            continuation.resume(returning: status == .granted)
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    continuation.resume(returning: granted)
+                }
+            }
             #else
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 DispatchQueue.main.async {
@@ -167,9 +170,14 @@ public class AudioCaptureEngine: ObservableObject {
     /// - Returns: Current permission status without prompting the user
     public func checkPermissionStatus() -> PermissionStatus {
         #if os(macOS)
-        // On macOS, we need to attempt to access the microphone to check permissions
-        // This is a simplified check - in practice, the engine will fail if permission is denied
-        return .granted // Assume granted for now, real check happens during engine start
+        // Use AVCaptureDevice authorization status for microphone
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        switch status {
+        case .authorized: return .granted
+        case .denied, .restricted: return .denied
+        case .notDetermined: return .undetermined
+        @unknown default: return .undetermined
+        }
         #else
         let status = AVAudioSession.sharedInstance().recordPermission
         switch status {
@@ -226,14 +234,65 @@ public class AudioCaptureEngine: ObservableObject {
     
     /// Get available audio input devices
     /// 
-    /// - Returns: Array of available input devices (simplified implementation)
-    /// - Note: Full device enumeration would require additional Core Audio APIs
-    public func getAvailableInputDevices() -> [AVAudioUnit] {
+    /// - Returns: Array of tuples containing device ID and name
+    public func getAvailableInputDevices() -> [(deviceID: AudioDeviceID, name: String)] {
         #if os(macOS)
-        // On macOS, use AVAudioEngine to get available input devices
-        return [] // Simplified for now - would need AudioObjectGetPropertyData for full implementation
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        var dataSize: UInt32 = 0
+        let status = AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize)
+        guard status == noErr else { return [] }
+        
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var audioDevices = Array<AudioDeviceID>(repeating: 0, count: deviceCount)
+        
+        let getDevicesStatus = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize, &audioDevices)
+        guard getDevicesStatus == noErr else { return [] }
+        
+        return audioDevices.compactMap { deviceID in
+            // Check if device has input streams
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            
+            var inputDataSize: UInt32 = 0
+            let inputStatus = AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &inputDataSize)
+            guard inputStatus == noErr && inputDataSize > 0 else { return nil }
+            
+            // Get device name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            
+            var nameDataSize: UInt32 = 0
+            let nameStatus = AudioObjectGetPropertyDataSize(deviceID, &nameAddress, 0, nil, &nameDataSize)
+            guard nameStatus == noErr else { return (deviceID: deviceID, name: "Unknown Device") }
+            
+            var deviceName: Unmanaged<CFString>?
+            let getNameStatus = AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameDataSize, &deviceName)
+            
+            let name: String
+            if getNameStatus == noErr, let unmanagedName = deviceName {
+                let cfString = unmanagedName.takeUnretainedValue()
+                name = String(cfString)
+            } else {
+                name = "Audio Device \(deviceID)"
+            }
+                
+            return (deviceID: deviceID, name: name)
+        }
         #else
-        return AVAudioSession.sharedInstance().availableInputs?.compactMap { _ in AVAudioUnit() } ?? []
+        return AVAudioSession.sharedInstance().availableInputs?.compactMap { input in
+            (deviceID: 0, name: input.portName)
+        } ?? []
         #endif
     }
     
@@ -335,8 +394,14 @@ public class AudioCaptureEngine: ObservableObject {
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 if options.contains(.shouldResume) {
-                    Task {
-                        try? await startCapture()
+                    Task { @MainActor in
+                        do {
+                            try await startCapture()
+                        } catch {
+                            // Handle restart failure
+                            updateCaptureState(.error(.engineNotRunning))
+                            print("Failed to restart audio capture after interruption: \(error)")
+                        }
                     }
                 }
             }
@@ -344,6 +409,15 @@ public class AudioCaptureEngine: ObservableObject {
             break
         }
         #endif
+    }
+    
+    private func setupBufferOverrunHandling() {
+        circularBuffer.onOverrun = { [weak self] droppedSamples in
+            Task { @MainActor in
+                self?.updateCaptureState(.error(.bufferOverrun))
+                print("Audio buffer overrun: \(droppedSamples) samples dropped")
+            }
+        }
     }
     
     private func setupAudioEngine() throws {
@@ -397,9 +471,7 @@ public class AudioCaptureEngine: ObservableObject {
     }
     
     private func samplesToData(_ samples: [Float]) -> Data {
-        return samples.withUnsafeBytes { bytes in
-            Data(bytes.bindMemory(to: UInt8.self))
-        }
+        return Data(bytes: samples, count: samples.count * MemoryLayout<Float>.stride)
     }
     
     private func updateCaptureState(_ newState: CaptureState) {
@@ -434,6 +506,9 @@ public class AudioCaptureEngine: ObservableObject {
 /// ## Usage
 /// ```swift
 /// let buffer = CircularAudioBuffer(capacity: 16384)
+/// buffer.onOverrun = { droppedSamples in
+///     print("Buffer overrun: \(droppedSamples) samples dropped")
+/// }
 /// 
 /// // Writer thread
 /// buffer.write([1.0, 2.0, 3.0])
@@ -447,6 +522,10 @@ public class CircularAudioBuffer {
     private var readIndex: Int = 0
     private let capacity: Int
     private let lock = NSLock()
+    
+    /// Callback invoked when buffer overrun occurs
+    /// - Parameter droppedSamples: Number of samples that were dropped due to overrun
+    public var onOverrun: ((Int) -> Void)?
     
     /// Initialize a new circular buffer
     /// - Parameter capacity: Maximum number of samples the buffer can hold
@@ -465,6 +544,8 @@ public class CircularAudioBuffer {
         lock.lock()
         defer { lock.unlock() }
         
+        var droppedSamples = 0
+        
         for sample in samples {
             buffer[writeIndex] = sample
             writeIndex = (writeIndex + 1) % capacity
@@ -472,7 +553,13 @@ public class CircularAudioBuffer {
             // Handle buffer overrun
             if writeIndex == readIndex {
                 readIndex = (readIndex + 1) % capacity
+                droppedSamples += 1
             }
+        }
+        
+        // Report overrun if any samples were dropped
+        if droppedSamples > 0 {
+            onOverrun?(droppedSamples)
         }
     }
     
