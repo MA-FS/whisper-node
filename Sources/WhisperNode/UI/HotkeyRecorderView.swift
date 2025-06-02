@@ -11,6 +11,7 @@ struct HotkeyRecorderView: View {
     @State private var recordedModifiers: CGEventFlags = []
     @State private var keyEventMonitor: Any?
     @State private var recordingStartTime: Date?
+    @State private var autoSaveWorkItem: DispatchWorkItem?
     
     private let recordingTimeout: TimeInterval = 10.0 // 10 seconds
     
@@ -130,6 +131,10 @@ struct HotkeyRecorderView: View {
         recordedModifiers = []
         recordingStartTime = nil
         
+        // Cancel any pending auto-save
+        autoSaveWorkItem?.cancel()
+        autoSaveWorkItem = nil
+        
         if let monitor = keyEventMonitor {
             NSEvent.removeMonitor(monitor)
             keyEventMonitor = nil
@@ -161,12 +166,18 @@ struct HotkeyRecorderView: View {
             
             // If we have both key and modifiers, we can save
             if !recordedModifiers.isEmpty {
-                // Auto-save after a short delay to allow user to see the combination
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if isRecording && recordedKeyCode == UInt16(event.keyCode) {
-                        saveRecordedHotkey()
-                    }
+                // Cancel any previous auto-save work item
+                autoSaveWorkItem?.cancel()
+                
+                // Auto-save after a delay to allow user to see the combination
+                let capturedKeyCode = UInt16(event.keyCode)
+                let workItem = DispatchWorkItem {
+                    guard self.isRecording,
+                          self.recordedKeyCode == capturedKeyCode else { return }
+                    self.saveRecordedHotkey()
                 }
+                autoSaveWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
             }
             
         default:
@@ -191,12 +202,7 @@ struct HotkeyRecorderView: View {
     
     private func keyCodeToDisplayString(_ keyCode: UInt16) -> String {
         switch keyCode {
-        case 49: return "Space"
-        case 36: return "↩"
-        case 48: return "⇥"
-        case 51: return "⌫"
-        case 53: return "⎋"
-        case 76: return "⌤"
+        // Letters (QWERTY keyboard layout order)
         case 0: return "A"
         case 1: return "S"
         case 2: return "D"
@@ -214,36 +220,69 @@ struct HotkeyRecorderView: View {
         case 15: return "R"
         case 16: return "Y"
         case 17: return "T"
+        case 31: return "O"
+        case 32: return "U"
+        case 34: return "I"
+        case 35: return "P"
+        case 37: return "L"
+        case 38: return "J"
+        case 40: return "K"
+        case 45: return "N"
+        case 46: return "M"
+        
+        // Numbers
         case 18: return "1"
         case 19: return "2"
         case 20: return "3"
         case 21: return "4"
         case 22: return "6"
         case 23: return "5"
-        case 24: return "="
         case 25: return "9"
         case 26: return "7"
-        case 27: return "-"
         case 28: return "8"
         case 29: return "0"
+        
+        // Special keys with symbols
+        case 49: return "Space"
+        case 36: return "↩"
+        case 48: return "⇥"
+        case 51: return "⌫"
+        case 53: return "⎋"
+        case 76: return "⌤"
+        
+        // Punctuation
+        case 24: return "="
+        case 27: return "-"
         case 30: return "]"
-        case 31: return "O"
-        case 32: return "U"
         case 33: return "["
-        case 34: return "I"
-        case 35: return "P"
-        case 37: return "L"
-        case 38: return "J"
         case 39: return "'"
-        case 40: return "K"
         case 41: return ";"
         case 42: return "\\"
         case 43: return ","
         case 44: return "/"
-        case 45: return "N"
-        case 46: return "M"
         case 47: return "."
         case 50: return "`"
+        
+        // Function keys
+        case 122: return "F1"
+        case 120: return "F2"
+        case 99: return "F3"
+        case 118: return "F4"
+        case 96: return "F5"
+        case 97: return "F6"
+        case 98: return "F7"
+        case 100: return "F8"
+        case 101: return "F9"
+        case 109: return "F10"
+        case 103: return "F11"
+        case 111: return "F12"
+        
+        // Arrow keys
+        case 123: return "←"
+        case 124: return "→"
+        case 125: return "↓"
+        case 126: return "↑"
+        
         default: return "Key\(keyCode)"
         }
     }

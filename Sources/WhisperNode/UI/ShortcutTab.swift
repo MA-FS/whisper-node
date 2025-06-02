@@ -179,8 +179,19 @@ struct ShortcutTab: View {
         let systemShortcuts: [(keyCode: UInt16, modifiers: CGEventFlags, description: String)] = [
             (49, .maskCommand, "Command+Space (Spotlight)"),
             (49, [.maskCommand, .maskShift], "Command+Shift+Space (Character Viewer)"),
+            (48, .maskCommand, "Command+Tab (App Switcher)"),
+            (48, [.maskCommand, .maskShift], "Command+Shift+Tab (App Switcher Reverse)"),
+            (12, .maskCommand, "Command+Q (Quit App)"),
+            (13, .maskCommand, "Command+W (Close Window)"),
+            (35, .maskCommand, "Command+P (Print)"),
+            (1, .maskCommand, "Command+S (Save)"),
             (99, .maskCommand, "Command+F3 (Show Desktop)"),
             (96, .maskCommand, "Command+F5 (VoiceOver)"),
+            (0, .maskCommand, "Command+A (Select All)"),
+            (8, .maskCommand, "Command+C (Copy)"),
+            (9, .maskCommand, "Command+V (Paste)"),
+            (7, .maskCommand, "Command+X (Cut)"),
+            (6, .maskCommand, "Command+Z (Undo)"),
         ]
         
         for systemShortcut in systemShortcuts {
@@ -209,18 +220,16 @@ struct ShortcutTab: View {
             [.maskControl, .maskAlternate], // Control + Option
         ]
         
-        for modifiers in alternativeModifiers {
-            if modifiers != hotkey.modifierFlags {
-                let alternative = HotkeyConfiguration(
-                    keyCode: hotkey.keyCode,
-                    modifierFlags: modifiers,
-                    description: formatHotkeyDescription(keyCode: hotkey.keyCode, modifiers: modifiers)
-                )
-                
-                // Only add if it doesn't have conflicts
-                if validateHotkey(alternative).isEmpty {
-                    alternatives.append(alternative)
-                }
+        for modifiers in alternativeModifiers where modifiers != hotkey.modifierFlags {
+            let alternative = HotkeyConfiguration(
+                keyCode: hotkey.keyCode,
+                modifierFlags: modifiers,
+                description: formatHotkeyDescription(keyCode: hotkey.keyCode, modifiers: modifiers)
+            )
+            
+            // Only add if it doesn't have conflicts
+            if validateHotkey(alternative).isEmpty {
+                alternatives.append(alternative)
             }
         }
         
