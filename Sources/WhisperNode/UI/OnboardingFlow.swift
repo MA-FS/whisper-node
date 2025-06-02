@@ -443,6 +443,27 @@ struct ModelSelectionStep: View {
     @State private var downloadProgress: Double = 0.0
     @State private var downloadError: String?
     
+    private var buttonTitle: String {
+        if isDownloading {
+            return "Downloading..."
+        }
+        
+        if let selectedModelInfo = modelManager.availableModels.first(where: { $0.name == selectedModel }) {
+            switch selectedModelInfo.status {
+            case .bundled, .installed:
+                return "Continue"
+            case .available:
+                return "Download and Continue"
+            case .downloading:
+                return "Downloading..."
+            case .failed:
+                return "Retry Download"
+            }
+        }
+        
+        return "Continue"
+    }
+    
     var body: some View {
         VStack(spacing: 30) {
             Spacer()
@@ -508,7 +529,7 @@ struct ModelSelectionStep: View {
                 
                 Spacer()
                 
-                Button(isDownloading ? "Downloading..." : "Continue") {
+                Button(buttonTitle) {
                     downloadAndContinue()
                 }
                 .buttonStyle(.borderedProminent)
@@ -706,25 +727,28 @@ struct HotkeySetupStep: View {
                 Text("Current Hotkey:")
                     .font(.headline)
                 
-                Text(hotkeyManager.currentHotkey.description)
+                Text(isRecording ? "Press your hotkey combination..." : hotkeyManager.currentHotkey.description)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .foregroundColor(Color.gray.opacity(0.1))
+                            .foregroundColor(isRecording ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                    .stroke(isRecording ? Color.blue : Color.gray.opacity(0.3), lineWidth: isRecording ? 2 : 1)
                             )
                     )
+                    .animation(.easeInOut(duration: 0.2), value: isRecording)
                 
-                Button(isRecording ? "Recording..." : "Change Hotkey") {
-                    // TODO: Implement hotkey recording
-                    isRecording.toggle()
+                Button(isRecording ? "Press keys to record..." : "Change Hotkey") {
+                    if isRecording {
+                        stopHotkeyRecording()
+                    } else {
+                        startHotkeyRecording()
+                    }
                 }
                 .buttonStyle(.bordered)
-                .disabled(isRecording)
             }
             
             VStack(spacing: 8) {
@@ -763,6 +787,27 @@ struct HotkeySetupStep: View {
         .onAppear {
             // Hotkey text is now automatically updated from hotkeyManager.currentHotkey.description
         }
+    }
+    
+    private func startHotkeyRecording() {
+        isRecording = true
+        hotkeyManager.isRecording = true
+        
+        // Note: In a complete implementation, this would capture the next key combination
+        // For now, we'll just show the recording state and automatically stop after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            if isRecording {
+                stopHotkeyRecording()
+            }
+        }
+    }
+    
+    private func stopHotkeyRecording() {
+        isRecording = false
+        hotkeyManager.isRecording = false
+        
+        // In a complete implementation, this would save the recorded hotkey
+        // For now, we'll keep the existing hotkey
     }
 }
 
