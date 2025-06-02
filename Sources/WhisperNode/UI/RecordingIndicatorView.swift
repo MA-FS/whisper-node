@@ -203,15 +203,20 @@ public struct RecordingIndicatorView: View {
         }
     }
     
+    /// Starts the appropriate animations based on the current recording state.
     private func startAnimations() {
         updateAnimationsForState(state)
     }
     
+    /// Resets the pulse scale and rotation angle to their default values, stopping any ongoing animations.
     private func stopAnimations() {
         pulseScale = 1.0
         rotationAngle = .zero
     }
     
+    /// Updates animation properties based on the given recording state.
+    ///
+    /// Adjusts pulsing and rotation values to trigger appropriate animations for idle, recording, processing, or error states. Animations are disabled if reduce motion is enabled.
     private func updateAnimationsForState(_ newState: RecordingState) {
         guard !reduceMotion else {
             pulseScale = 1.0
@@ -265,6 +270,9 @@ private struct VisualEffectView: NSViewRepresentable {
     let material: NSVisualEffectView.Material
     let blendingMode: NSVisualEffectView.BlendingMode
     
+    /// Creates and configures an `NSVisualEffectView` with the specified material and blending mode.
+    ///
+    /// - Returns: An active `NSVisualEffectView` instance set up for use as a blurred background in SwiftUI.
     func makeNSView(context: Context) -> NSVisualEffectView {
         let visualEffectView = NSVisualEffectView()
         visualEffectView.material = material
@@ -273,6 +281,7 @@ private struct VisualEffectView: NSViewRepresentable {
         return visualEffectView
     }
     
+    /// Updates the properties of the underlying `NSVisualEffectView` with the specified material and blending mode.
     func updateNSView(_ visualEffectView: NSVisualEffectView, context: Context) {
         visualEffectView.material = material
         visualEffectView.blendingMode = blendingMode

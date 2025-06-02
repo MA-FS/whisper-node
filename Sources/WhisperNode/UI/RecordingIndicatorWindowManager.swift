@@ -55,7 +55,13 @@ public class RecordingIndicatorWindowManager: ObservableObject {
     /// - Clicks pass through to underlying windows
     ///
     /// - Important: Safe to call multiple times - reuses existing window
-    /// - Note: Window creation is performed on main thread
+    /// Displays the recording indicator overlay with the specified state and optional progress value.
+    ///
+    /// If the indicator window does not exist, it is created and configured. Calling this method when the indicator is already visible updates its state and progress without recreating the window.
+    ///
+    /// - Parameters:
+    ///   - state: The recording state to display in the indicator.
+    ///   - progress: The progress value for the `.processing` state, ranging from 0.0 to 1.0. Defaults to 0.0.
     public func showIndicator(state: RecordingState, progress: Double = 0.0) {
         currentState = state
         currentProgress = progress
@@ -77,7 +83,9 @@ public class RecordingIndicatorWindowManager: ObservableObject {
     /// - Use `cleanup()` for full memory deallocation
     /// - Animation respects accessibility settings
     ///
-    /// - Note: Safe to call when indicator is already hidden
+    /// Hides the recording indicator window with a fade-out animation.
+    ///
+    /// The window remains allocated in memory for quick re-display. Safe to call multiple times; has no effect if the indicator is already hidden.
     public func hideIndicator() {
         updateIndicatorVisibility(false)
     }
@@ -97,7 +105,11 @@ public class RecordingIndicatorWindowManager: ObservableObject {
     /// - Color and opacity changes respect theme
     ///
     /// - Important: Only affects visible indicators
-    /// - Note: Progress is only relevant for `.processing` state
+    /// Updates the indicator's state and progress if it is currently visible.
+    ///
+    /// - Parameters:
+    ///   - state: The new recording state to display.
+    ///   - progress: The progress value for the `.processing` state (default is 0.0). Ignored for other states.
     public func updateState(_ state: RecordingState, progress: Double = 0.0) {
         guard isVisible else { return }
         
@@ -121,7 +133,9 @@ public class RecordingIndicatorWindowManager: ObservableObject {
     /// - User explicitly disables indicator
     ///
     /// - Note: Window will be recreated on next showIndicator() call
-    /// - Important: Safe to call multiple times
+    /// Immediately closes and deallocates the indicator window, removes screen change observers, and resets visibility state.
+    ///
+    /// Safe to call multiple times; all resources are released and the window will be recreated on the next display request.
     public func cleanup() {
         if let observer = screenChangeObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -136,7 +150,9 @@ public class RecordingIndicatorWindowManager: ObservableObject {
         isVisible = false
     }
     
-    // MARK: - Private Implementation
+    /// Creates and configures the transparent floating indicator window overlay.
+    ///
+    /// Initializes a borderless, transparent `NSWindow` covering the main screen, sets up a SwiftUI `RecordingIndicatorView` with bindings to the manager's state, and hosts it in an `NSHostingController`. The window is configured to float above all other windows, ignore mouse events, and join all spaces. Registers for screen change notifications to keep the window positioned correctly.
     
     private func setupIndicatorWindow() {
         guard let screen = NSScreen.main else {
@@ -195,6 +211,11 @@ public class RecordingIndicatorWindowManager: ObservableObject {
         setupScreenChangeNotifications()
     }
     
+    /// Shows or hides the indicator window based on the specified visibility flag.
+    ///
+    /// If the window does not exist and visibility is requested, it creates and displays the window. When hiding, the window is ordered out but remains allocated for quick re-display.
+    ///
+    /// - Parameter visible: A Boolean value indicating whether the indicator window should be visible.
     private func updateIndicatorVisibility(_ visible: Bool) {
         guard let window = indicatorWindow else {
             if visible {
@@ -216,6 +237,7 @@ public class RecordingIndicatorWindowManager: ObservableObject {
         }
     }
     
+    /// Registers an observer to handle screen configuration changes and updates the indicator window accordingly.
     private func setupScreenChangeNotifications() {
         screenChangeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -228,6 +250,7 @@ public class RecordingIndicatorWindowManager: ObservableObject {
         }
     }
     
+    /// Updates the indicator window's frame to match the main screen after a screen configuration change.
     private func handleScreenChange() {
         guard let window = indicatorWindow,
               let screen = NSScreen.main else { return }
@@ -240,23 +263,25 @@ public class RecordingIndicatorWindowManager: ObservableObject {
 // MARK: - Convenience Extensions
 
 extension RecordingIndicatorWindowManager {
-    /// Show indicator for idle state
+    /// Displays the recording indicator in the idle state.
     public func showIdle() {
         showIndicator(state: .idle)
     }
     
-    /// Show indicator for recording state
+    /// Displays the recording indicator in the recording state.
     public func showRecording() {
         showIndicator(state: .recording)
     }
     
     /// Show indicator for processing state with progress
-    /// - Parameter progress: Processing progress (0.0-1.0)
+    /// Displays the recording indicator in the processing state with the specified progress value.
+    ///
+    /// - Parameter progress: The progress value for the processing state, clamped between 0.0 and 1.0.
     public func showProcessing(progress: Double) {
         showIndicator(state: .processing, progress: max(0.0, min(1.0, progress)))
     }
     
-    /// Show indicator for error state
+    /// Displays the recording indicator in the error state.
     public func showError() {
         showIndicator(state: .error)
     }

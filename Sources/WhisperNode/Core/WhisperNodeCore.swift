@@ -330,6 +330,9 @@ public class WhisperNodeCore: ObservableObject {
         return documentsPath.appendingPathComponent("\(modelName).bin").path
     }
     
+    /// Processes captured audio data by transcribing it with the Whisper engine and updating the UI indicator to reflect processing progress, success, or error states.
+    ///
+    /// Converts raw audio data to float samples, simulates progress updates on the processing indicator, and performs asynchronous transcription. On success, hides the indicator and logs the result; on failure, displays an error indicator briefly before hiding it. Performance warnings are logged if high resource usage is detected.
     private func processAudioData(_ audioData: Data) async {
         guard let engine = whisperEngine else { return }
         
@@ -379,6 +382,11 @@ public class WhisperNodeCore: ObservableObject {
         }
     }
     
+    /// Updates the recording indicator based on current voice activity and recording state.
+    ///
+    /// Shows the recording indicator when voice is detected during recording, or shows the idle indicator if recording is active but no voice is detected.
+    ///
+    /// - Parameter isVoiceDetected: Indicates whether voice activity is currently detected.
     private func handleVoiceActivityChange(_ isVoiceDetected: Bool) {
         Self.logger.debug("Voice activity changed: \(isVoiceDetected)")
         
@@ -390,6 +398,9 @@ public class WhisperNodeCore: ObservableObject {
         }
     }
     
+    /// Asynchronously updates memory and CPU usage metrics from the Whisper engine.
+    ///
+    /// If performance thresholds are exceeded, logs a warning with a suggested model downgrade.
     private func updatePerformanceMetrics() async {
         guard let engine = whisperEngine else { return }
         
@@ -421,6 +432,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         Self.logger.info("Hotkey listening status changed: \(isListening)")
     }
     
+    /// Handles the start of voice recording triggered by the global hotkey.
+    ///
+    /// Updates the recording state, displays the recording indicator, starts performance monitoring, and initiates audio capture. If audio capture fails to start, resets the recording state, hides the indicator, and stops monitoring.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
         self.isRecording = true
         Self.logger.info("Voice recording started")
@@ -445,6 +459,11 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         }
     }
     
+    /// Handles completion of voice recording triggered by the hotkey manager.
+    ///
+    /// Updates the recording state, displays a processing indicator after a short delay, stops performance monitoring, and stops audio capture. Audio data processing is handled asynchronously by the audio engine callbacks.
+    ///
+    /// - Parameter duration: The duration of the completed voice recording, in seconds.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCompleteRecording duration: CFTimeInterval) {
         isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
@@ -468,6 +487,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // which will trigger processAudioData() automatically
     }
     
+    /// Handles the cancellation of voice recording triggered by the hotkey manager.
+    ///
+    /// Resets the recording state, hides the recording indicator, stops performance monitoring, and halts audio capture.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCancelRecording reason: RecordingCancelReason) {
         isRecording = false
         Self.logger.info("Voice recording cancelled")
@@ -482,6 +504,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         audioEngine.stopCapture()
     }
     
+    /// Handles errors from the global hotkey manager by logging the error and displaying an error indicator briefly.
+    ///
+    /// The error indicator is shown immediately and then hidden after a short delay. This method is called when the hotkey manager encounters an error.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didFailWithError error: HotkeyError) {
         Self.logger.error("Hotkey manager error: \(error.localizedDescription)")
         
