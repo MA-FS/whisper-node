@@ -72,7 +72,9 @@ class SettingsManager: ObservableObject {
         }
     }
     
-    // MARK: - Login Item Management
+    /// Registers or unregisters the app as a login item based on the current `launchAtLogin` setting.
+    ///
+    /// If registration or unregistration fails, resets the `launchAtLogin` property to reflect the actual system state and posts a `"LoginItemUpdateFailed"` notification with error details.
     
     private func updateLoginItem() {
         do {
@@ -98,7 +100,9 @@ class SettingsManager: ObservableObject {
         }
     }
     
-    // MARK: - Dock Icon Management
+    /// Updates the application's dock icon visibility based on the current setting.
+    ///
+    /// Sets the app's activation policy to show or hide the dock icon and posts a `"DockIconVisibilityChanged"` notification with the updated visibility state.
     
     private func updateDockIconVisibility() {
         NSApp.setActivationPolicy(showDockIcon ? .regular : .accessory)
@@ -111,19 +115,31 @@ class SettingsManager: ObservableObject {
         )
     }
     
-    // MARK: - Window Management
+    /// Saves the specified window frame's origin and size to persistent settings.
+    ///
+    /// - Parameter frame: The window frame whose position and size should be stored.
     
     func saveWindowFrame(_ frame: CGRect) {
         windowPosition = frame.origin
         windowSize = frame.size
     }
     
+    /// Returns a validated window frame using the stored window position and size.
+    ///
+    /// The returned frame is adjusted to ensure it fits within the visible area of the main screen and adheres to minimum and maximum size constraints.
+    ///
+    /// - Returns: A CGRect representing the validated window frame.
     func restoreWindowFrame() -> CGRect {
         let frame = CGRect(origin: windowPosition, size: windowSize)
         return validateWindowFrame(frame)
     }
     
-    /// Validates and adjusts window frame to ensure it's visible on screen
+    /// Validates and adjusts a window frame to ensure it fits within the main screen's visible area.
+    ///
+    /// The returned frame is constrained to a minimum size of 320x240 points, a maximum size of 90% of the screen's visible area, and is repositioned if necessary to prevent it from being off-screen.
+    ///
+    /// - Parameter frame: The window frame to validate.
+    /// - Returns: A frame adjusted to fit within the visible bounds of the main screen.
     private func validateWindowFrame(_ frame: CGRect) -> CGRect {
         guard let screen = NSScreen.main else {
             return frame
@@ -175,18 +191,34 @@ class SettingsManager: ObservableObject {
 // MARK: - NSCoder Extensions
 
 private extension NSCoder {
+    /// Converts a `CGPoint` to its string representation suitable for storage or serialization.
+    ///
+    /// - Parameter point: The point to convert.
+    /// - Returns: A string representation of the given point.
     static func string(for point: CGPoint) -> String {
         return NSStringFromPoint(point)
     }
     
+    /// Converts a string representation to a `CGPoint`.
+    ///
+    /// - Parameter string: The string to convert, typically produced by `NSStringFromPoint`.
+    /// - Returns: A `CGPoint` if the string is valid; otherwise, `nil`.
     static func cgPoint(for string: String) -> CGPoint? {
         return NSPointFromString(string)
     }
     
+    /// Converts a `CGSize` value to its string representation.
+    ///
+    /// - Parameter size: The size to convert.
+    /// - Returns: A string representation of the given size.
     static func string(for size: CGSize) -> String {
         return NSStringFromSize(size)
     }
     
+    /// Converts a string representation to a `CGSize` value.
+    ///
+    /// - Parameter string: The string to convert, typically produced by `NSStringFromSize`.
+    /// - Returns: A `CGSize` if the string is valid; otherwise, `nil`.
     static func cgSize(for string: String) -> CGSize? {
         return NSSizeFromString(string)
     }
