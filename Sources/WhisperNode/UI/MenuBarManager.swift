@@ -262,8 +262,8 @@ struct MenuBarDropdownView: View {
             // Action buttons
             VStack(alignment: .leading, spacing: 4) {
                 MenuButton(icon: "gearshape.fill", title: "Preferences...") {
-                    // TODO: Open preferences window
                     menuBarManager.hideDropdown()
+                    PreferencesWindowManager.shared.showPreferences()
                 }
                 .accessibilityIdentifier("menubar-preferences-button")
                 

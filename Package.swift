@@ -33,6 +33,7 @@ let package = Package(
             path: "Sources/WhisperNode",
             exclude: [
                 "Resources/Info.plist",
+                "Resources/WhisperNode.entitlements",
                 "Bridge"
             ],
             linkerSettings: [
