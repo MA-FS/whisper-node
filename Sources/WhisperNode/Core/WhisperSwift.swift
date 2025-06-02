@@ -320,7 +320,7 @@ public actor WhisperEngine {
     
     private let whisper: WhisperSwift
     private var performanceHistory: [WhisperPerformanceMetrics] = []
-    private let maxHistorySize = Self.maxPerformanceHistorySize
+    private let maxHistorySize = 10
     
     public init?(modelPath: String) {
         guard let whisper = WhisperSwift(modelPath: modelPath) else {

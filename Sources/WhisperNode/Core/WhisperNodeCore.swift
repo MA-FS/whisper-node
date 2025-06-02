@@ -40,9 +40,15 @@ extension Notification.Name {
 public class WhisperNodeCore: ObservableObject {
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "initialization")
     
+    // Display duration constants
+    private static let errorDisplayDuration: UInt64 = 2_000_000_000 // 2 seconds
+    private static let hotkeyErrorDisplayDuration: UInt64 = 3_000_000_000 // 3 seconds
+    private static let processingStateDelay: UInt64 = 200_000_000 // 0.2 seconds
+    
     // Core managers
     @Published public private(set) var hotkeyManager = GlobalHotkeyManager()
     @Published public private(set) var audioEngine = AudioCaptureEngine()
+    @Published public private(set) var indicatorManager = RecordingIndicatorWindowManager()
     
     // Whisper integration
     private var whisperEngine: WhisperEngine?
@@ -332,11 +338,22 @@ public class WhisperNodeCore: ObservableObject {
             Array(buffer.bindMemory(to: Float.self))
         }
         
+        // Show processing state immediately (real progress updates should come from whisper engine)
+        await MainActor.run {
+            indicatorManager.updateState(.processing, progress: 0.0)
+        }
+        
         // Perform transcription
         let result = await engine.transcribe(audioData: audioSamples)
         
         if result.success {
             Self.logger.info("Transcription completed: \(result.text)")
+            
+            // Hide indicator after successful transcription
+            await MainActor.run {
+                indicatorManager.hideIndicator()
+            }
+            
             // TODO: Insert text using text insertion engine (T07)
             
             // Check for performance warnings
@@ -345,12 +362,26 @@ public class WhisperNodeCore: ObservableObject {
             }
         } else {
             Self.logger.error("Transcription failed: \(result.error ?? "Unknown error")")
+            
+            // Show error indicator briefly
+            await MainActor.run {
+                indicatorManager.showError()
+            }
+            
+            // Schedule error hide without blocking
+            scheduleErrorHide()
         }
     }
     
     private func handleVoiceActivityChange(_ isVoiceDetected: Bool) {
         Self.logger.debug("Voice activity changed: \(isVoiceDetected)")
-        // TODO: Update visual indicator (T05)
+        
+        // Update visual indicator based on voice activity
+        if isVoiceDetected && isRecording {
+            indicatorManager.showRecording()
+        } else if isRecording {
+            indicatorManager.showIdle()
+        }
     }
     
     private func updatePerformanceMetrics() async {
@@ -375,6 +406,24 @@ public class WhisperNodeCore: ObservableObject {
         let (needed, _) = await engine.shouldDowngradeModel()
         return needed
     }
+    
+    private func scheduleErrorHide() {
+        Task.detached { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
+            await MainActor.run { [weak self] in
+                self?.indicatorManager.hideIndicator()
+            }
+        }
+    }
+    
+    private func scheduleHotkeyErrorHide() {
+        Task.detached { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.hotkeyErrorDisplayDuration)
+            await MainActor.run { [weak self] in
+                self?.indicatorManager.hideIndicator()
+            }
+        }
+    }
 }
 
 // MARK: - GlobalHotkeyManagerDelegate
@@ -388,6 +437,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         self.isRecording = true
         Self.logger.info("Voice recording started")
         
+        // Show visual indicator
+        indicatorManager.showRecording()
+        
         // Start performance monitoring during active recording
         startActiveMonitoring()
         
@@ -399,6 +451,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
             } catch {
                 Self.logger.error("Failed to start audio capture: \(error.localizedDescription)")
                 self.isRecording = false
+                indicatorManager.hideIndicator()
                 stopActiveMonitoring()
             }
         }
@@ -407,6 +460,14 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCompleteRecording duration: CFTimeInterval) {
         isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
+        
+        // Show processing indicator after brief delay to avoid flicker
+        Task {
+            try? await Task.sleep(nanoseconds: Self.processingStateDelay)
+            await MainActor.run {
+                indicatorManager.showProcessing(progress: 0.0)
+            }
+        }
         
         // Stop performance monitoring
         stopActiveMonitoring()
@@ -423,6 +484,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         isRecording = false
         Self.logger.info("Voice recording cancelled")
         
+        // Hide visual indicator
+        indicatorManager.hideIndicator()
+        
         // Stop performance monitoring
         stopActiveMonitoring()
         
@@ -432,6 +496,13 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didFailWithError error: HotkeyError) {
         Self.logger.error("Hotkey manager error: \(error.localizedDescription)")
+        
+        // Show error indicator
+        indicatorManager.showError()
+        
+        // Schedule error hide without blocking
+        scheduleHotkeyErrorHide()
+        
         // TODO: Show user-friendly error (T15)
     }
     
