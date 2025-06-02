@@ -338,12 +338,9 @@ public class WhisperNodeCore: ObservableObject {
             Array(buffer.bindMemory(to: Float.self))
         }
         
-        // Update processing progress (simulated - in real implementation this would come from whisper engine)
-        for progress in stride(from: 0.1, through: 1.0, by: 0.1) {
-            await MainActor.run {
-                indicatorManager.updateState(.processing, progress: progress)
-            }
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        // Show processing state immediately (real progress updates should come from whisper engine)
+        await MainActor.run {
+            indicatorManager.updateState(.processing, progress: 0.0)
         }
         
         // Perform transcription
@@ -371,11 +368,8 @@ public class WhisperNodeCore: ObservableObject {
                 indicatorManager.showError()
             }
             
-            // Hide error after delay
-            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
-            await MainActor.run {
-                indicatorManager.hideIndicator()
-            }
+            // Schedule error hide without blocking
+            scheduleErrorHide()
         }
     }
     
@@ -411,6 +405,24 @@ public class WhisperNodeCore: ObservableObject {
         
         let (needed, _) = await engine.shouldDowngradeModel()
         return needed
+    }
+    
+    private func scheduleErrorHide() {
+        Task.detached { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
+            await MainActor.run { [weak self] in
+                self?.indicatorManager.hideIndicator()
+            }
+        }
+    }
+    
+    private func scheduleHotkeyErrorHide() {
+        Task.detached { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.hotkeyErrorDisplayDuration)
+            await MainActor.run { [weak self] in
+                self?.indicatorManager.hideIndicator()
+            }
+        }
     }
 }
 
@@ -488,13 +500,8 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Show error indicator
         indicatorManager.showError()
         
-        // Hide error after a brief delay
-        Task {
-            try? await Task.sleep(nanoseconds: Self.hotkeyErrorDisplayDuration)
-            await MainActor.run {
-                indicatorManager.hideIndicator()
-            }
-        }
+        // Schedule error hide without blocking
+        scheduleHotkeyErrorHide()
         
         // TODO: Show user-friendly error (T15)
     }
