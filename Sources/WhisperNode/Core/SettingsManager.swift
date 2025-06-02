@@ -27,6 +27,10 @@ class SettingsManager: ObservableObject {
         // Model Settings
         static let activeModelName = "activeModelName"
         static let autoDownloadUpdates = "autoDownloadUpdates"
+        
+        // Onboarding Settings
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let onboardingStep = "onboardingStep"
     }
     
     // MARK: - Published Properties
@@ -104,6 +108,18 @@ class SettingsManager: ObservableObject {
         }
     }
     
+    @Published var hasCompletedOnboarding: Bool {
+        didSet {
+            UserDefaults.standard.set(hasCompletedOnboarding, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+        }
+    }
+    
+    @Published var onboardingStep: Int {
+        didSet {
+            UserDefaults.standard.set(onboardingStep, forKey: UserDefaultsKeys.onboardingStep)
+        }
+    }
+    
     // MARK: - Private Properties
     
     private let defaults = UserDefaults.standard
@@ -148,6 +164,10 @@ class SettingsManager: ObservableObject {
         // Load model settings
         self.activeModelName = defaults.string(forKey: UserDefaultsKeys.activeModelName) ?? "tiny.en"
         self.autoDownloadUpdates = defaults.bool(forKey: UserDefaultsKeys.autoDownloadUpdates)
+        
+        // Load onboarding settings
+        self.hasCompletedOnboarding = defaults.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
+        self.onboardingStep = defaults.integer(forKey: UserDefaultsKeys.onboardingStep)
     }
     
     // MARK: - Login Item Management
@@ -213,6 +233,16 @@ class SettingsManager: ObservableObject {
     func restoreWindowFrame() -> CGRect {
         let frame = CGRect(origin: windowPosition, size: windowSize)
         return validateWindowFrame(frame)
+    }
+    
+    /// Resets onboarding state to allow re-running the onboarding flow
+    ///
+    /// This method clears the onboarding completion flag and resets the step counter,
+    /// which will cause the onboarding flow to be presented again on next app launch.
+    /// Useful for testing or when users want to reconfigure their setup.
+    func resetOnboarding() {
+        hasCompletedOnboarding = false
+        onboardingStep = 0
     }
     
     /// Validates and adjusts a window frame to ensure it fits within the main screen's visible area.
