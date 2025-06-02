@@ -71,14 +71,18 @@ public class GlobalHotkeyManager: ObservableObject {
         // Check accessibility permissions
         guard checkAccessibilityPermissions() else {
             Self.logger.error("Accessibility permissions not granted")
-            delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
+            Task { @MainActor in
+                delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
+            }
             return
         }
         
         // Create event tap
         guard let tap = createEventTap() else {
             Self.logger.error("Failed to create event tap")
-            delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
+            Task { @MainActor in
+                delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
+            }
             return
         }
         
@@ -89,7 +93,9 @@ public class GlobalHotkeyManager: ObservableObject {
         guard let source = runLoopSource else {
             Self.logger.error("Failed to create run loop source")
             eventTap = nil
-            delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
+            Task { @MainActor in
+                delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
+            }
             return
         }
         
@@ -101,7 +107,9 @@ public class GlobalHotkeyManager: ObservableObject {
         
         isListening = true
         Self.logger.info("Started listening for global hotkeys")
-        delegate?.hotkeyManager(self, didStartListening: true)
+        Task { @MainActor in
+            delegate?.hotkeyManager(self, didStartListening: true)
+        }
     }
     
     /// Stop listening for global hotkeys
@@ -125,7 +133,9 @@ public class GlobalHotkeyManager: ObservableObject {
         keyDownTime = nil
         
         Self.logger.info("Stopped listening for global hotkeys")
-        delegate?.hotkeyManager(self, didStartListening: false)
+        Task { @MainActor in
+            delegate?.hotkeyManager(self, didStartListening: false)
+        }
     }
     
     /// Update the current hotkey configuration
@@ -145,7 +155,9 @@ public class GlobalHotkeyManager: ObservableObject {
         // Validate hotkey for conflicts
         if let conflict = detectHotkeyConflicts(configuration) {
             Self.logger.warning("Hotkey conflict detected: \(conflict.description)")
-            delegate?.hotkeyManager(self, didDetectConflict: conflict, suggestedAlternatives: generateAlternatives(for: configuration))
+            Task { @MainActor in
+                delegate?.hotkeyManager(self, didDetectConflict: conflict, suggestedAlternatives: generateAlternatives(for: configuration))
+            }
             return
         }
         
@@ -232,7 +244,9 @@ public class GlobalHotkeyManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = true
-            self.delegate?.hotkeyManager(self, didStartRecording: true)
+            Task { @MainActor in
+                self.delegate?.hotkeyManager(self, didStartRecording: true)
+            }
         }
     }
     
@@ -252,9 +266,13 @@ public class GlobalHotkeyManager: ObservableObject {
             self.isRecording = false
             
             if holdDuration >= self.minimumHoldDuration {
-                self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
+                Task { @MainActor in
+                    self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
+                }
             } else {
-                self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+                Task { @MainActor in
+                    self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+                }
             }
         }
     }
@@ -358,6 +376,7 @@ public enum RecordingCancelReason {
 ///
 /// Implement this protocol to receive notifications about hotkey events,
 /// recording sessions, errors, and permission requirements.
+@MainActor
 public protocol GlobalHotkeyManagerDelegate: AnyObject {
     func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening isListening: Bool)
     func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool)

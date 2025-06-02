@@ -48,6 +48,7 @@ public class WhisperNodeCore: ObservableObject {
     // Core managers
     @Published public private(set) var hotkeyManager = GlobalHotkeyManager()
     @Published public private(set) var audioEngine = AudioCaptureEngine()
+    @Published public private(set) var menuBarManager = MenuBarManager()
     @Published public private(set) var indicatorManager = RecordingIndicatorWindowManager()
     private let textInsertionEngine = TextInsertionEngine()
     
@@ -453,6 +454,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         self.isRecording = true
         Self.logger.info("Voice recording started")
         
+        // Update menu bar state
+        menuBarManager.updateState(.recording)
+        
         // Show visual indicator
         indicatorManager.showRecording()
         
@@ -482,6 +486,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
         
+        // Update menu bar state back to normal
+        menuBarManager.updateState(.normal)
+        
         // Show processing indicator after brief delay to avoid flicker
         Task {
             try? await Task.sleep(nanoseconds: Self.processingStateDelay)
@@ -508,6 +515,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         isRecording = false
         Self.logger.info("Voice recording cancelled")
         
+        // Update menu bar state back to normal
+        menuBarManager.updateState(.normal)
+        
         // Hide visual indicator
         indicatorManager.hideIndicator()
         
@@ -523,6 +533,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     /// The error indicator is shown immediately and then hidden after a short delay. This method is called when the hotkey manager encounters an error.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didFailWithError error: HotkeyError) {
         Self.logger.error("Hotkey manager error: \(error.localizedDescription)")
+        
+        // Update menu bar state to indicate error
+        menuBarManager.updateState(.error)
         
         // Show error indicator
         indicatorManager.showError()

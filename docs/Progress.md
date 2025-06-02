@@ -20,7 +20,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T04 | [Audio Capture Engine](tasks/T04-audio-capture-engine.md) | High | ✅ Done | 100% | AVAudioEngine + 16kHz mono |
 | T05 | [Visual Recording Indicator](tasks/T05-visual-recording-indicator.md) | High | ✅ Done | 100% | Floating orb with animations complete |
 | T06 | [Whisper Model Integration](tasks/T06-whisper-model-integration.md) | High | ✅ Done | 100% | ML inference + memory mgmt |
-| T07 | [Text Insertion Engine](tasks/T07-text-insertion-engine.md) | High | ⏳ WIP | 0% | CGEvents text injection |
+| T07 | [Text Insertion Engine](tasks/T07-text-insertion-engine.md) | High | ✅ Done | 100% | CGEvents text injection complete |
 | T08 | [Menu Bar Application Framework](tasks/T08-menubar-app.md) | Medium | ⏳ WIP | 0% | SF Symbols + dropdown |
 | T09 | [Preferences Window - General Tab](tasks/T09-preferences-general.md) | Medium | ⏳ WIP | 0% | Launch at login + settings |
 | T10 | [Preferences Window - Voice Tab](tasks/T10-preferences-voice.md) | Medium | ⏳ WIP | 0% | Microphone + level meter |
