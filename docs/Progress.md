@@ -26,7 +26,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T10 | [Preferences Window - Voice Tab](tasks/T10-preferences-voice.md) | Medium | ✅ Done | 100% | Microphone + level meter |
 | T11 | [Preferences Window - Models Tab](tasks/T11-preferences-models.md) | High | ✅ Done | 100% | Model download + management |
 | T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ✅ Done | 100% | Hotkey recording & conflicts |
-| T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | ⏳ WIP | 0% | Version info + Sparkle |
+| T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | 🔄 Review | 100% | Version info + Sparkle integration complete |
 | T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | ⏳ WIP | 0% | Setup wizard + permissions |
 | T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | ⏳ WIP | 0% | User-friendly error states |
 | T16 | [Performance Monitoring & Optimization](tasks/T16-performance-monitoring.md) | Medium | ⏳ WIP | 0% | CPU/memory tracking |
@@ -49,7 +49,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 **Status**: 4/5 complete - Hotkey, audio capture, ML inference, and visual indicator done; text insertion pending
 
 ### Phase 3 - User Interface (T05, T08-T13)
-**Status**: 6/7 complete - Visual indicator, menu bar, general, voice, models, and shortcut preferences done
+**Status**: 7/7 complete - All UI components complete including preferences window with all 5 tabs
 
 ### Phase 4 - Polish & Distribution (T14-T19, T21-T25)
 **Status**: 0/12 complete - All polish and distribution tasks pending
@@ -58,7 +58,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 **Total Tasks**: 25  
 **Completed**: 12 (48%)  
-**In Progress**: 13 (52%)
+**In Review**: 1 (4%)
+**In Progress**: 12 (48%)
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  
@@ -70,7 +71,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 - [x] **Foundation Complete** - Xcode project + Rust FFI working
 - [x] **Audio Pipeline** - Voice capture to ML inference pipeline complete  
-- [ ] **UI Complete** - All interface components functional
+- [x] **UI Complete** - All interface components functional (T13 in review)
 - [ ] **Alpha Release** - Internal testing ready
 - [ ] **Beta Release** - External testing with performance validation
 - [ ] **MVP Release** - Signed .dmg with full feature set

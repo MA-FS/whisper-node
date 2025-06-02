@@ -2,24 +2,35 @@ import SwiftUI
 import Sparkle
 
 struct AboutTab: View {
-    private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-    private let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
     let updater: SPUUpdater?
+    @State private var updateCheckInProgress = false
+    
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+    }
+    
+    private var buildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+    }
+    
+    private var currentYear: String {
+        String(Calendar.current.component(.year, from: Date()))
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // App Header
             HStack {
-                Image(systemName: "mic.circle.fill")
-                    .font(.system(size: 48))
-                    .foregroundColor(.blue)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 48, height: 48)
                     .accessibilityLabel("Whisper Node app icon")
                 
                 VStack(alignment: .leading) {
                     Text("Whisper Node")
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text("Version \(version) (\(build))")
+                    Text("Version \(appVersion) (\(buildNumber))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Text("Fast, offline speech-to-text for macOS")
@@ -30,11 +41,16 @@ struct AboutTab: View {
                 Spacer()
                 
                 // Update Check Button
-                Button("Check for Updates") {
+                Button(updateCheckInProgress ? "Checking..." : "Check for Updates") {
+                    updateCheckInProgress = true
                     updater?.checkForUpdates()
+                    // Reset state after a delay - Sparkle handles the UI feedback
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        updateCheckInProgress = false
+                    }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(updater?.canCheckForUpdates != true)
+                .disabled(updater?.canCheckForUpdates != true || updateCheckInProgress)
                 .accessibilityLabel("Check for application updates")
             }
             .padding(.bottom, 10)
@@ -81,7 +97,7 @@ struct AboutTab: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
                     
-                    Text("© 2024 Whisper Node. All rights reserved.")
+                    Text("© \(currentYear) Whisper Node. All rights reserved.")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                     
