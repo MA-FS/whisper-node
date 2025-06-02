@@ -22,8 +22,24 @@ public class MenuBarManager: ObservableObject {
         case error
     }
     
+    /// Errors that can occur during menu bar setup
+    public enum MenuBarError: Error, LocalizedError {
+        case statusItemCreationFailed
+        case popoverSetupFailed
+        
+        public var errorDescription: String? {
+            switch self {
+            case .statusItemCreationFailed:
+                return "Failed to create menu bar status item"
+            case .popoverSetupFailed:
+                return "Failed to setup menu bar dropdown"
+            }
+        }
+    }
+    
     @Published public var currentState: AppState = .normal
     @Published public var showDockIcon: Bool = false
+    @Published public var initializationError: MenuBarError?
     
     // MARK: - Menu Bar Components
     
@@ -33,17 +49,24 @@ public class MenuBarManager: ObservableObject {
     
     // MARK: - Configuration
     
-    private let iconSize: CGFloat = 16.0
-    private let dropdownWidth: CGFloat = 240.0
+    private static let iconSize: CGFloat = 16.0
+    public static let dropdownWidth: CGFloat = 240.0
+    private static let initialDropdownHeight: CGFloat = 200.0
     
     // MARK: - Initialization
     
     public init() {
-        setupMenuBar()
-        setupPopover()
-        configureAppBehavior()
-        
-        Self.logger.info("MenuBarManager initialized")
+        do {
+            try setupMenuBar()
+            try setupPopover()
+            configureAppBehavior()
+            Self.logger.info("MenuBarManager initialized successfully")
+        } catch {
+            Self.logger.error("MenuBarManager initialization failed: \(error.localizedDescription)")
+            if let menuBarError = error as? MenuBarError {
+                initializationError = menuBarError
+            }
+        }
     }
     
     // MARK: - Public Interface
@@ -89,13 +112,13 @@ public class MenuBarManager: ObservableObject {
     
     // MARK: - Private Setup Methods
     
-    private func setupMenuBar() {
+    private func setupMenuBar() throws {
         statusItem = statusBar.statusItem(withLength: NSStatusItem.squareLength)
         
         guard let statusItem = statusItem,
               let button = statusItem.button else {
             Self.logger.error("Failed to create status item")
-            return
+            throw MenuBarError.statusItemCreationFailed
         }
         
         // Configure button
@@ -106,16 +129,19 @@ public class MenuBarManager: ObservableObject {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         
         // Accessibility
-        button.toolTip = "Whisper Node - Click to open menu"
+        button.toolTip = "Whisper Node - Voice to Text (Click for menu)"
         
         Self.logger.info("Menu bar item configured")
     }
     
-    private func setupPopover() {
+    private func setupPopover() throws {
         popover = NSPopover()
-        guard let popover = popover else { return }
+        guard let popover = popover else {
+            Self.logger.error("Failed to create popover")
+            throw MenuBarError.popoverSetupFailed
+        }
         
-        popover.contentSize = NSSize(width: dropdownWidth, height: 200) // Initial height
+        popover.contentSize = NSSize(width: Self.dropdownWidth, height: Self.initialDropdownHeight)
         popover.behavior = .transient
         popover.animates = true
         
@@ -152,7 +178,7 @@ public class MenuBarManager: ObservableObject {
         
         // Configure image for menu bar
         let image = baseImage.copy() as! NSImage
-        image.size = NSSize(width: iconSize, height: iconSize)
+        image.size = NSSize(width: Self.iconSize, height: Self.iconSize)
         image.isTemplate = state == .normal // Template images automatically adapt to light/dark mode
         
         // Apply state-specific tinting
@@ -239,11 +265,13 @@ struct MenuBarDropdownView: View {
                     // TODO: Open preferences window
                     menuBarManager.hideDropdown()
                 }
+                .accessibilityIdentifier("menubar-preferences-button")
                 
                 MenuButton(icon: "arrow.clockwise", title: "Restart Whisper Node") {
                     // TODO: Restart application
                     menuBarManager.hideDropdown()
                 }
+                .accessibilityIdentifier("menubar-restart-button")
                 
                 Divider()
                     .padding(.vertical, 2)
@@ -251,10 +279,11 @@ struct MenuBarDropdownView: View {
                 MenuButton(icon: "power", title: "Quit Whisper Node") {
                     NSApp.terminate(nil)
                 }
+                .accessibilityIdentifier("menubar-quit-button")
             }
         }
         .padding(16)
-        .frame(width: 240)
+        .frame(width: MenuBarManager.dropdownWidth)
     }
 }
 

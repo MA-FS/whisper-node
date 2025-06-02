@@ -50,7 +50,7 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     deinit {
-        stopListening()
+        cleanup()
     }
     
     // MARK: - Public Methods
@@ -62,7 +62,7 @@ public class GlobalHotkeyManager: ObservableObject {
     ///
     /// - Important: Accessibility permissions are required for this to work
     /// - Throws: No exceptions, but failures are reported through delegate callbacks
-    public func startListening() {
+    @MainActor public func startListening() {
         guard !isListening else {
             Self.logger.warning("Already listening for hotkeys")
             return
@@ -71,18 +71,14 @@ public class GlobalHotkeyManager: ObservableObject {
         // Check accessibility permissions
         guard checkAccessibilityPermissions() else {
             Self.logger.error("Accessibility permissions not granted")
-            Task { @MainActor in
-                delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
-            }
+            delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
             return
         }
         
         // Create event tap
         guard let tap = createEventTap() else {
             Self.logger.error("Failed to create event tap")
-            Task { @MainActor in
-                delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
-            }
+            delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
             return
         }
         
@@ -93,9 +89,7 @@ public class GlobalHotkeyManager: ObservableObject {
         guard let source = runLoopSource else {
             Self.logger.error("Failed to create run loop source")
             eventTap = nil
-            Task { @MainActor in
-                delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
-            }
+            delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
             return
         }
         
@@ -107,16 +101,19 @@ public class GlobalHotkeyManager: ObservableObject {
         
         isListening = true
         Self.logger.info("Started listening for global hotkeys")
-        Task { @MainActor in
-            delegate?.hotkeyManager(self, didStartListening: true)
-        }
+        delegate?.hotkeyManager(self, didStartListening: true)
     }
     
     /// Stop listening for global hotkeys
     ///
     /// Cleanly removes the event tap and cleans up resources.
     /// Safe to call multiple times or when not currently listening.
-    public func stopListening() {
+    @MainActor public func stopListening() {
+        cleanup()
+        delegate?.hotkeyManager(self, didStartListening: false)
+    }
+    
+    private func cleanup() {
         guard isListening else { return }
         
         if let source = runLoopSource {
@@ -133,9 +130,6 @@ public class GlobalHotkeyManager: ObservableObject {
         keyDownTime = nil
         
         Self.logger.info("Stopped listening for global hotkeys")
-        Task { @MainActor in
-            delegate?.hotkeyManager(self, didStartListening: false)
-        }
     }
     
     /// Update the current hotkey configuration
@@ -145,7 +139,7 @@ public class GlobalHotkeyManager: ObservableObject {
     ///
     /// - Parameter configuration: The new hotkey configuration to use
     /// - Note: If a conflict is detected, the change is rejected and alternatives are suggested via delegate
-    public func updateHotkey(_ configuration: HotkeyConfiguration) {
+    @MainActor public func updateHotkey(_ configuration: HotkeyConfiguration) {
         let wasListening = isListening
         
         if wasListening {
@@ -155,9 +149,7 @@ public class GlobalHotkeyManager: ObservableObject {
         // Validate hotkey for conflicts
         if let conflict = detectHotkeyConflicts(configuration) {
             Self.logger.warning("Hotkey conflict detected: \(conflict.description)")
-            Task { @MainActor in
-                delegate?.hotkeyManager(self, didDetectConflict: conflict, suggestedAlternatives: generateAlternatives(for: configuration))
-            }
+            delegate?.hotkeyManager(self, didDetectConflict: conflict, suggestedAlternatives: generateAlternatives(for: configuration))
             return
         }
         
@@ -244,9 +236,7 @@ public class GlobalHotkeyManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = true
-            Task { @MainActor in
-                self.delegate?.hotkeyManager(self, didStartRecording: true)
-            }
+            self.delegate?.hotkeyManager(self, didStartRecording: true)
         }
     }
     
@@ -266,13 +256,9 @@ public class GlobalHotkeyManager: ObservableObject {
             self.isRecording = false
             
             if holdDuration >= self.minimumHoldDuration {
-                Task { @MainActor in
-                    self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
-                }
+                self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
             } else {
-                Task { @MainActor in
-                    self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
-                }
+                self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
             }
         }
     }

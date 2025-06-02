@@ -19,13 +19,11 @@ struct WhisperNodeApp: App {
             PreferencesView()
                 .environmentObject(core)
                 .onAppear {
-                    Task { @MainActor in
-                        if await core.isInitialized {
-                            await core.startVoiceActivation()
-                        } else {
-                            // Handle initialization error
-                            print("Error: Core not initialized")
-                        }
+                    if core.isInitialized {
+                        core.startVoiceActivation()
+                    } else {
+                        // Handle initialization error
+                        print("Error: Core not initialized")
                     }
                 }
         }
