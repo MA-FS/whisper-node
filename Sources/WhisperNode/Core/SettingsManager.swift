@@ -14,6 +14,8 @@ class SettingsManager: ObservableObject {
         static let showDockIcon = "showDockIcon"
         static let windowPosition = "windowPosition"
         static let windowSize = "windowSize"
+        
+        // Voice Settings
         static let preferredInputDevice = "preferredInputDevice"
         static let vadThreshold = "vadThreshold"
         static let enableTestRecording = "enableTestRecording"

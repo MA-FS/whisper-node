@@ -11,9 +11,17 @@ struct VoiceTab: View {
     @State private var isTestRecording = false
     @State private var testRecordingProgress: Double = 0.0
     @State private var showPermissionAlert = false
+    @State private var showAudioError = false
+    @State private var audioErrorMessage = ""
     
     // Timer for level meter updates
     @State private var levelMeterTimer: Timer?
+    @State private var deviceCheckTimer: Timer?
+    
+    // Constants
+    private static let testRecordingDuration: TimeInterval = 3.0
+    private static let progressUpdateInterval: TimeInterval = 0.1
+    private static let levelMeterUpdateInterval: TimeInterval = 1.0/30.0 // 30fps for better performance
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -245,9 +253,15 @@ struct VoiceTab: View {
             checkPermissionAndSetupAudio()
             refreshAvailableDevices()
             startLevelMeterTimer()
+            startDeviceCheckTimer()
+        }
+        .onChange(of: settings.preferredInputDevice) { _ in
+            // Validate device when selection changes
+            validateSelectedDevice()
         }
         .onDisappear {
             stopLevelMeterTimer()
+            stopDeviceCheckTimer()
             stopTestRecording()
         }
         .alert("Microphone Permission Required", isPresented: $showPermissionAlert) {
@@ -257,6 +271,15 @@ struct VoiceTab: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Whisper Node needs microphone access to capture voice input. Please grant permission in System Preferences.")
+        }
+        .alert("Audio Error", isPresented: $showAudioError) {
+            Button("Retry") {
+                checkPermissionAndSetupAudio()
+                startLevelMeterTimer()
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(audioErrorMessage)
         }
     }
     
@@ -315,24 +338,52 @@ struct VoiceTab: View {
     
     private func refreshAvailableDevices() {
         availableDevices = audioEngine.getAvailableInputDevices()
+        validateSelectedDevice()
+    }
+    
+    private func validateSelectedDevice() {
+        guard let selectedDeviceID = settings.preferredInputDevice else { return }
+        
+        // Check if the currently selected device is still available
+        let isDeviceAvailable = availableDevices.contains { device in
+            device.deviceID == selectedDeviceID
+        }
+        
+        if !isDeviceAvailable {
+            // Selected device is no longer available, fallback to default
+            settings.preferredInputDevice = nil
+            
+            // Show user-friendly message about device change
+            audioErrorMessage = "Selected microphone device is no longer available. Switched to default device."
+            showAudioError = true
+        }
     }
     
     private func startLevelMeterTimer() {
         guard permissionStatus == .granted else { return }
+        
+        // Ensure any existing timer is invalidated first
+        levelMeterTimer?.invalidate()
         
         // Start audio capture for level monitoring
         Task {
             do {
                 try await audioEngine.startCapture()
             } catch {
-                print("Failed to start audio capture for level monitoring: \(error)")
+                await MainActor.run {
+                    // Handle error state in UI
+                    audioErrorMessage = "Failed to start audio capture: \(error.localizedDescription)"
+                    showAudioError = true
+                    permissionStatus = .denied
+                }
+                return
             }
         }
         
-        // Start timer for UI updates (60fps)
-        levelMeterTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
-            // Level updates are handled by @Published properties in audioEngine
-            // This timer just ensures continuous monitoring
+        // Start timer for UI updates (30fps for better performance)  
+        levelMeterTimer = Timer.scheduledTimer(withTimeInterval: Self.levelMeterUpdateInterval, repeats: true) { _ in
+            // Level updates are handled by @Published properties in audioEngine.
+            // This timer ensures continuous monitoring.
         }
     }
     
@@ -342,15 +393,28 @@ struct VoiceTab: View {
         audioEngine.stopCapture()
     }
     
+    private func startDeviceCheckTimer() {
+        // Check for device changes every 2 seconds
+        deviceCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            Task { @MainActor in
+                refreshAvailableDevices()
+            }
+        }
+    }
+    
+    private func stopDeviceCheckTimer() {
+        deviceCheckTimer?.invalidate()
+        deviceCheckTimer = nil
+    }
+    
     private func startTestRecording() {
         guard permissionStatus == .granted else { return }
         
         isTestRecording = true
         testRecordingProgress = 0.0
         
-        // Simulate 3-second test recording
-        let testDuration: TimeInterval = 3.0
-        let updateInterval: TimeInterval = 0.1
+        let testDuration = Self.testRecordingDuration
+        let updateInterval = Self.progressUpdateInterval
         let totalSteps = testDuration / updateInterval
         
         var currentStep = 0.0
