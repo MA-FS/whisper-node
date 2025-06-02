@@ -36,6 +36,11 @@ public struct RecordingIndicatorView: View {
     private let orbSize: CGFloat = 80
     private let cornerPadding: CGFloat = 24
     
+    // Animation duration constants
+    private let recordingPulseDuration: Double = 1.2
+    private let processingRotationDuration: Double = 2.0
+    private let defaultAnimationDuration: Double = 0.3
+    
     public init(
         isVisible: Binding<Bool>,
         state: Binding<RecordingState>,
@@ -190,11 +195,11 @@ public struct RecordingIndicatorView: View {
     private var pulseAnimation: Animation {
         switch state {
         case .recording:
-            return .easeInOut(duration: 1.2).repeatForever(autoreverses: true)
+            return .easeInOut(duration: recordingPulseDuration).repeatForever(autoreverses: true)
         case .processing:
-            return .linear(duration: 2.0).repeatForever(autoreverses: false)
+            return .linear(duration: processingRotationDuration).repeatForever(autoreverses: false)
         default:
-            return .easeInOut(duration: 0.3)
+            return .easeInOut(duration: defaultAnimationDuration)
         }
     }
     
@@ -228,7 +233,7 @@ public struct RecordingIndicatorView: View {
         case .processing:
             pulseScale = 1.0
             // Start rotation animation for progress ring
-            withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
+            withAnimation(.linear(duration: processingRotationDuration).repeatForever(autoreverses: false)) {
                 rotationAngle = .degrees(360)
             }
             

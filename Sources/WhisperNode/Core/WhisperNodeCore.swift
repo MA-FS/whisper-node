@@ -40,6 +40,11 @@ extension Notification.Name {
 public class WhisperNodeCore: ObservableObject {
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "initialization")
     
+    // Display duration constants
+    private static let errorDisplayDuration: UInt64 = 2_000_000_000 // 2 seconds
+    private static let hotkeyErrorDisplayDuration: UInt64 = 3_000_000_000 // 3 seconds
+    private static let processingStateDelay: UInt64 = 200_000_000 // 0.2 seconds
+    
     // Core managers
     @Published public private(set) var hotkeyManager = GlobalHotkeyManager()
     @Published public private(set) var audioEngine = AudioCaptureEngine()
@@ -367,7 +372,7 @@ public class WhisperNodeCore: ObservableObject {
             }
             
             // Hide error after delay
-            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
             await MainActor.run {
                 indicatorManager.hideIndicator()
             }
@@ -444,8 +449,13 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
         
-        // Show processing indicator
-        indicatorManager.showProcessing(progress: 0.0)
+        // Show processing indicator after brief delay to avoid flicker
+        Task {
+            try? await Task.sleep(nanoseconds: Self.processingStateDelay)
+            await MainActor.run {
+                indicatorManager.showProcessing(progress: 0.0)
+            }
+        }
         
         // Stop performance monitoring
         stopActiveMonitoring()
@@ -480,7 +490,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         
         // Hide error after a brief delay
         Task {
-            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            try? await Task.sleep(nanoseconds: Self.hotkeyErrorDisplayDuration)
             await MainActor.run {
                 indicatorManager.hideIndicator()
             }

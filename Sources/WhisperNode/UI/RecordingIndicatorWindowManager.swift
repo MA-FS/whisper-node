@@ -22,6 +22,7 @@ import AppKit
 public class RecordingIndicatorWindowManager: ObservableObject {
     private var indicatorWindow: NSWindow?
     private var hostingController: NSHostingController<RecordingIndicatorView>?
+    private var screenChangeObserver: NSObjectProtocol?
     
     @Published public var isVisible: Bool = false
     @Published public var currentState: RecordingState = .idle
@@ -122,6 +123,11 @@ public class RecordingIndicatorWindowManager: ObservableObject {
     /// - Note: Window will be recreated on next showIndicator() call
     /// - Important: Safe to call multiple times
     public func cleanup() {
+        if let observer = screenChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            screenChangeObserver = nil
+        }
+        
         if let window = indicatorWindow {
             window.close()
             indicatorWindow = nil
@@ -211,7 +217,7 @@ public class RecordingIndicatorWindowManager: ObservableObject {
     }
     
     private func setupScreenChangeNotifications() {
-        NotificationCenter.default.addObserver(
+        screenChangeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
