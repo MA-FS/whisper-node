@@ -31,6 +31,15 @@ void whisper_free(WhisperHandle* handle);
 // Free result strings
 void whisper_free_string(char* ptr);
 
+// Memory management functions
+uint64_t whisper_get_memory_usage(void);
+bool whisper_cleanup_memory(void);
+
+// Performance monitoring functions  
+float whisper_get_avg_cpu_usage(void);
+bool whisper_check_downgrade_needed(WhisperHandle* handle);
+char* whisper_get_suggested_model(WhisperHandle* handle);
+
 #ifdef __cplusplus
 }
 #endif
