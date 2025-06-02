@@ -23,6 +23,10 @@ class SettingsManager: ObservableObject {
         // Hotkey Settings
         static let hotkeyKeyCode = "hotkeyKeyCode"
         static let hotkeyModifierFlags = "hotkeyModifierFlags"
+        
+        // Model Settings
+        static let activeModelName = "activeModelName"
+        static let autoDownloadUpdates = "autoDownloadUpdates"
     }
     
     // MARK: - Published Properties
@@ -88,6 +92,18 @@ class SettingsManager: ObservableObject {
         }
     }
     
+    @Published var activeModelName: String {
+        didSet {
+            UserDefaults.standard.set(activeModelName, forKey: UserDefaultsKeys.activeModelName)
+        }
+    }
+    
+    @Published var autoDownloadUpdates: Bool {
+        didSet {
+            UserDefaults.standard.set(autoDownloadUpdates, forKey: UserDefaultsKeys.autoDownloadUpdates)
+        }
+    }
+    
     // MARK: - Private Properties
     
     private let defaults = UserDefaults.standard
@@ -128,6 +144,10 @@ class SettingsManager: ObservableObject {
         
         let storedModifierFlags = UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags))
         self.hotkeyModifierFlags = storedModifierFlags == 0 ? CGEventFlags.maskAlternate.rawValue : storedModifierFlags // Default to Option key
+        
+        // Load model settings
+        self.activeModelName = defaults.string(forKey: UserDefaultsKeys.activeModelName) ?? "tiny.en"
+        self.autoDownloadUpdates = defaults.bool(forKey: UserDefaultsKeys.autoDownloadUpdates)
     }
     
     // MARK: - Login Item Management

@@ -16,18 +16,11 @@ struct PreferencesView: View {
                 }
                 .tag("voice")
             
-            VStack {
-                Text("Models")
-                    .font(.title2)
-                Text("Coming soon...")
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.windowBackgroundColor))
-            .tabItem {
-                Label("Models", systemImage: "brain.head.profile")
-            }
-            .tag("models")
+            ModelsTab()
+                .tabItem {
+                    Label("Models", systemImage: "brain.head.profile")
+                }
+                .tag("models")
             
             ShortcutTab()
                 .tabItem {

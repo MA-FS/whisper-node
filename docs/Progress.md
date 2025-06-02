@@ -58,7 +58,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 **Total Tasks**: 25  
 **Completed**: 12 (48%)  
-**In Progress**: 13 (52%)  
+**In Progress**: 13 (52%)
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  
