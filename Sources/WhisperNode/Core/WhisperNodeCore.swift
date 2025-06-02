@@ -45,12 +45,12 @@ public class WhisperNodeCore: ObservableObject {
 // MARK: - GlobalHotkeyManagerDelegate
 
 extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
-    public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening: Bool) {
-        Self.logger.info("Hotkey listening status changed: \(didStartListening)")
+    public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening isListening: Bool) {
+        Self.logger.info("Hotkey listening status changed: \(isListening)")
     }
     
-    public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording: Bool) {
-        isRecording = true
+    public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
+        self.isRecording = true
         Self.logger.info("Voice recording started")
         // TODO: Start audio capture (T04)
     }

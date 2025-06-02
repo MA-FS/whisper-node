@@ -88,6 +88,8 @@ public class GlobalHotkeyManager: ObservableObject {
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         guard let source = runLoopSource else {
             Self.logger.error("Failed to create run loop source")
+            eventTap = nil
+            delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
             return
         }
         
@@ -219,12 +221,16 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     private func handleKeyDown(_ event: CGEvent) {
-        guard keyDownTime == nil else { return } // Already pressed
+        let currentTime = CFAbsoluteTimeGetCurrent()
         
-        keyDownTime = CFAbsoluteTimeGetCurrent()
+        // Thread-safe check and update
+        guard keyDownTime == nil else { return } // Already pressed
+        keyDownTime = currentTime
+        
         Self.logger.debug("Hotkey pressed down")
         
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.isRecording = true
             self.delegate?.hotkeyManager(self, didStartRecording: true)
         }
@@ -236,11 +242,13 @@ public class GlobalHotkeyManager: ObservableObject {
         let upTime = CFAbsoluteTimeGetCurrent()
         let holdDuration = upTime - downTime
         
+        // Reset state
         keyDownTime = nil
         
         Self.logger.debug("Hotkey released after \(holdDuration)s")
         
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.isRecording = false
             
             if holdDuration >= self.minimumHoldDuration {
@@ -257,12 +265,12 @@ public class GlobalHotkeyManager: ObservableObject {
             (48, .maskCommand, "Cmd+Tab (App Switcher)"),
             (53, .maskCommand, "Cmd+Esc (Force Quit)"),
             (49, .maskCommand, "Cmd+Space (Spotlight)"),
-            (49, .maskAlternate, "Option+Space (Character Viewer)")
+            (49, [.maskControl, .maskCommand], "Ctrl+Cmd+Space (Character Viewer)")
         ]
         
         for shortcut in systemShortcuts {
-            if configuration.keyCode == shortcut.keyCode && 
-               configuration.modifierFlags == shortcut.modifiers {
+            if (configuration.keyCode == shortcut.keyCode &&
+                configuration.modifierFlags == shortcut.modifiers) {
                 return HotkeyConflict(description: shortcut.description, type: .system)
             }
         }
@@ -351,8 +359,8 @@ public enum RecordingCancelReason {
 /// Implement this protocol to receive notifications about hotkey events,
 /// recording sessions, errors, and permission requirements.
 public protocol GlobalHotkeyManagerDelegate: AnyObject {
-    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening: Bool)
-    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording: Bool)
+    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening isListening: Bool)
+    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool)
     func hotkeyManager(_ manager: GlobalHotkeyManager, didCompleteRecording duration: CFTimeInterval)
     func hotkeyManager(_ manager: GlobalHotkeyManager, didCancelRecording reason: RecordingCancelReason)
     func hotkeyManager(_ manager: GlobalHotkeyManager, didFailWithError error: HotkeyError)

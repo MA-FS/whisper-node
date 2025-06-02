@@ -120,11 +120,11 @@ class MockGlobalHotkeyManagerDelegate: GlobalHotkeyManagerDelegate {
     var conflictDescription: String?
     var suggestedAlternatives: [HotkeyConfiguration] = []
     
-    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening: Bool) {
+    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening isListening: Bool) {
         self.didStartListening = true
     }
     
-    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording: Bool) {
+    func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
         self.didStartRecording = true
     }
     

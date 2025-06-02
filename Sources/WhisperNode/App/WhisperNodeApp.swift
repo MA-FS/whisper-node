@@ -12,19 +12,20 @@ struct WhisperNodeApp: App {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        
-        // Start voice activation when app launches
-        DispatchQueue.main.async {
-            if WhisperNodeCore.shared.isInitialized {
-                WhisperNodeCore.shared.startVoiceActivation()
-            }
-        }
     }
     
     var body: some Scene {
         Settings {
             PreferencesView()
                 .environmentObject(core)
+                .onAppear {
+                    if core.isInitialized {
+                        core.startVoiceActivation()
+                    } else {
+                        // Handle initialization error
+                        print("Error: Core not initialized")
+                    }
+                }
         }
         .commands {
             CommandGroup(after: .appInfo) {
