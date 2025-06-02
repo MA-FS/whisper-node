@@ -456,12 +456,23 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
             } catch {
                 Self.logger.error("Failed to start audio capture: \(error.localizedDescription)")
                 
-                // Check if it's a microphone permission issue
-                if let captureError = error as? AudioCaptureEngine.CaptureError,
-                   captureError == .permissionDenied {
-                    errorManager.handleMicrophoneAccessDenied()
+                // Handle specific audio capture errors
+                if let captureError = error as? AudioCaptureEngine.CaptureError {
+                    switch captureError {
+                    case .permissionDenied:
+                        errorManager.handleMicrophoneAccessDenied()
+                    case .deviceNotAvailable:
+                        errorManager.handleError(.audioCaptureFailure("Audio device not available"))
+                    case .formatNotSupported:
+                        errorManager.handleError(.audioCaptureFailure("Audio format not supported"))
+                    case .bufferOverrun:
+                        errorManager.handleError(.audioCaptureFailure("Audio buffer overrun"))
+                    case .engineNotRunning:
+                        errorManager.handleError(.audioCaptureFailure("Audio engine not running"))
+                    }
                 } else {
-                    errorManager.handleError(.systemResourcesExhausted)
+                    // Generic audio failure
+                    errorManager.handleError(.audioCaptureFailure("Unknown audio capture error"))
                 }
                 
                 self.isRecording = false

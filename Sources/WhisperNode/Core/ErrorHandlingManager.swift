@@ -51,6 +51,7 @@ public class ErrorHandlingManager: ObservableObject {
     /// Core error types for WhisperNode operations
     public enum WhisperNodeError: Error, LocalizedError, Equatable {
         case microphoneAccessDenied
+        case audioCaptureFailure(String)
         case modelDownloadFailed(String)
         case transcriptionFailed
         case hotkeyConflict(String)
@@ -63,6 +64,8 @@ public class ErrorHandlingManager: ObservableObject {
             switch self {
             case .microphoneAccessDenied:
                 return "Microphone access is required for voice input"
+            case .audioCaptureFailure(let details):
+                return "Audio capture failed: \(details)"
             case .modelDownloadFailed(let details):
                 return "Failed to download model: \(details)"
             case .transcriptionFailed:
@@ -84,6 +87,8 @@ public class ErrorHandlingManager: ObservableObject {
             switch self {
             case .microphoneAccessDenied:
                 return "Please enable microphone access in System Preferences > Security & Privacy > Privacy > Microphone"
+            case .audioCaptureFailure:
+                return "Check your audio settings and try again"
             case .modelDownloadFailed:
                 return "Check your internet connection and try again"
             case .transcriptionFailed:
@@ -104,7 +109,7 @@ public class ErrorHandlingManager: ObservableObject {
         /// Determines if this error type should trigger automatic recovery
         public var isRecoverable: Bool {
             switch self {
-            case .modelDownloadFailed, .networkConnectionFailed, .modelCorrupted, .transcriptionFailed:
+            case .modelDownloadFailed, .networkConnectionFailed, .modelCorrupted, .transcriptionFailed, .audioCaptureFailure:
                 return true
             case .microphoneAccessDenied, .hotkeyConflict, .insufficientDiskSpace, .systemResourcesExhausted:
                 return false
@@ -116,7 +121,7 @@ public class ErrorHandlingManager: ObservableObject {
             switch self {
             case .microphoneAccessDenied, .insufficientDiskSpace:
                 return .critical
-            case .modelDownloadFailed, .hotkeyConflict, .systemResourcesExhausted:
+            case .modelDownloadFailed, .hotkeyConflict, .systemResourcesExhausted, .audioCaptureFailure:
                 return .warning
             case .transcriptionFailed, .networkConnectionFailed, .modelCorrupted:
                 return .minor
@@ -224,9 +229,13 @@ public class ErrorHandlingManager: ObservableObject {
             }
         } catch {
             Self.logger.error("Failed to check disk space: \(error.localizedDescription)")
+            handleError(.systemResourcesExhausted)
+            return false // Fail safely when disk space check fails
         }
         
-        return true // Assume sufficient space if check fails
+        Self.logger.error("Disk space check failed for unknown reason")
+        handleError(.systemResourcesExhausted) 
+        return false // Fail safely when disk space check fails
     }
     
     // MARK: - Specific Error Handlers
@@ -260,6 +269,10 @@ public class ErrorHandlingManager: ObservableObject {
                 Self.logger.error("Failed to request notification permissions: \(error.localizedDescription)")
             } else {
                 Self.logger.info("Notification permissions: \(granted ? "granted" : "denied")")
+                if !granted {
+                    // Store the denial state for fallback handling
+                    UserDefaults.standard.set(false, forKey: "notificationPermissionsGranted")
+                }
             }
         }
     }
@@ -306,7 +319,8 @@ public class ErrorHandlingManager: ObservableObject {
     
     private func showErrorOrb() {
         // Get the recording indicator manager and show error state
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard self != nil else { return }
             WhisperNodeCore.shared.indicatorManager.showError()
             
             // Hide after delay
@@ -316,6 +330,22 @@ public class ErrorHandlingManager: ObservableObject {
     }
     
     private func showWarningNotification(_ error: WhisperNodeError) {
+        // Check if notifications are available as fallback
+        let notificationsGranted = UserDefaults.standard.object(forKey: "notificationPermissionsGranted") as? Bool ?? true
+        
+        if !notificationsGranted {
+            // Use NSAlert as fallback for critical warnings when notifications are denied
+            Task { @MainActor in
+                let alert = NSAlert()
+                alert.messageText = "WhisperNode Warning"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+            return
+        }
+        
         let content = UNMutableNotificationContent()
         content.title = "WhisperNode Warning"
         content.body = error.localizedDescription
@@ -334,6 +364,15 @@ public class ErrorHandlingManager: ObservableObject {
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 Self.logger.error("Failed to show warning notification: \(error.localizedDescription)")
+                // Fallback to alert if notification fails
+                Task { @MainActor in
+                    let alert = NSAlert()
+                    alert.messageText = "WhisperNode Warning"
+                    alert.informativeText = error.localizedDescription
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
             }
         }
     }
