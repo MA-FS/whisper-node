@@ -224,7 +224,7 @@ final class TextInsertionEngineTests: XCTestCase {
     private func checkCharacterMapping(_ characters: String) async -> Bool {
         #if DEBUG
         for character in characters {
-            if !await textEngine.testHasKeyCodeMapping(for: character) {
+            if !(await textEngine.testHasKeyCodeMapping(for: character)) {
                 return false
             }
         }
@@ -243,7 +243,7 @@ extension TextInsertionEngineTests {
     
     /// Test integration with the full WhisperNodeCore system
     func testWhisperNodeCoreIntegration() async {
-        let core = WhisperNodeCore.shared
+        let core = await WhisperNodeCore.shared
         
         // Verify that the text insertion engine is properly integrated
         XCTAssertNotNil(core, "WhisperNodeCore should be available")

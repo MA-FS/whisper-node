@@ -50,7 +50,7 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     deinit {
-        stopListening()
+        cleanup()
     }
     
     // MARK: - Public Methods
@@ -62,7 +62,7 @@ public class GlobalHotkeyManager: ObservableObject {
     ///
     /// - Important: Accessibility permissions are required for this to work
     /// - Throws: No exceptions, but failures are reported through delegate callbacks
-    public func startListening() {
+    @MainActor public func startListening() {
         guard !isListening else {
             Self.logger.warning("Already listening for hotkeys")
             return
@@ -108,7 +108,12 @@ public class GlobalHotkeyManager: ObservableObject {
     ///
     /// Cleanly removes the event tap and cleans up resources.
     /// Safe to call multiple times or when not currently listening.
-    public func stopListening() {
+    @MainActor public func stopListening() {
+        cleanup()
+        delegate?.hotkeyManager(self, didStartListening: false)
+    }
+    
+    private func cleanup() {
         guard isListening else { return }
         
         if let source = runLoopSource {
@@ -125,7 +130,6 @@ public class GlobalHotkeyManager: ObservableObject {
         keyDownTime = nil
         
         Self.logger.info("Stopped listening for global hotkeys")
-        delegate?.hotkeyManager(self, didStartListening: false)
     }
     
     /// Update the current hotkey configuration
@@ -135,7 +139,7 @@ public class GlobalHotkeyManager: ObservableObject {
     ///
     /// - Parameter configuration: The new hotkey configuration to use
     /// - Note: If a conflict is detected, the change is rejected and alternatives are suggested via delegate
-    public func updateHotkey(_ configuration: HotkeyConfiguration) {
+    @MainActor public func updateHotkey(_ configuration: HotkeyConfiguration) {
         let wasListening = isListening
         
         if wasListening {
@@ -358,6 +362,7 @@ public enum RecordingCancelReason {
 ///
 /// Implement this protocol to receive notifications about hotkey events,
 /// recording sessions, errors, and permission requirements.
+@MainActor
 public protocol GlobalHotkeyManagerDelegate: AnyObject {
     func hotkeyManager(_ manager: GlobalHotkeyManager, didStartListening isListening: Bool)
     func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool)
