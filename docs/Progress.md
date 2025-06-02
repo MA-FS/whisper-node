@@ -15,14 +15,14 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | Task | Title | Priority | Status | Progress | Notes |
 |------|-------|----------|--------|----------|-------|
 | T01 | [Project Setup & Foundation](tasks/T01-project-setup.md) | High | ✅ Done | 100% | Swift Package Manager setup complete |
-| T02 | [Rust FFI Integration Setup](tasks/T02-rust-ffi-integration.md) | High | ⏳ WIP | 0% | whisper.cpp + Apple Silicon |
+| T02 | [Rust FFI Integration Setup](tasks/T02-rust-ffi-integration.md) | High | ✅ Done | 100% | whisper.cpp + Apple Silicon optimizations complete |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ⏳ WIP | 0% | Security & distribution |
 
 ## Audio & Input System
 
 | Task | Title | Priority | Status | Progress | Notes |
 |------|-------|----------|--------|----------|-------|
-| T03 | [Global Hotkey System](tasks/T03-global-hotkey-system.md) | High | ⏳ WIP | 0% | CGEventTap implementation |
+| T03 | [Global Hotkey System](tasks/T03-global-hotkey-system.md) | High | ✅ Done | 100% | CGEventTap implementation complete |
 | T04 | [Audio Capture Engine](tasks/T04-audio-capture-engine.md) | High | ⏳ WIP | 0% | AVAudioEngine + 16kHz mono |
 | T06 | [Whisper Model Integration](tasks/T06-whisper-model-integration.md) | High | ⏳ WIP | 0% | ML inference + memory mgmt |
 | T07 | [Text Insertion Engine](tasks/T07-text-insertion-engine.md) | High | ⏳ WIP | 0% | CGEvents text injection |
@@ -73,8 +73,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary
 
 **Total Tasks**: 25  
-**Completed**: 1 (4%)  
-**In Progress**: 24 (96%)  
+**Completed**: 3 (12%)  
+**In Progress**: 22 (88%)  
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  
@@ -84,7 +84,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 ## Key Milestones
 
-- [ ] **Foundation Complete** - Xcode project + Rust FFI working
+- [x] **Foundation Complete** - Xcode project + Rust FFI working
 - [ ] **Audio Pipeline** - Voice capture to text insertion working end-to-end  
 - [ ] **UI Complete** - All interface components functional
 - [ ] **Alpha Release** - Internal testing ready

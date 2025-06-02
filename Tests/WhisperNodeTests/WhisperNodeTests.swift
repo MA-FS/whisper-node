@@ -3,6 +3,14 @@ import XCTest
 
 final class WhisperNodeTests: XCTestCase {
     func testCoreInitialization() throws {
-        XCTAssertNoThrow(WhisperNodeCore.initialize())
+        let core = WhisperNodeCore.shared
+        XCTAssertTrue(core.isInitialized)
+        
+        // Verify singleton behavior
+        let anotherCore = WhisperNodeCore.shared
+        XCTAssertTrue(core === anotherCore, "Should return the same singleton instance")
+        
+        // Verify core state
+        XCTAssertFalse(core.isRecording, "Should not be recording initially")
     }
 }
