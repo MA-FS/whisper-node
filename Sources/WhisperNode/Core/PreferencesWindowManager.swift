@@ -24,7 +24,9 @@ class PreferencesWindowManager: ObservableObject {
     
     // MARK: - Public Interface
     
-    /// Show the preferences window, creating it if necessary
+    /// Displays the preferences window, creating it if necessary.
+    ///
+    /// If the preferences window already exists, it is brought to the front and the application is activated. Otherwise, a new preferences window is created and shown.
     func showPreferences() {
         if let window = preferencesWindow {
             // Window exists, bring it to front
@@ -38,13 +40,13 @@ class PreferencesWindowManager: ObservableObject {
         Self.logger.info("Preferences window shown")
     }
     
-    /// Close the preferences window
+    /// Closes the preferences window if it is currently open.
     func closePreferences() {
         preferencesWindow?.close()
         Self.logger.info("Preferences window closed")
     }
     
-    /// Clean up window references (called by window delegate)
+    /// Cleans up references to the preferences window and its delegate when the window is closing.
     func windowWillClose() {
         preferencesWindow = nil
         windowDelegate = nil
@@ -52,6 +54,9 @@ class PreferencesWindowManager: ObservableObject {
     
     // MARK: - Private Methods
     
+    /// Creates and displays the preferences window with the appropriate content and configuration.
+    ///
+    /// Initializes a new preferences window containing the SwiftUI `PreferencesView`, restores its previous size and position if available, sets window properties, assigns a delegate for window events, and brings the window to the front.
     private func createPreferencesWindow() {
         // Create the SwiftUI content view
         let contentView = PreferencesView()
@@ -102,6 +107,9 @@ private class WindowDelegate: NSObject, NSWindowDelegate {
         super.init()
     }
     
+    /// Handles the preferences window closing event by saving its frame and notifying the manager to clear references.
+    ///
+    /// - Parameter notification: The notification containing the window that is closing.
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         
@@ -114,6 +122,9 @@ private class WindowDelegate: NSObject, NSWindowDelegate {
         PreferencesWindowManager.logger.debug("Preferences window will close")
     }
     
+    /// Saves the window frame to settings when the preferences window is resized.
+    ///
+    /// - Parameter notification: The notification containing the window that was resized.
     func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         
@@ -121,6 +132,9 @@ private class WindowDelegate: NSObject, NSWindowDelegate {
         manager?.settings.saveWindowFrame(window.frame)
     }
     
+    /// Saves the window frame to settings when the preferences window is moved.
+    ///
+    /// - Parameter notification: The notification containing the window that was moved.
     func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         
