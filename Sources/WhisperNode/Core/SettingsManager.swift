@@ -14,6 +14,11 @@ class SettingsManager: ObservableObject {
         static let showDockIcon = "showDockIcon"
         static let windowPosition = "windowPosition"
         static let windowSize = "windowSize"
+        
+        // Voice Settings
+        static let preferredInputDevice = "preferredInputDevice"
+        static let vadThreshold = "vadThreshold"
+        static let enableTestRecording = "enableTestRecording"
     }
     
     // MARK: - Published Properties
@@ -44,6 +49,29 @@ class SettingsManager: ObservableObject {
         }
     }
     
+    @Published var preferredInputDevice: UInt32? {
+        didSet {
+            if let deviceID = preferredInputDevice {
+                // Note: 0 is treated as invalid/default device in Core Audio
+                UserDefaults.standard.set(deviceID, forKey: UserDefaultsKeys.preferredInputDevice)
+            } else {
+                UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.preferredInputDevice)
+            }
+        }
+    }
+    
+    @Published var vadThreshold: Float {
+        didSet {
+            UserDefaults.standard.set(vadThreshold, forKey: UserDefaultsKeys.vadThreshold)
+        }
+    }
+    
+    @Published var enableTestRecording: Bool {
+        didSet {
+            UserDefaults.standard.set(enableTestRecording, forKey: UserDefaultsKeys.enableTestRecording)
+        }
+    }
+    
     // MARK: - Private Properties
     
     private let defaults = UserDefaults.standard
@@ -70,6 +98,13 @@ class SettingsManager: ObservableObject {
         } else {
             self.windowSize = CGSize(width: 480, height: 320)
         }
+        
+        // Load voice settings
+        let storedDeviceID = defaults.object(forKey: UserDefaultsKeys.preferredInputDevice) as? UInt32
+        self.preferredInputDevice = storedDeviceID == 0 ? nil : storedDeviceID
+        
+        self.vadThreshold = defaults.object(forKey: UserDefaultsKeys.vadThreshold) as? Float ?? -40.0
+        self.enableTestRecording = defaults.bool(forKey: UserDefaultsKeys.enableTestRecording)
     }
     
     // MARK: - Login Item Management

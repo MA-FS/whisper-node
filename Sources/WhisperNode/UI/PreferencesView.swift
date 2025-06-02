@@ -10,19 +10,11 @@ struct PreferencesView: View {
                 }
                 .tag("general")
             
-            // Placeholder tabs for future implementation
-            VStack {
-                Text("Voice Settings")
-                    .font(.title2)
-                Text("Coming soon...")
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.windowBackgroundColor))
-            .tabItem {
-                Label("Voice", systemImage: "mic")
-            }
-            .tag("voice")
+            VoiceTab()
+                .tabItem {
+                    Label("Voice", systemImage: "mic")
+                }
+                .tag("voice")
             
             VStack {
                 Text("Models")

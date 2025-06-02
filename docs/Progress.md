@@ -22,8 +22,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T06 | [Whisper Model Integration](tasks/T06-whisper-model-integration.md) | High | ✅ Done | 100% | ML inference + memory mgmt |
 | T07 | [Text Insertion Engine](tasks/T07-text-insertion-engine.md) | High | ✅ Done | 100% | CGEvents text injection complete |
 | T08 | [Menu Bar Application Framework](tasks/T08-menubar-app.md) | Medium | ✅ Done | 100% | SF Symbols + dropdown complete |
-| T09 | [Preferences Window - General Tab](tasks/T09-preferences-general.md) | Medium | ⏳ WIP | 0% | Launch at login + settings |
-| T10 | [Preferences Window - Voice Tab](tasks/T10-preferences-voice.md) | Medium | ⏳ WIP | 0% | Microphone + level meter |
+| T09 | [Preferences Window - General Tab](tasks/T09-preferences-general.md) | Medium | ✅ Done | 100% | Launch at login + settings |
+| T10 | [Preferences Window - Voice Tab](tasks/T10-preferences-voice.md) | Medium | ✅ Done | 100% | Microphone + level meter |
 | T11 | [Preferences Window - Models Tab](tasks/T11-preferences-models.md) | High | ⏳ WIP | 0% | Model download + management |
 | T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ⏳ WIP | 0% | Hotkey customization |
 | T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | ⏳ WIP | 0% | Version info + Sparkle |
@@ -49,7 +49,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 **Status**: 4/5 complete - Hotkey, audio capture, ML inference, and visual indicator done; text insertion pending
 
 ### Phase 3 - User Interface (T05, T08-T13)
-**Status**: 1/7 complete - Visual indicator done; menu bar and preferences pending
+**Status**: 4/7 complete - Visual indicator, menu bar, general and voice preferences done
 
 ### Phase 4 - Polish & Distribution (T14-T19, T21-T25)
 **Status**: 0/12 complete - All polish and distribution tasks pending
@@ -57,8 +57,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary
 
 **Total Tasks**: 25  
-**Completed**: 6 (24%)  
-**In Progress**: 19 (76%)  
+**Completed**: 10 (40%)  
+**In Progress**: 15 (60%)  
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  
