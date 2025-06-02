@@ -51,6 +51,7 @@ public class WhisperNodeCore: ObservableObject {
     @Published public private(set) var menuBarManager = MenuBarManager()
     @Published public private(set) var indicatorManager = RecordingIndicatorWindowManager()
     private let textInsertionEngine = TextInsertionEngine()
+    private let errorManager = ErrorHandlingManager.shared
     
     // Whisper integration
     private var whisperEngine: WhisperEngine?
@@ -211,11 +212,15 @@ public class WhisperNodeCore: ObservableObject {
                 // Try fallback to smaller model
                 if modelName != "tiny.en" {
                     Self.logger.info("Attempting fallback to tiny.en model")
-                    loadModel("tiny.en")
-                } else {
-                    // Notify user of critical failure
                     await MainActor.run {
-                        // Post notification for UI to display error
+                        errorManager.handleModelDownloadFailure("Model \(modelName) failed to load") {
+                            self.loadModel("tiny.en")
+                        }
+                    }
+                } else {
+                    // Critical failure - no fallback available
+                    await MainActor.run {
+                        errorManager.handleError(.modelDownloadFailed("All available models failed to load"))
                         NotificationCenter.default.post(name: .whisperModelLoadFailed, object: nil)
                     }
                 }
@@ -369,13 +374,10 @@ public class WhisperNodeCore: ObservableObject {
         } else {
             Self.logger.error("Transcription failed: \(result.error ?? "Unknown error")")
             
-            // Show error indicator briefly
+            // Handle transcription failure with error manager (silent failure with red orb flash)
             await MainActor.run {
-                indicatorManager.showError()
+                errorManager.handleTranscriptionFailure()
             }
-            
-            // Schedule error hide without blocking
-            scheduleErrorHide()
         }
     }
     
@@ -421,23 +423,6 @@ public class WhisperNodeCore: ObservableObject {
         return needed
     }
     
-    private func scheduleErrorHide() {
-        Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
-            await MainActor.run { [weak self] in
-                self?.indicatorManager.hideIndicator()
-            }
-        }
-    }
-    
-    private func scheduleHotkeyErrorHide() {
-        Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.hotkeyErrorDisplayDuration)
-            await MainActor.run { [weak self] in
-                self?.indicatorManager.hideIndicator()
-            }
-        }
-    }
 }
 
 // MARK: - GlobalHotkeyManagerDelegate
@@ -470,6 +455,15 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
                 Self.logger.info("Audio capture started successfully")
             } catch {
                 Self.logger.error("Failed to start audio capture: \(error.localizedDescription)")
+                
+                // Check if it's a microphone permission issue
+                if let captureError = error as? AudioCaptureEngine.CaptureError,
+                   captureError == .permissionDenied {
+                    errorManager.handleMicrophoneAccessDenied()
+                } else {
+                    errorManager.handleError(.systemResourcesExhausted)
+                }
+                
                 self.isRecording = false
                 indicatorManager.hideIndicator()
                 stopActiveMonitoring()
@@ -537,13 +531,8 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Update menu bar state to indicate error
         menuBarManager.updateState(.error)
         
-        // Show error indicator
-        indicatorManager.showError()
-        
-        // Schedule error hide without blocking
-        scheduleHotkeyErrorHide()
-        
-        // TODO: Show user-friendly error (T15)
+        // Handle hotkey error through error manager
+        errorManager.handleError(.systemResourcesExhausted)
     }
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, accessibilityPermissionRequired: Bool) {
@@ -553,6 +542,8 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didDetectConflict conflict: HotkeyConflict, suggestedAlternatives: [HotkeyConfiguration]) {
         Self.logger.warning("Hotkey conflict detected: \(conflict.description)")
-        // TODO: Show conflict resolution UI (T12)
+        
+        // Handle hotkey conflict with non-blocking notification
+        errorManager.handleHotkeyConflict(conflict.description)
     }
 }
