@@ -18,7 +18,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T02 | [Rust FFI Integration Setup](tasks/T02-rust-ffi-integration.md) | High | ✅ Done | 100% | whisper.cpp + Apple Silicon optimizations complete |
 | T03 | [Global Hotkey System](tasks/T03-global-hotkey-system.md) | High | ✅ Done | 100% | CGEventTap implementation complete |
 | T04 | [Audio Capture Engine](tasks/T04-audio-capture-engine.md) | High | ✅ Done | 100% | AVAudioEngine + 16kHz mono |
-| T05 | [Visual Recording Indicator](tasks/T05-visual-recording-indicator.md) | High | ⏳ WIP | 0% | Floating orb with animations |
+| T05 | [Visual Recording Indicator](tasks/T05-visual-recording-indicator.md) | High | ✅ Done | 100% | Floating orb with animations complete |
 | T06 | [Whisper Model Integration](tasks/T06-whisper-model-integration.md) | High | ✅ Done | 100% | ML inference + memory mgmt |
 | T07 | [Text Insertion Engine](tasks/T07-text-insertion-engine.md) | High | ⏳ WIP | 0% | CGEvents text injection |
 | T08 | [Menu Bar Application Framework](tasks/T08-menubar-app.md) | Medium | ⏳ WIP | 0% | SF Symbols + dropdown |
@@ -46,10 +46,10 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 **Status**: 2/3 complete - Core project setup done, code signing pending
 
 ### Phase 2 - Core Features (T03-T07) 
-**Status**: 3/5 complete - Hotkey, audio capture, and ML inference done; UI indicator and text insertion pending
+**Status**: 4/5 complete - Hotkey, audio capture, ML inference, and visual indicator done; text insertion pending
 
 ### Phase 3 - User Interface (T05, T08-T13)
-**Status**: 0/7 complete - All UI components pending
+**Status**: 1/7 complete - Visual indicator done; menu bar and preferences pending
 
 ### Phase 4 - Polish & Distribution (T14-T19, T21-T25)
 **Status**: 0/12 complete - All polish and distribution tasks pending
@@ -57,8 +57,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary
 
 **Total Tasks**: 25  
-**Completed**: 5 (20%)  
-**In Progress**: 20 (80%)  
+**Completed**: 6 (24%)  
+**In Progress**: 19 (76%)  
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  
