@@ -49,6 +49,7 @@ public class WhisperNodeCore: ObservableObject {
     @Published public private(set) var hotkeyManager = GlobalHotkeyManager()
     @Published public private(set) var audioEngine = AudioCaptureEngine()
     @Published public private(set) var indicatorManager = RecordingIndicatorWindowManager()
+    private let textInsertionEngine = TextInsertionEngine()
     
     // Whisper integration
     private var whisperEngine: WhisperEngine?
@@ -357,7 +358,8 @@ public class WhisperNodeCore: ObservableObject {
                 indicatorManager.hideIndicator()
             }
             
-            // TODO: Insert text using text insertion engine (T07)
+            // Insert transcribed text at cursor position
+            await textInsertionEngine.insertText(result.text)
             
             // Check for performance warnings
             if let metrics = result.metrics, metrics.isDowngradeNeeded {
