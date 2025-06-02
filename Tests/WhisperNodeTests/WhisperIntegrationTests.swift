@@ -144,10 +144,14 @@ final class WhisperIntegrationTests: XCTestCase {
         // Test model loading
         core.loadModel("tiny.en")
         
-        // Allow time for async model loading
-        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // Wait for model loading with timeout
+        let startTime = Date()
+        while core.currentModel != "tiny.en" && Date().timeIntervalSince(startTime) < 5.0 {
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+        XCTAssertEqual(core.currentModel, "tiny.en", "Model should load within timeout")
         
-        let (memory, cpu, downgradeNeeded) = core.getPerformanceMetrics()
+        let (memory, cpu, downgradeNeeded) = await core.getPerformanceMetrics()
         
         XCTAssertGreaterThanOrEqual(memory, 0, "Memory usage should be tracked")
         XCTAssertGreaterThanOrEqual(cpu, 0.0, "CPU usage should be tracked")
@@ -159,8 +163,11 @@ final class WhisperIntegrationTests: XCTestCase {
         // Test switching from default model to small
         core.switchModel("small.en")
         
-        // Allow time for model switch
-        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        // Wait for model switch with timeout
+        let startTime = Date()
+        while core.currentModel != "small.en" && Date().timeIntervalSince(startTime) < 5.0 {
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
         
         XCTAssertEqual(core.currentModel, "small.en", "Current model should be updated")
     }
@@ -330,10 +337,18 @@ extension WhisperIntegrationTests {
         
         // Switch between models
         core.switchModel("small.en")
-        try? await Task.sleep(nanoseconds: 100_000_000) // Allow switch to complete
+        // Wait for switch to complete
+        var switchStartTime = Date()
+        while core.currentModel != "small.en" && Date().timeIntervalSince(switchStartTime) < 3.0 {
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
         
         core.switchModel("tiny.en")
-        try? await Task.sleep(nanoseconds: 100_000_000) // Allow switch to complete
+        // Wait for switch to complete
+        switchStartTime = Date()
+        while core.currentModel != "tiny.en" && Date().timeIntervalSince(switchStartTime) < 3.0 {
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
         
         let switchTime = CFAbsoluteTimeGetCurrent() - startTime
         

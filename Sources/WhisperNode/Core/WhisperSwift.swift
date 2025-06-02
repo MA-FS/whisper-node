@@ -15,6 +15,7 @@ public class WhisperSwift {
     private let modelPath: String
     private var lastCleanup: Date = Date()
     private let cleanupInterval: TimeInterval = 30.0 // Cleanup every 30 seconds
+    private let cleanupQueue = DispatchQueue(label: "whisper.cleanup")
     
     public init?(modelPath: String) {
         self.modelPath = modelPath
@@ -47,6 +48,7 @@ public class WhisperSwift {
     public func transcribe(audioData: [Float]) -> String? {
         guard let handle = handle else { return nil }
         guard !audioData.isEmpty else { return nil }
+        guard audioData.count <= 16000 * 30 else { return nil } // Max 30 seconds
         
         // Perform periodic memory cleanup
         performPeriodicCleanup()
@@ -83,7 +85,10 @@ public class WhisperSwift {
         // Check if model downgrade is recommended
         if whisper_check_downgrade_needed(handle) {
             if let suggestedPtr = whisper_get_suggested_model(handle) {
-                let suggested = String(cString: suggestedPtr)
+                guard let suggested = String(validatingUTF8: suggestedPtr) else {
+                    whisper_free_string(suggestedPtr)
+                    return transcribedText
+                }
                 whisper_free_string(suggestedPtr)
                 print("Whisper: High CPU usage detected, consider switching to \(suggested) model")
             }
@@ -116,7 +121,7 @@ public class WhisperSwift {
         var suggestedModel: String?
         if isDowngradeNeeded {
             if let suggestedPtr = whisper_get_suggested_model(handle) {
-                suggestedModel = String(cString: suggestedPtr)
+                suggestedModel = String(validatingUTF8: suggestedPtr)
                 whisper_free_string(suggestedPtr)
             }
         }
@@ -150,10 +155,12 @@ public class WhisperSwift {
     
     /// Perform periodic memory cleanup if needed
     private func performPeriodicCleanup() {
-        let now = Date()
-        if now.timeIntervalSince(lastCleanup) > cleanupInterval {
-            cleanupMemory()
-            lastCleanup = now
+        cleanupQueue.sync {
+            let now = Date()
+            if now.timeIntervalSince(lastCleanup) > cleanupInterval {
+                cleanupMemory()
+                lastCleanup = now
+            }
         }
     }
 }
@@ -177,9 +184,11 @@ public struct TranscriptionResult {
 
 /// Enhanced whisper wrapper with async support and performance monitoring
 public actor WhisperEngine {
+    private static let maxPerformanceHistorySize = 100
+    
     private let whisper: WhisperSwift
     private var performanceHistory: [WhisperPerformanceMetrics] = []
-    private let maxHistorySize = 100
+    private let maxHistorySize = Self.maxPerformanceHistorySize
     
     public init?(modelPath: String) {
         guard let whisper = WhisperSwift(modelPath: modelPath) else {
@@ -250,8 +259,8 @@ public actor WhisperEngine {
     private func recordPerformanceMetrics(_ metrics: WhisperPerformanceMetrics) {
         performanceHistory.append(metrics)
         
-        // Keep only recent history
-        if performanceHistory.count > maxHistorySize {
+        // Ensure we stay within bounds
+        while performanceHistory.count > maxHistorySize {
             performanceHistory.removeFirst()
         }
     }

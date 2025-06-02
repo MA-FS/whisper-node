@@ -1,6 +1,10 @@
 import Foundation
 import os.log
 
+extension Notification.Name {
+    static let whisperModelLoadFailed = Notification.Name("whisperModelLoadFailed")
+}
+
 /// Central coordination class for Whisper Node core functionality
 /// 
 /// Manages the integration between audio capture, model inference, and text insertion
@@ -74,11 +78,22 @@ public class WhisperNodeCore: ObservableObject {
     }
     
     private func startPerformanceMonitoring() {
+        // Performance monitoring will be started when actually recording
+        // This reduces battery usage when app is idle
+    }
+    
+    private func startActiveMonitoring() {
+        guard performanceTimer == nil else { return }
         performanceTimer = Timer.scheduledTimer(withTimeInterval: performanceUpdateInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.updatePerformanceMetrics()
             }
         }
+    }
+    
+    private func stopActiveMonitoring() {
+        performanceTimer?.invalidate()
+        performanceTimer = nil
     }
     
     // MARK: - Public Methods
@@ -113,6 +128,17 @@ public class WhisperNodeCore: ObservableObject {
                 }
             } else {
                 Self.logger.error("Failed to load whisper model: \(modelName)")
+                // Try fallback to smaller model
+                if modelName != "tiny.en" {
+                    Self.logger.info("Attempting fallback to tiny.en model")
+                    loadModel("tiny.en")
+                } else {
+                    // Notify user of critical failure
+                    await MainActor.run {
+                        // Post notification for UI to display error
+                        NotificationCenter.default.post(name: .whisperModelLoadFailed, object: nil)
+                    }
+                }
             }
         }
     }
@@ -134,8 +160,8 @@ public class WhisperNodeCore: ObservableObject {
     }
     
     /// Get current performance metrics
-    public func getPerformanceMetrics() -> (memory: UInt64, cpu: Float, modelDowngradeNeeded: Bool) {
-        return (memoryUsage, averageCpuUsage, checkModelDowngradeNeeded())
+    public func getPerformanceMetrics() async -> (memory: UInt64, cpu: Float, modelDowngradeNeeded: Bool) {
+        return (memoryUsage, averageCpuUsage, await checkModelDowngradeNeeded())
     }
     
     /// Force memory cleanup
@@ -151,9 +177,15 @@ public class WhisperNodeCore: ObservableObject {
     // MARK: - Private Implementation
     
     private func getModelPath(for modelName: String) -> String {
-        // In production, this would check bundle resources first, then downloads folder
-        // For now, return a placeholder path
-        return "/tmp/\(modelName).bin"
+        // Check bundle resources first
+        if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "bin") {
+            return bundlePath
+        }
+        
+        // Fallback to app documents directory
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, 
+                                                    in: .userDomainMask).first!
+        return documentsPath.appendingPathComponent("\(modelName).bin").path
     }
     
     private func processAudioData(_ audioData: Data) async {
@@ -201,15 +233,11 @@ public class WhisperNodeCore: ObservableObject {
         }
     }
     
-    private func checkModelDowngradeNeeded() -> Bool {
+    private func checkModelDowngradeNeeded() async -> Bool {
         guard let engine = whisperEngine else { return false }
         
-        Task {
-            let (needed, _) = await engine.shouldDowngradeModel()
-            return needed
-        }
-        
-        return false // Synchronous fallback
+        let (needed, _) = await engine.shouldDowngradeModel()
+        return needed
     }
 }
 
@@ -224,6 +252,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         self.isRecording = true
         Self.logger.info("Voice recording started")
         
+        // Start performance monitoring during active recording
+        startActiveMonitoring()
+        
         // Start audio capture engine
         Task {
             do {
@@ -232,6 +263,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
             } catch {
                 Self.logger.error("Failed to start audio capture: \(error.localizedDescription)")
                 self.isRecording = false
+                stopActiveMonitoring()
             }
         }
     }
@@ -239,6 +271,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCompleteRecording duration: CFTimeInterval) {
         isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
+        
+        // Stop performance monitoring
+        stopActiveMonitoring()
         
         // Stop audio capture
         audioEngine.stopCapture()
@@ -251,6 +286,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCancelRecording reason: RecordingCancelReason) {
         isRecording = false
         Self.logger.info("Voice recording cancelled")
+        
+        // Stop performance monitoring
+        stopActiveMonitoring()
         
         // Stop audio capture
         audioEngine.stopCapture()
