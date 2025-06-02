@@ -14,6 +14,7 @@ class OnboardingWindowManager: ObservableObject {
     
     @Published private(set) var isOnboardingPresented = false
     private var onboardingWindow: NSWindow?
+    private var windowDelegate: OnboardingWindowDelegate?
     
     private init() {}
     
@@ -54,14 +55,14 @@ class OnboardingWindowManager: ObservableObject {
         window.center()
         window.setFrameAutosaveName("OnboardingWindow")
         
-        // Prevent window from being closed by user (they must complete onboarding)
-        window.standardWindowButton(.closeButton)?.isHidden = true
+        // Allow window to be closed (users can cancel onboarding)
+        window.standardWindowButton(.closeButton)?.isHidden = false
         
         // Set up window delegate to handle cleanup
-        let delegate = OnboardingWindowDelegate { [weak self] in
+        windowDelegate = OnboardingWindowDelegate { [weak self] in
             self?.hideOnboarding()
         }
-        window.delegate = delegate
+        window.delegate = windowDelegate
         
         onboardingWindow = window
         isOnboardingPresented = true
@@ -76,6 +77,7 @@ class OnboardingWindowManager: ObservableObject {
     func hideOnboarding() {
         onboardingWindow?.close()
         onboardingWindow = nil
+        windowDelegate = nil
         isOnboardingPresented = false
         
         // Now that onboarding is complete, start the core functionality
@@ -103,7 +105,8 @@ private class OnboardingWindowDelegate: NSObject, NSWindowDelegate {
     }
     
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // Only allow closing if onboarding is completed
-        return SettingsManager.shared.hasCompletedOnboarding
+        // Allow users to close the window even if onboarding isn't complete
+        // This respects user choice and follows macOS HIG guidelines
+        return true
     }
 }

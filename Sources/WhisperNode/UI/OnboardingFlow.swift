@@ -50,10 +50,14 @@ struct OnboardingFlow: View {
                         ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                             stepView(for: step, at: index)
                                 .tag(index)
+                                .accessibilityLabel("Onboarding step \(index + 1) of \(steps.count): \(step.title)")
+                                .accessibilityHint("Navigate through onboarding steps")
                         }
                     }
                     .tabViewStyle(DefaultTabViewStyle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Onboarding wizard")
                 }
             }
         }
@@ -199,6 +203,8 @@ struct WelcomeStep: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .accessibilityLabel("Get started with onboarding")
+                .accessibilityHint("Begin the setup process for Whisper Node")
             }
             .padding(.horizontal, 40)
             .padding(.bottom, 40)
@@ -291,14 +297,19 @@ struct PermissionsStep: View {
                 
                 Spacer()
                 
-                if permissionStatus == .authorized {
+                if permissionStatus == .authorized || permissionStatus == .restricted {
                     Button("Continue") {
                         onNext()
                     }
                     .buttonStyle(.borderedProminent)
                 } else {
                     Button(permissionButtonTitle) {
-                        requestPermission()
+                        if permissionStatus == .restricted {
+                            // Allow continuing even with restricted permissions
+                            onNext()
+                        } else {
+                            requestPermission()
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(isCheckingPermissions)
@@ -350,7 +361,7 @@ struct PermissionsStep: View {
         case .notDetermined:
             return "Whisper Node needs microphone access to convert your speech to text. This data stays completely private on your device."
         case .restricted:
-            return "Microphone access is restricted on this device."
+            return "Microphone access is restricted by organizational policies or parental controls. Please contact your system administrator or check your device's restrictions in System Settings."
         @unknown default:
             return "Unable to determine microphone permission status."
         }
@@ -362,6 +373,8 @@ struct PermissionsStep: View {
             return "Retry"
         case .notDetermined:
             return "Grant Access"
+        case .restricted:
+            return "Continue Anyway"
         default:
             return "Check Status"
         }
@@ -393,9 +406,27 @@ struct PermissionsStep: View {
     }
     
     private func openSystemPreferences() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
-        NSWorkspace.shared.open(url)
-        Self.logger.info("Opened System Preferences for microphone settings")
+        // Use the appropriate URL based on macOS version
+        // macOS 13+ uses System Settings, earlier versions use System Preferences
+        let urls = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone", // macOS 13+
+            "x-apple.preferences:com.apple.preference.security?Privacy_Microphone" // macOS 12 and earlier
+        ]
+        
+        for urlString in urls {
+            if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
+                Self.logger.info("Opened system settings for microphone permissions using: \(urlString)")
+                return
+            }
+        }
+        
+        // Fallback: try to open the general Privacy & Security pane
+        if let fallbackUrl = URL(string: "x-apple.systempreferences:com.apple.preference.security") {
+            NSWorkspace.shared.open(fallbackUrl)
+            Self.logger.warning("Fallback: Opened general Privacy & Security settings")
+        } else {
+            Self.logger.error("Failed to open system settings for microphone permissions")
+        }
     }
 }
 
@@ -406,16 +437,11 @@ struct ModelSelectionStep: View {
     let onBack: () -> Void
     
     @StateObject private var settings = SettingsManager.shared
+    @StateObject private var modelManager = ModelManager.shared
     @State private var selectedModel = "tiny.en"
     @State private var isDownloading = false
     @State private var downloadProgress: Double = 0.0
     @State private var downloadError: String?
-    
-    private let models = [
-        OnboardingModelInfo(name: "tiny.en", displayName: "Tiny", size: "39 MB", speed: "Fastest", accuracy: "Good"),
-        OnboardingModelInfo(name: "small.en", displayName: "Small", size: "244 MB", speed: "Fast", accuracy: "Better"),
-        OnboardingModelInfo(name: "medium.en", displayName: "Medium", size: "769 MB", speed: "Moderate", accuracy: "Best")
-    ]
     
     var body: some View {
         VStack(spacing: 30) {
@@ -439,8 +465,8 @@ struct ModelSelectionStep: View {
             }
             
             VStack(spacing: 12) {
-                ForEach(models, id: \.name) { model in
-                    ModelSelectionRow(
+                ForEach(modelManager.availableModels, id: \.name) { model in
+                    OnboardingModelRow(
                         model: model,
                         isSelected: selectedModel == model.name,
                         onSelect: { selectedModel = model.name }
@@ -498,23 +524,54 @@ struct ModelSelectionStep: View {
     }
     
     private func downloadAndContinue() {
-        // TODO: Implement actual model download logic
-        // For now, just simulate download and set the model
+        guard let selectedModelInfo = modelManager.availableModels.first(where: { $0.name == selectedModel }) else {
+            downloadError = "Selected model not found"
+            return
+        }
+        
+        // If model is already installed or bundled, skip download
+        if selectedModelInfo.status == .installed || selectedModelInfo.status == .bundled {
+            settings.activeModelName = selectedModel
+            onNext()
+            return
+        }
+        
         isDownloading = true
         downloadError = nil
         
-        // Simulate download progress
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
-            downloadProgress += 0.1
+        Task {
+            // Start the actual model download
+            await modelManager.downloadModel(selectedModelInfo)
             
-            if downloadProgress >= 1.0 {
-                timer.invalidate()
-                isDownloading = false
+            // Monitor download progress
+            await monitorDownloadProgress()
+        }
+    }
+    
+    private func monitorDownloadProgress() async {
+        while isDownloading {
+            if let model = modelManager.availableModels.first(where: { $0.name == selectedModel }) {
                 DispatchQueue.main.async {
-                    settings.activeModelName = selectedModel
-                    onNext()
+                    self.downloadProgress = model.downloadProgress
+                    
+                    switch model.status {
+                    case .installed:
+                        self.isDownloading = false
+                        self.settings.activeModelName = self.selectedModel
+                        self.onNext()
+                    case .failed:
+                        self.isDownloading = false
+                        self.downloadError = model.errorMessage ?? "Download failed"
+                    case .downloading:
+                        // Continue monitoring
+                        break
+                    default:
+                        break
+                    }
                 }
             }
+            
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
         }
     }
 }
@@ -527,10 +584,38 @@ struct OnboardingModelInfo {
     let accuracy: String
 }
 
-struct ModelSelectionRow: View {
-    let model: OnboardingModelInfo
+struct OnboardingModelRow: View {
+    let model: ModelInfo
     let isSelected: Bool
     let onSelect: () -> Void
+    
+    private var statusIndicator: String {
+        switch model.status {
+        case .bundled:
+            return "Included"
+        case .installed:
+            return "Downloaded"
+        case .available:
+            return "Available"
+        case .downloading:
+            return "Downloading..."
+        case .failed:
+            return "Failed"
+        }
+    }
+    
+    private var statusColor: Color {
+        switch model.status {
+        case .bundled, .installed:
+            return .green
+        case .available:
+            return .blue
+        case .downloading:
+            return .orange
+        case .failed:
+            return .red
+        }
+    }
     
     var body: some View {
         Button(action: onSelect) {
@@ -540,7 +625,7 @@ struct ModelSelectionRow: View {
                         .font(.headline)
                         .foregroundColor(.primary)
                     
-                    Text(model.size)
+                    Text("\(model.downloadSize / 1024 / 1024) MB")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -548,13 +633,14 @@ struct ModelSelectionRow: View {
                 Spacer()
                 
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(model.speed)
+                    Text(statusIndicator)
                         .font(.caption)
-                        .foregroundColor(.blue)
+                        .foregroundColor(statusColor)
                     
-                    Text(model.accuracy)
+                    Text(model.description.components(separatedBy: ".").first ?? "")
                         .font(.caption)
-                        .foregroundColor(.green)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
                 
                 Circle()
@@ -592,8 +678,8 @@ struct HotkeySetupStep: View {
     let onBack: () -> Void
     
     @StateObject private var settings = SettingsManager.shared
+    @StateObject private var hotkeyManager = GlobalHotkeyManager.shared
     @State private var isRecording = false
-    @State private var hotkeyText = "Option + Space"
     
     var body: some View {
         VStack(spacing: 30) {
@@ -620,7 +706,7 @@ struct HotkeySetupStep: View {
                 Text("Current Hotkey:")
                     .font(.headline)
                 
-                Text(hotkeyText)
+                Text(hotkeyManager.currentHotkey.description)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .padding()
@@ -675,14 +761,8 @@ struct HotkeySetupStep: View {
         }
         .padding(.horizontal, 40)
         .onAppear {
-            updateHotkeyText()
+            // Hotkey text is now automatically updated from hotkeyManager.currentHotkey.description
         }
-    }
-    
-    private func updateHotkeyText() {
-        // TODO: Convert keycode and modifier flags to readable text
-        // For now, use default
-        hotkeyText = "Option + Space"
     }
 }
 

@@ -235,6 +235,16 @@ class SettingsManager: ObservableObject {
         return validateWindowFrame(frame)
     }
     
+    /// Resets onboarding state to allow re-running the onboarding flow
+    ///
+    /// This method clears the onboarding completion flag and resets the step counter,
+    /// which will cause the onboarding flow to be presented again on next app launch.
+    /// Useful for testing or when users want to reconfigure their setup.
+    func resetOnboarding() {
+        hasCompletedOnboarding = false
+        onboardingStep = 0
+    }
+    
     /// Validates and adjusts a window frame to ensure it fits within the main screen's visible area.
     ///
     /// The returned frame is constrained to a minimum size of 320x240 points, a maximum size of 90% of the screen's visible area, and is repositioned if necessary to prevent it from being off-screen.
