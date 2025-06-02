@@ -28,7 +28,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ✅ Done | 100% | Hotkey recording & conflicts |
 | T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | 🔄 Review | 100% | Version info + Sparkle integration complete |
 | T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | ⏳ WIP | 0% | Setup wizard + permissions |
-| T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | ⏳ WIP | 0% | User-friendly error states |
+| T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | 🔄 Review | 100% | Comprehensive error handling complete |
 | T16 | [Performance Monitoring & Optimization](tasks/T16-performance-monitoring.md) | Medium | ⏳ WIP | 0% | CPU/memory tracking |
 | T17 | [Model Storage & Management System](tasks/T17-model-storage.md) | Medium | ⏳ WIP | 0% | Atomic downloads + checksums |
 | T18 | [Haptic Feedback Integration](tasks/T18-haptic-feedback.md) | Low | ⏳ WIP | 0% | Force Touch trackpad |
@@ -58,8 +58,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 **Total Tasks**: 25  
 **Completed**: 12 (48%)  
-**In Review**: 1 (4%)
-**In Progress**: 12 (48%)
+**In Review**: 2 (8%)
+**In Progress**: 11 (44%)
 **Blocked**: 0 (0%)  
 
 **Phase 1 (Foundation)**: T01, T02, T20 - Setting up core infrastructure  

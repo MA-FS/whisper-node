@@ -91,6 +91,7 @@ public class ModelManager: ObservableObject {
     private let urlSession: URLSession
     private var downloadTasks: [String: URLSessionDownloadTask] = [:]
     private let fileManager = FileManager.default
+    private let errorManager = ErrorHandlingManager.shared
     
     // Base URLs for model downloads (Hugging Face)
     private let baseDownloadURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
@@ -144,6 +145,13 @@ public class ModelManager: ObservableObject {
     public func downloadModel(_ model: ModelInfo) async {
         guard model.status != .downloading else { return }
         
+        // Check disk space before starting download
+        guard errorManager.checkDiskSpace(requiredBytes: model.downloadSize) else {
+            updateModelStatus(model.name, status: .failed, progress: 0.0, 
+                            error: "Insufficient disk space for download")
+            return
+        }
+        
         // Update model status
         updateModelStatus(model.name, status: .downloading, progress: 0.0)
         
@@ -163,13 +171,27 @@ public class ModelManager: ObservableObject {
                     } catch {
                         print("Warning: Failed to remove corrupted file \(filePath): \(error)")
                     }
-                    updateModelStatus(model.name, status: .failed, progress: 0.0, error: "Checksum verification failed")
+                    
+                    // Handle corrupted model with automatic retry
+                    let errorDetails = "Model \(model.name) failed checksum verification"
+                    updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
+                    errorManager.handleError(.modelCorrupted(model.name))
                 }
             } else {
-                updateModelStatus(model.name, status: .failed, progress: 0.0, error: result.error)
+                // Handle download failure with retry option
+                let errorDetails = result.error ?? "Unknown download error"
+                updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
+                errorManager.handleModelDownloadFailure(errorDetails) {
+                    await self.retryDownload(model)
+                }
             }
         } catch {
-            updateModelStatus(model.name, status: .failed, progress: 0.0, error: error.localizedDescription)
+            // Handle general download error
+            let errorDetails = error.localizedDescription
+            updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
+            errorManager.handleModelDownloadFailure(errorDetails) {
+                await self.retryDownload(model)
+            }
         }
     }
     
