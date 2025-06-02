@@ -3,20 +3,12 @@ import Sparkle
 
 @main
 struct WhisperNodeApp: App {
-    private let updaterController: SPUStandardUpdaterController
     @StateObject private var core = WhisperNodeCore.shared
-    
-    init() {
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
-    }
+    @StateObject private var updaterManager = UpdaterManager.shared
     
     var body: some Scene {
         Settings {
-            PreferencesView()
+            PreferencesView(updater: updaterManager.updater)
                 .environmentObject(core)
                 .onAppear {
                     if core.isInitialized {
@@ -29,7 +21,7 @@ struct WhisperNodeApp: App {
         }
         .commands {
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesView(updater: updaterController.updater)
+                CheckForUpdatesView(updater: updaterManager.updater)
             }
         }
     }

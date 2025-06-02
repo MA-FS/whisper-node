@@ -59,7 +59,7 @@ class PreferencesWindowManager: ObservableObject {
     /// Initializes a new preferences window containing the SwiftUI `PreferencesView`, restores its previous size and position if available, sets window properties, assigns a delegate for window events, and brings the window to the front.
     private func createPreferencesWindow() {
         // Create the SwiftUI content view
-        let contentView = PreferencesView()
+        let contentView = PreferencesView(updater: UpdaterManager.shared.updater)
             .environmentObject(settings)
         
         // Create the window
