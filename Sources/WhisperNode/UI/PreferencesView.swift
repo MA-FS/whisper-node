@@ -1,29 +1,71 @@
 import SwiftUI
 
 struct PreferencesView: View {
+    @StateObject private var settings = SettingsManager.shared
+    
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "mic.circle.fill")
-                .font(.system(size: 64))
-                .foregroundColor(.blue)
-                .accessibilityLabel("Microphone icon")
+        TabView {
+            GeneralTab()
+                .tabItem {
+                    Label("General", systemImage: "gear")
+                }
+                .tag("general")
             
-            Text("Whisper Node")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+            // Placeholder tabs for future implementation
+            VStack {
+                Text("Voice Settings")
+                    .font(.title2)
+                Text("Coming soon...")
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.windowBackgroundColor))
+            .tabItem {
+                Label("Voice", systemImage: "mic")
+            }
+            .tag("voice")
             
-            Text("Blazingly fast, on-device speech-to-text")
-                .font(.headline)
-                .foregroundColor(.secondary)
+            VStack {
+                Text("Models")
+                    .font(.title2)
+                Text("Coming soon...")
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.windowBackgroundColor))
+            .tabItem {
+                Label("Models", systemImage: "brain.head.profile")
+            }
+            .tag("models")
             
-            Text("Press and hold your hotkey to start recording")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+            VStack {
+                Text("Shortcuts")
+                    .font(.title2)
+                Text("Coming soon...")
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.windowBackgroundColor))
+            .tabItem {
+                Label("Shortcuts", systemImage: "command")
+            }
+            .tag("shortcuts")
+            
+            VStack {
+                Text("About")
+                    .font(.title2)
+                Text("Coming soon...")
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.windowBackgroundColor))
+            .tabItem {
+                Label("About", systemImage: "info.circle")
+            }
+            .tag("about")
         }
-        .frame(width: 400, height: 300)
-        .padding()
+        .frame(width: 480, height: 320)
+        .background(Color(.windowBackgroundColor))
     }
 }
 
