@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct PreferencesView: View {
-    @StateObject private var settings = SettingsManager.shared
     
     var body: some View {
         TabView {
