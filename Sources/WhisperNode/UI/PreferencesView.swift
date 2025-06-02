@@ -1,6 +1,8 @@
 import SwiftUI
+import Sparkle
 
 struct PreferencesView: View {
+    let updater: SPUUpdater?
     
     var body: some View {
         TabView {
@@ -28,18 +30,11 @@ struct PreferencesView: View {
                 }
                 .tag("shortcuts")
             
-            VStack {
-                Text("About")
-                    .font(.title2)
-                Text("Coming soon...")
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.windowBackgroundColor))
-            .tabItem {
-                Label("About", systemImage: "info.circle")
-            }
-            .tag("about")
+            AboutTab(updater: updater)
+                .tabItem {
+                    Label("About", systemImage: "info.circle")
+                }
+                .tag("about")
         }
         .frame(width: 480, height: 320)
         .background(Color(.windowBackgroundColor))
@@ -47,5 +42,5 @@ struct PreferencesView: View {
 }
 
 #Preview {
-    PreferencesView()
+    PreferencesView(updater: nil)
 }
