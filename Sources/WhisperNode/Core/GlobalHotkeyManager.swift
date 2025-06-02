@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import AppKit
 import os.log
+import Combine
 
 /// Manager for global hotkey detection using CGEventTap
 /// 
@@ -25,7 +26,9 @@ import os.log
 ///
 /// - Important: Requires accessibility permissions to function properly
 /// - Warning: Only one instance should be active at a time
+@MainActor
 public class GlobalHotkeyManager: ObservableObject {
+    public static let shared = GlobalHotkeyManager()
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "hotkey")
     
     // MARK: - Properties
@@ -37,6 +40,10 @@ public class GlobalHotkeyManager: ObservableObject {
     @Published public var currentHotkey: HotkeyConfiguration = .defaultConfiguration
     @Published public var isRecording = false
     
+    // Settings integration
+    private var settingsManager = SettingsManager.shared
+    private var cancellables = Set<AnyCancellable>()
+    
     // Press-and-hold tracking
     private var keyDownTime: CFTimeInterval?
     private let minimumHoldDuration: CFTimeInterval = 0.1 // 100ms minimum hold
@@ -46,11 +53,83 @@ public class GlobalHotkeyManager: ObservableObject {
     
     // MARK: - Initialization
     public init() {
+        // Load hotkey configuration from SettingsManager
+        loadHotkeyFromSettings()
+        
+        // Set up settings synchronization
+        setupSettingsObservation()
+        
         Self.logger.info("GlobalHotkeyManager initialized")
     }
     
     deinit {
-        cleanup()
+        // Cleanup in deinit - note this is called when object is deallocated
+        // We'll handle cleanup synchronously here for resource cleanup
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+        }
+        
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+    }
+    
+    // MARK: - Settings Integration
+    
+    private func loadHotkeyFromSettings() {
+        let keyCode = settingsManager.hotkeyKeyCode
+        let modifierFlags = CGEventFlags(rawValue: settingsManager.hotkeyModifierFlags)
+        let description = formatHotkeyDescription(keyCode: keyCode, modifiers: modifierFlags)
+        
+        currentHotkey = HotkeyConfiguration(
+            keyCode: keyCode,
+            modifierFlags: modifierFlags,
+            description: description
+        )
+    }
+    
+    private func setupSettingsObservation() {
+        // Observe hotkey changes in SettingsManager
+        Publishers.CombineLatest(
+            settingsManager.$hotkeyKeyCode,
+            settingsManager.$hotkeyModifierFlags
+        )
+        .dropFirst() // Skip initial value since we loaded it manually
+        .sink { [weak self] keyCode, modifierFlags in
+            self?.loadHotkeyFromSettings()
+        }
+        .store(in: &cancellables)
+    }
+    
+    private func saveHotkeyToSettings() {
+        settingsManager.hotkeyKeyCode = currentHotkey.keyCode
+        settingsManager.hotkeyModifierFlags = currentHotkey.modifierFlags.rawValue
+    }
+    
+    private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
+        var parts: [String] = []
+        
+        // Add modifier symbols in standard order
+        if modifiers.contains(.maskControl) { parts.append("⌃") }
+        if modifiers.contains(.maskAlternate) { parts.append("⌥") }
+        if modifiers.contains(.maskShift) { parts.append("⇧") }
+        if modifiers.contains(.maskCommand) { parts.append("⌘") }
+        
+        // Add key name
+        parts.append(keyCodeToDisplayString(keyCode))
+        
+        return parts.joined()
+    }
+    
+    private func keyCodeToDisplayString(_ keyCode: UInt16) -> String {
+        switch keyCode {
+        case 49: return "Space"
+        case 36: return "Return"
+        case 48: return "Tab"
+        case 51: return "Delete"
+        case 53: return "Escape"
+        default: return "Key\(keyCode)"
+        }
     }
     
     // MARK: - Public Methods
@@ -154,6 +233,10 @@ public class GlobalHotkeyManager: ObservableObject {
         }
         
         currentHotkey = configuration
+        
+        // Save to persistent settings
+        saveHotkeyToSettings()
+        
         Self.logger.info("Updated hotkey configuration: \(configuration.description)")
         
         if wasListening {

@@ -1,0 +1,312 @@
+import SwiftUI
+import Carbon
+
+/// A view that allows users to record new hotkey combinations
+struct HotkeyRecorderView: View {
+    let currentHotkey: HotkeyConfiguration
+    @Binding var isRecording: Bool
+    let onHotkeyChange: (HotkeyConfiguration) -> Void
+    
+    @State private var recordedKeyCode: UInt16?
+    @State private var recordedModifiers: CGEventFlags = []
+    @State private var keyEventMonitor: Any?
+    @State private var recordingStartTime: Date?
+    
+    private let recordingTimeout: TimeInterval = 10.0 // 10 seconds
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Current hotkey display
+            HStack {
+                Text("Current Hotkey:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                
+                HotkeyDisplayView(
+                    hotkey: currentHotkey,
+                    isHighlighted: false
+                )
+            }
+            
+            // Recording interface
+            if isRecording {
+                VStack(spacing: 12) {
+                    HotkeyDisplayView(
+                        hotkey: recordedHotkey,
+                        isHighlighted: true,
+                        showPlaceholder: recordedKeyCode == nil
+                    )
+                    
+                    HStack(spacing: 12) {
+                        Button("Cancel") {
+                            stopRecording()
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        if recordedKeyCode != nil {
+                            Button("Save") {
+                                saveRecordedHotkey()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!isValidHotkey)
+                        }
+                    }
+                    
+                    Text("Press your desired key combination...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(16)
+                .background(Color(.controlBackgroundColor))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.accentColor, lineWidth: 2)
+                )
+            } else {
+                Button("Record New Hotkey") {
+                    startRecording()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .onAppear {
+            // Ensure we're not recording when view appears
+            if isRecording {
+                stopRecording()
+            }
+        }
+        .onDisappear {
+            // Clean up any active recording
+            stopRecording()
+        }
+    }
+    
+    private var recordedHotkey: HotkeyConfiguration {
+        let keyCode = recordedKeyCode ?? 0
+        let description = formatHotkeyDescription(
+            keyCode: keyCode,
+            modifiers: recordedModifiers
+        )
+        
+        return HotkeyConfiguration(
+            keyCode: keyCode,
+            modifierFlags: recordedModifiers,
+            description: description
+        )
+    }
+    
+    private var isValidHotkey: Bool {
+        guard let keyCode = recordedKeyCode, keyCode != 0 else { return false }
+        
+        // Require at least one modifier key
+        return !recordedModifiers.isEmpty
+    }
+    
+    private func startRecording() {
+        isRecording = true
+        recordedKeyCode = nil
+        recordedModifiers = []
+        recordingStartTime = Date()
+        
+        // Start monitoring key events
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            handleKeyEvent(event)
+            return nil // Consume the event
+        }
+        
+        // Set timeout for recording
+        DispatchQueue.main.asyncAfter(deadline: .now() + recordingTimeout) {
+            if isRecording {
+                stopRecording()
+            }
+        }
+    }
+    
+    private func stopRecording() {
+        isRecording = false
+        recordedKeyCode = nil
+        recordedModifiers = []
+        recordingStartTime = nil
+        
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyEventMonitor = nil
+        }
+    }
+    
+    private func saveRecordedHotkey() {
+        guard let keyCode = recordedKeyCode, isValidHotkey else { return }
+        
+        let newHotkey = HotkeyConfiguration(
+            keyCode: keyCode,
+            modifierFlags: recordedModifiers,
+            description: formatHotkeyDescription(keyCode: keyCode, modifiers: recordedModifiers)
+        )
+        
+        stopRecording()
+        onHotkeyChange(newHotkey)
+    }
+    
+    private func handleKeyEvent(_ event: NSEvent) {
+        switch event.type {
+        case .flagsChanged:
+            // Update modifier flags
+            recordedModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+            
+        case .keyDown:
+            // Record the key code
+            recordedKeyCode = UInt16(event.keyCode)
+            
+            // If we have both key and modifiers, we can save
+            if !recordedModifiers.isEmpty {
+                // Auto-save after a short delay to allow user to see the combination
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if isRecording && recordedKeyCode == UInt16(event.keyCode) {
+                        saveRecordedHotkey()
+                    }
+                }
+            }
+            
+        default:
+            break
+        }
+    }
+    
+    private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
+        var parts: [String] = []
+        
+        // Add modifier symbols in standard order
+        if modifiers.contains(.maskControl) { parts.append("⌃") }
+        if modifiers.contains(.maskAlternate) { parts.append("⌥") }
+        if modifiers.contains(.maskShift) { parts.append("⇧") }
+        if modifiers.contains(.maskCommand) { parts.append("⌘") }
+        
+        // Add key name
+        parts.append(keyCodeToDisplayString(keyCode))
+        
+        return parts.joined()
+    }
+    
+    private func keyCodeToDisplayString(_ keyCode: UInt16) -> String {
+        switch keyCode {
+        case 49: return "Space"
+        case 36: return "↩"
+        case 48: return "⇥"
+        case 51: return "⌫"
+        case 53: return "⎋"
+        case 76: return "⌤"
+        case 0: return "A"
+        case 1: return "S"
+        case 2: return "D"
+        case 3: return "F"
+        case 4: return "H"
+        case 5: return "G"
+        case 6: return "Z"
+        case 7: return "X"
+        case 8: return "C"
+        case 9: return "V"
+        case 11: return "B"
+        case 12: return "Q"
+        case 13: return "W"
+        case 14: return "E"
+        case 15: return "R"
+        case 16: return "Y"
+        case 17: return "T"
+        case 18: return "1"
+        case 19: return "2"
+        case 20: return "3"
+        case 21: return "4"
+        case 22: return "6"
+        case 23: return "5"
+        case 24: return "="
+        case 25: return "9"
+        case 26: return "7"
+        case 27: return "-"
+        case 28: return "8"
+        case 29: return "0"
+        case 30: return "]"
+        case 31: return "O"
+        case 32: return "U"
+        case 33: return "["
+        case 34: return "I"
+        case 35: return "P"
+        case 37: return "L"
+        case 38: return "J"
+        case 39: return "'"
+        case 40: return "K"
+        case 41: return ";"
+        case 42: return "\\"
+        case 43: return ","
+        case 44: return "/"
+        case 45: return "N"
+        case 46: return "M"
+        case 47: return "."
+        case 50: return "`"
+        default: return "Key\(keyCode)"
+        }
+    }
+}
+
+/// A view that displays a hotkey combination with styling
+private struct HotkeyDisplayView: View {
+    let hotkey: HotkeyConfiguration
+    var isHighlighted: Bool = false
+    var showPlaceholder: Bool = false
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            if showPlaceholder {
+                Text("Press a key combination...")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .italic()
+            } else {
+                Text(hotkey.description.isEmpty ? "None" : hotkey.description)
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+                    .foregroundColor(isHighlighted ? .white : .primary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHighlighted ? Color.accentColor : Color(.controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(.separatorColor), lineWidth: 1)
+        )
+    }
+}
+
+#if DEBUG
+struct HotkeyRecorderView_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            HotkeyRecorderView(
+                currentHotkey: HotkeyConfiguration(
+                    keyCode: 49,
+                    modifierFlags: .maskAlternate,
+                    description: "⌥Space"
+                ),
+                isRecording: .constant(false),
+                onHotkeyChange: { _ in }
+            )
+            
+            HotkeyRecorderView(
+                currentHotkey: HotkeyConfiguration(
+                    keyCode: 49,
+                    modifierFlags: .maskAlternate,
+                    description: "⌥Space"
+                ),
+                isRecording: .constant(true),
+                onHotkeyChange: { _ in }
+            )
+        }
+        .padding()
+    }
+}
+#endif
