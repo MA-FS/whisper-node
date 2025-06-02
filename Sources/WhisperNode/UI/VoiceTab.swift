@@ -95,7 +95,7 @@ struct VoiceTab: View {
                         .pickerStyle(.menu)
                         .disabled(permissionStatus != .granted)
                         .accessibilityLabel("Microphone device selection")
-                        .accessibilityHint("Choose which microphone to use for voice input")
+                        .accessibilityHint("Choose which microphone to use for voice input. Select 'Default System Device' to use your system's default microphone.")
                         
                         Text("Select the microphone device to use for voice input")
                             .font(.caption)

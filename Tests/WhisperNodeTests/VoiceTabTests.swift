@@ -9,6 +9,10 @@ final class VoiceTabTests: XCTestCase {
     }
     
     override func tearDown() {
+        // Clean up UserDefaults to prevent test interference
+        UserDefaults.standard.removeObject(forKey: "preferredInputDevice")
+        UserDefaults.standard.removeObject(forKey: "vadThreshold")
+        UserDefaults.standard.removeObject(forKey: "enableTestRecording")
         super.tearDown()
     }
     
@@ -29,6 +33,7 @@ final class VoiceTabTests: XCTestCase {
     @MainActor
     func testVADThresholdRange() throws {
         let settings = SettingsManager.shared
+        let originalThreshold = settings.vadThreshold
         
         // Test setting valid VAD threshold values
         settings.vadThreshold = -60.0
@@ -40,13 +45,14 @@ final class VoiceTabTests: XCTestCase {
         settings.vadThreshold = 0.0
         XCTAssertEqual(settings.vadThreshold, 0.0)
         
-        // Reset to default
-        settings.vadThreshold = -40.0
+        // Reset to original value
+        settings.vadThreshold = originalThreshold
     }
     
     @MainActor
     func testInputDeviceSelection() throws {
         let settings = SettingsManager.shared
+        let originalDevice = settings.preferredInputDevice
         
         // Test setting a device ID
         let testDeviceID: UInt32 = 12345
@@ -56,6 +62,9 @@ final class VoiceTabTests: XCTestCase {
         // Test clearing device selection
         settings.preferredInputDevice = nil
         XCTAssertNil(settings.preferredInputDevice)
+        
+        // Restore original state
+        settings.preferredInputDevice = originalDevice
     }
     
     func testInputLevelMeterNormalization() throws {
@@ -135,6 +144,7 @@ final class AudioEngineVoiceTabIntegrationTests: XCTestCase {
     @MainActor
     func testDeviceSelectionPersistence() throws {
         let settings = SettingsManager.shared
+        let originalDevice = settings.preferredInputDevice
         
         // Test that device selection persists
         let testDevice: UInt32 = 67890
@@ -144,7 +154,7 @@ final class AudioEngineVoiceTabIntegrationTests: XCTestCase {
         let storedDevice = UserDefaults.standard.object(forKey: "preferredInputDevice") as? UInt32
         XCTAssertEqual(storedDevice, testDevice)
         
-        // Clean up
-        settings.preferredInputDevice = nil
+        // Restore original state
+        settings.preferredInputDevice = originalDevice
     }
 }

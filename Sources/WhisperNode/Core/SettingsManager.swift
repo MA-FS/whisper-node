@@ -52,6 +52,7 @@ class SettingsManager: ObservableObject {
     @Published var preferredInputDevice: UInt32? {
         didSet {
             if let deviceID = preferredInputDevice {
+                // Note: 0 is treated as invalid/default device in Core Audio
                 UserDefaults.standard.set(deviceID, forKey: UserDefaultsKeys.preferredInputDevice)
             } else {
                 UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.preferredInputDevice)
