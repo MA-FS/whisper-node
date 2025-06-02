@@ -26,6 +26,14 @@ final class AudioCaptureEngineTests: XCTestCase {
         XCTAssertFalse(audioEngine.isVoiceDetected)
     }
     
+    func testConfigurableInitialization() {
+        // Test with custom parameters
+        let customEngine = AudioCaptureEngine(bufferDuration: 2.0, vadThreshold: -30.0)
+        XCTAssertEqual(customEngine.captureState, .idle)
+        XCTAssertEqual(customEngine.inputLevel, 0.0)
+        XCTAssertFalse(customEngine.isVoiceDetected)
+    }
+    
     // MARK: - Permission Tests
     
     func testPermissionStatus() {
@@ -222,8 +230,9 @@ final class CircularAudioBufferTests: XCTestCase {
         
         wait(for: [expectation], timeout: 5.0)
         
-        // Should not crash and should have some data
-        XCTAssertTrue(buffer.availableDataCount() >= 0)
+        // Should not crash and buffer should be in a valid state
+        let finalCount = buffer.availableDataCount()
+        XCTAssertTrue(finalCount <= testCapacity, "Buffer count should not exceed capacity")
     }
 }
 
