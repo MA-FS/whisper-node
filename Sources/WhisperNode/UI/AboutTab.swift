@@ -66,6 +66,7 @@ struct AboutTab: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("**Development Team**")
                         .font(.subheadline)
+                        .accessibilityAddTraits(.isHeader)
                     Text("Whisper Node is built with passion for developers and power users who value privacy and performance.")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -73,6 +74,7 @@ struct AboutTab: View {
                     Text("**Open Source Acknowledgments**")
                         .font(.subheadline)
                         .padding(.top, 8)
+                        .accessibilityAddTraits(.isHeader)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("• **whisper.cpp** - Fast C++ implementation of OpenAI's Whisper")

@@ -4,6 +4,7 @@ import Sparkle
 struct PreferencesView: View {
     let updater: SPUUpdater?
     @State private var selectedTab: String = "general"
+    @State private var keyEventMonitor: Any?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     var body: some View {
@@ -52,6 +53,13 @@ struct PreferencesView: View {
         .background(Color(.windowBackgroundColor))
         .onAppear {
             setupKeyboardNavigation()
+        }
+        .onDisappear {
+            // Clean up key event monitor to prevent memory leaks
+            if let monitor = keyEventMonitor {
+                NSEvent.removeMonitor(monitor)
+                keyEventMonitor = nil
+            }
         }
     }
     
@@ -115,8 +123,13 @@ struct PreferencesView: View {
     /// This implementation follows macOS Human Interface Guidelines for keyboard navigation
     /// and ensures users who rely on keyboard-only interaction can fully use the preferences.
     private func setupKeyboardNavigation() {
+        // Remove existing monitor if present
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        
         // Set up key event monitoring for enhanced navigation
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
             case 53: // Escape key
                 NSApp.mainWindow?.close()

@@ -131,6 +131,13 @@ public class MenuBarManager: ObservableObject {
         // Accessibility
         button.toolTip = "Whisper Node - Voice to Text (Click for menu)"
         
+        // Enhanced accessibility support
+        if let accessibilityElement = button {
+            accessibilityElement.setAccessibilityRole(.menuButton)
+            accessibilityElement.setAccessibilityLabel("Whisper Node menu")
+            accessibilityElement.setAccessibilityHelp("Opens the Whisper Node menu with preferences and status information")
+        }
+        
         Self.logger.info("Menu bar item configured")
     }
     
@@ -240,8 +247,10 @@ struct MenuBarDropdownView: View {
                 HStack {
                     Image(systemName: "mic.fill")
                         .foregroundColor(.blue)
+                        .accessibilityLabel("Whisper Node app icon")
                     Text("Whisper Node")
                         .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
                     Spacer()
                 }
                 
@@ -309,6 +318,8 @@ struct StatusRow: View {
                 .foregroundColor(.primary)
         }
         .font(.system(size: 13))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 
@@ -341,5 +352,7 @@ struct MenuButton: View {
         .onHover { hovering in
             isHovered = hovering
         }
+        .accessibilityLabel(title)
+        .accessibilityHint("Activates \(title.lowercased())")
     }
 }
