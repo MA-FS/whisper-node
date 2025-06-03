@@ -36,9 +36,25 @@ final class HapticManagerTests: XCTestCase {
         // The HapticManager gracefully handles unsupported hardware
         XCTAssertNoThrow(hapticManager.recordingStarted())
         XCTAssertNoThrow(hapticManager.recordingStopped())
+        XCTAssertNoThrow(hapticManager.recordingCancelled())
         XCTAssertNoThrow(hapticManager.errorOccurred())
         XCTAssertNoThrow(hapticManager.textInserted())
         XCTAssertNoThrow(hapticManager.testHaptic())
+    }
+    
+    func testPatternCaching() throws {
+        let hapticManager = HapticManager.shared
+        let originalIntensity = hapticManager.intensity
+        
+        // Test that intensity changes clear cache
+        hapticManager.intensity = 0.8
+        hapticManager.intensity = 0.5
+        
+        // Should not crash - testing cache invalidation
+        XCTAssertNoThrow(hapticManager.testHaptic())
+        
+        // Reset intensity
+        hapticManager.intensity = originalIntensity
     }
     
     func testHapticIntensityBounds() throws {
@@ -46,10 +62,14 @@ final class HapticManagerTests: XCTestCase {
         
         // Test bounds
         hapticManager.intensity = -0.5  // Should clamp to minimum
-        XCTAssertGreaterThanOrEqual(hapticManager.intensity, 0.0)
+        XCTAssertEqual(hapticManager.intensity, 0.1, accuracy: 0.01, "Should clamp to minimum 0.1")
         
         hapticManager.intensity = 1.5   // Should clamp to maximum  
-        XCTAssertLessThanOrEqual(hapticManager.intensity, 1.0)
+        XCTAssertEqual(hapticManager.intensity, 1.0, accuracy: 0.01, "Should clamp to maximum 1.0")
+        
+        // Test valid values
+        hapticManager.intensity = 0.5
+        XCTAssertEqual(hapticManager.intensity, 0.5, accuracy: 0.01, "Should accept valid values")
         
         // Reset to defaults
         hapticManager.resetToDefaults()

@@ -287,7 +287,7 @@ struct VoiceTab: View {
                                                 .foregroundColor(.secondary)
                                         }
                                         .accessibilityLabel("Haptic feedback intensity")
-                                        .accessibilityValue("\(Int(hapticManager.intensity * 100))%")
+                                        .accessibilityValue(String(format: "%.0f%%", hapticManager.intensity * 100))
                                         
                                         Text("\(Int(hapticManager.intensity * 100))%")
                                             .font(.caption)
@@ -316,7 +316,7 @@ struct VoiceTab: View {
                         .background(Color(.controlBackgroundColor))
                         .cornerRadius(8)
                         
-                        Text("Haptic feedback is only available on MacBooks with Force Touch trackpads")
+                        Text("Haptic feedback is available on MacBooks with Force Touch trackpads (2015 and later models)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

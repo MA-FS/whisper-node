@@ -23,10 +23,13 @@ public class HapticManager: ObservableObject {
         }
     }
     
-    /// Current haptic intensity (0.0 to 1.0)
+    /// Current haptic intensity (0.1 to 1.0)
     @Published public var intensity: Double {
         didSet {
+            intensity = max(0.1, min(1.0, intensity))
             UserDefaults.standard.set(intensity, forKey: "hapticIntensity")
+            // Clear cached patterns when intensity changes
+            cachedPatterns.removeAll()
         }
     }
     
@@ -34,6 +37,12 @@ public class HapticManager: ObservableObject {
     
     private var hapticEngine: CHHapticEngine?
     private var isEngineStarted = false
+    private var cachedPatterns: [String: CHHapticPattern] = [:]
+    
+    // MARK: - Constants
+    
+    private static let engineStartupDelay: UInt64 = 10_000_000 // 10ms
+    private static let engineResetDelay: UInt64 = 100_000_000 // 100ms
     
     // MARK: - Initialization
     
@@ -60,6 +69,14 @@ public class HapticManager: ObservableObject {
         guard isEnabled && shouldProvideHapticFeedback() else { return }
         Task {
             await playLightTap()
+        }
+    }
+    
+    /// Triggers haptic feedback for recording cancellation (lighter feedback)
+    public func recordingCancelled() {
+        guard isEnabled && shouldProvideHapticFeedback() else { return }
+        Task {
+            await playCancelTap()
         }
     }
     
@@ -94,8 +111,9 @@ public class HapticManager: ObservableObject {
             
             // Set up engine state change handler
             hapticEngine?.stoppedHandler = { [weak self] reason in
-                Task { @MainActor in
-                    self?.isEngineStarted = false
+                Task { [weak self] @MainActor in
+                    guard let self = self else { return }
+                    self.isEngineStarted = false
                     switch reason {
                     case .audioSessionInterrupt:
                         // Will restart when session becomes active again
@@ -120,8 +138,11 @@ public class HapticManager: ObservableObject {
             
             hapticEngine?.resetHandler = { [weak self] in
                 Task { @MainActor in
-                    self?.isEngineStarted = false
-                    self?.setupEngine()
+                    guard let self = self else { return }
+                    self.isEngineStarted = false
+                    self.stopEngine()
+                    try? await Task.sleep(nanoseconds: Self.engineResetDelay)
+                    self.setupEngine()
                 }
             }
             
@@ -162,20 +183,26 @@ public class HapticManager: ObservableObject {
     private func playLightTap() async {
         await playHapticPattern([
             createHapticEvent(intensity: intensity, sharpness: 0.5, delay: 0.0)
-        ])
+        ], cacheKey: "lightTap")
     }
     
     private func playDoubleTap() async {
         await playHapticPattern([
             createHapticEvent(intensity: intensity * 0.8, sharpness: 0.7, delay: 0.0),
             createHapticEvent(intensity: intensity * 0.8, sharpness: 0.7, delay: 0.1)
-        ])
+        ], cacheKey: "doubleTap")
     }
     
     private func playSuccessTap() async {
         await playHapticPattern([
             createHapticEvent(intensity: intensity * 0.6, sharpness: 0.3, delay: 0.0)
-        ])
+        ], cacheKey: "successTap")
+    }
+    
+    private func playCancelTap() async {
+        await playHapticPattern([
+            createHapticEvent(intensity: intensity * 0.4, sharpness: 0.2, delay: 0.0)
+        ], cacheKey: "cancelTap")
     }
     
     private func createHapticEvent(intensity: Double, sharpness: Double, delay: TimeInterval) -> CHHapticEvent {
@@ -189,20 +216,29 @@ public class HapticManager: ObservableObject {
         )
     }
     
-    private func playHapticPattern(_ events: [CHHapticEvent]) async {
+    private func getOrCreatePattern(for events: [CHHapticEvent], key: String) throws -> CHHapticPattern {
+        if let cached = cachedPatterns[key] {
+            return cached
+        }
+        let pattern = try CHHapticPattern(events: events, parameters: [])
+        cachedPatterns[key] = pattern
+        return pattern
+    }
+    
+    private func playHapticPattern(_ events: [CHHapticEvent], cacheKey: String) async {
         guard let engine = hapticEngine else { return }
         
         // Ensure engine is started
         if !isEngineStarted {
             startEngine()
             // Give engine time to start
-            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            try? await Task.sleep(nanoseconds: Self.engineStartupDelay)
         }
         
         guard isEngineStarted else { return }
         
         do {
-            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let pattern = try getOrCreatePattern(for: events, key: cacheKey)
             let player = try engine.makePlayer(with: pattern)
             try player.start(atTime: 0)
         } catch {

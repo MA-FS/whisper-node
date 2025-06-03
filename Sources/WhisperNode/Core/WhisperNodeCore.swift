@@ -559,7 +559,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         Self.logger.info("Voice recording cancelled")
         
         // Haptic feedback for recording cancellation
-        HapticManager.shared.recordingStopped()
+        HapticManager.shared.recordingCancelled()
         
         // Update menu bar state back to normal
         menuBarManager.updateState(.normal)
