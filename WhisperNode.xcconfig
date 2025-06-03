@@ -1,0 +1,58 @@
+// WhisperNode Build Configuration
+// Code signing and app bundle configuration
+
+// Product Bundle Identifier
+PRODUCT_BUNDLE_IDENTIFIER = com.whispernode.app
+
+// Code Signing
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = $(WHISPERNODE_DEV_TEAM)
+
+// For development, use Apple Development certificate
+// For distribution, use Developer ID Application certificate
+CODE_SIGN_IDENTITY = Apple Development
+CODE_SIGN_IDENTITY[config=Release] = Developer ID Application
+
+// Entitlements
+CODE_SIGN_ENTITLEMENTS = Sources/WhisperNode/Resources/WhisperNode.entitlements
+
+// Hardened Runtime - Required for notarization
+ENABLE_HARDENED_RUNTIME = YES
+ENABLE_HARDENED_RUNTIME[config=Debug] = NO
+
+// Other Signing Flags
+OTHER_CODE_SIGN_FLAGS = --timestamp --options runtime
+
+// App Category
+LSApplicationCategoryType = public.app-category.developer-tools
+
+// Deployment Target
+MACOSX_DEPLOYMENT_TARGET = 13.0
+
+// Build Settings
+SWIFT_VERSION = 5.9
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+// App Sandbox
+ENABLE_APP_SANDBOX = YES
+
+// Strip Debug Symbols for Release
+STRIP_INSTALLED_PRODUCT = YES
+STRIP_INSTALLED_PRODUCT[config=Debug] = NO
+
+// Architecture - Apple Silicon only
+ARCHS = arm64
+VALID_ARCHS = arm64
+
+// Build Active Architecture Only
+ONLY_ACTIVE_ARCH = YES
+ONLY_ACTIVE_ARCH[config=Release] = NO
+
+// Optimization
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+SWIFT_OPTIMIZATION_LEVEL[config=Release] = -O
+
+// Debug Information Format
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
+DEBUG_INFORMATION_FORMAT[config=Debug] = dwarf

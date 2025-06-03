@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Export method for Developer ID distribution -->
+    <key>method</key>
+    <string>developer-id</string>
+    
+    <!-- Team ID will be filled in during export -->
+    <key>teamID</key>
+    <string>$(WHISPERNODE_TEAM_ID)</string>
+    
+    <!-- Automatic signing -->
+    <key>signingStyle</key>
+    <string>automatic</string>
+    
+    <!-- Upload symbols for crash reporting -->
+    <key>uploadSymbols</key>
+    <true/>
+    
+    <!-- Generate dSYM for debugging -->
+    <key>generateDSYM</key>
+    <true/>
+    
+    <!-- Strip Swift symbols for smaller binary -->
+    <key>stripSwiftSymbols</key>
+    <true/>
+    
+    <!-- Thinning for Apple Silicon only -->
+    <key>thinning</key>
+    <string>&lt;thin-for-all-variants&gt;</string>
+    
+    <!-- Sign with Developer ID for distribution outside App Store -->
+    <key>signingCertificate</key>
+    <string>Developer ID Application</string>
+    
+    <!-- Install signing certificate if needed -->
+    <key>installerSigningCertificate</key>
+    <string>Developer ID Installer</string>
+    
+    <!-- Provisioning profile (automatic for Developer ID) -->
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.whispernode.app</key>
+        <string>Automatic</string>
+    </dict>
+</dict>
+</plist>
