@@ -35,7 +35,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T18 | [Haptic Feedback Integration](tasks/T18-haptic-feedback.md) | Low | ⏳ WIP | 0% | Not started |
 | T19 | [Accessibility Features Implementation](tasks/T19-accessibility-features.md) | Medium | 🚧 Partial | 40% | Basic accessibility, needs VoiceOver enhancement |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ✅ Done | 100% | Signing scripts + notarization workflow complete |
-| T21 | [DMG Installer Creation](tasks/T21-dmg-installer.md) | Medium | ⏳ WIP | 0% | Not started |
+| T21 | [DMG Installer Creation](tasks/T21-dmg-installer.md) | Medium | ✅ Done | 100% | Complete distribution infrastructure |
 | T22 | [CI/CD Pipeline Setup](tasks/T22-cicd-pipeline.md) | Medium | ⏳ WIP | 0% | Not started |
 | T23 | [Performance Testing & Validation](tasks/T23-performance-testing.md) | High | ⏳ WIP | 0% | Not started |
 | T24 | [System Integration Testing](tasks/T24-integration-testing.md) | High | ⏳ WIP | 0% | Not started |
@@ -58,7 +58,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary (VERIFIED)
 
 **Total Tasks**: 25  
-**Completed & Verified**: 16 (64%)  
+**Completed & Verified**: 17 (68%)  
 **In Testing**: 0 (0%)
 **Partially Implemented**: 1 (4%)
 **Work in Progress**: 8 (32%)
@@ -101,7 +101,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 6. **T24 - Integration Testing** - Cross-app compatibility validation
 
 ### Production Ready (MVP)
-7. **T21 - DMG Installer** - Signed installer package
+7. **T21 - DMG Installer** ✅ - Complete signed installer package
 8. **T22 - CI/CD Pipeline** - Automated build & notarization
 9. **T25 - Security Audit** - Privacy compliance verification
 
