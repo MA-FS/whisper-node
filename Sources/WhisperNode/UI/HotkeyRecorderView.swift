@@ -28,6 +28,8 @@ struct HotkeyRecorderView: View {
                     hotkey: currentHotkey,
                     isHighlighted: false
                 )
+                .accessibilityLabel("Current hotkey: \(currentHotkey.description.isEmpty ? "None" : currentHotkey.description)")
+                .accessibilityHint("Shows the currently configured activation hotkey")
             }
             
             // Recording interface
@@ -38,12 +40,17 @@ struct HotkeyRecorderView: View {
                         isHighlighted: true,
                         showPlaceholder: recordedKeyCode == nil
                     )
+                    .accessibilityLabel(recordedKeyCode == nil ? "Recording new hotkey" : "New hotkey: \(recordedHotkey.description)")
+                    .accessibilityValue(recordedKeyCode == nil ? "Waiting for key combination" : recordedHotkey.description)
+                    .accessibilityHint("Shows the new hotkey combination being recorded")
                     
                     HStack(spacing: 12) {
                         Button("Cancel") {
                             stopRecording()
                         }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel("Cancel hotkey recording")
+                        .accessibilityHint("Stops recording and returns to the previous hotkey")
                         
                         if recordedKeyCode != nil {
                             Button("Save") {
@@ -51,6 +58,8 @@ struct HotkeyRecorderView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(!isValidHotkey)
+                            .accessibilityLabel("Save new hotkey")
+                            .accessibilityHint("Saves the recorded key combination as the new activation hotkey")
                         }
                     }
                     
@@ -70,6 +79,8 @@ struct HotkeyRecorderView: View {
                     startRecording()
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Record new hotkey")
+                .accessibilityHint("Start recording a new key combination for voice activation")
             }
         }
         .onAppear {

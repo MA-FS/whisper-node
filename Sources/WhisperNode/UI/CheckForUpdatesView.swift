@@ -13,5 +13,7 @@ struct CheckForUpdatesView: View {
             updater.checkForUpdates()
         }
         .disabled(!updater.canCheckForUpdates)
+        .accessibilityLabel("Check for application updates")
+        .accessibilityHint("Downloads and installs any available updates for Whisper Node")
     }
 }
