@@ -48,6 +48,7 @@ public class PerformanceMonitor: ObservableObject {
     private init(thresholds: PerformanceThresholds = .default) {
         self.thresholds = thresholds
         Self.logger.info("PerformanceMonitor initializing...")
+        loadBenchmarkHistory()
         startMonitoring()
     }
     
@@ -291,6 +292,220 @@ public class PerformanceMonitor: ObservableObject {
             Thermal: \(self.thermalState.rawValue), \
             Throttling: \(self.isThrottling)
             """)
+    }
+    
+    // MARK: - Performance Regression Detection
+    
+    private var historicalBenchmarks: [PerformanceBenchmark] = []
+    private let maxBenchmarkHistory = 50
+    private let regressionThreshold = 0.15 // 15% performance degradation threshold
+    
+    public struct PerformanceBenchmark: Codable {
+        public let testName: String
+        public let value: Double
+        public let unit: String
+        public let timestamp: Date
+        public let gitCommit: String?
+        public let buildConfiguration: String
+        
+        public init(testName: String, value: Double, unit: String, timestamp: Date = Date(), gitCommit: String? = nil, buildConfiguration: String = "release") {
+            self.testName = testName
+            self.value = value
+            self.unit = unit
+            self.timestamp = timestamp
+            self.gitCommit = gitCommit
+            self.buildConfiguration = buildConfiguration
+        }
+    }
+    
+    public struct RegressionAnalysis {
+        public let testName: String
+        public let currentValue: Double
+        public let baselineValue: Double
+        public let percentageChange: Double
+        public let isRegression: Bool
+        public let severity: RegressionSeverity
+        
+        public enum RegressionSeverity {
+            case none
+            case minor      // 5-15% degradation
+            case moderate   // 15-30% degradation
+            case severe     // >30% degradation
+            
+            var description: String {
+                switch self {
+                case .none: return "No regression"
+                case .minor: return "Minor regression"
+                case .moderate: return "Moderate regression"
+                case .severe: return "Severe regression"
+                }
+            }
+        }
+    }
+    
+    public func recordBenchmark(_ benchmark: PerformanceBenchmark) {
+        historicalBenchmarks.append(benchmark)
+        
+        // Maintain history size limit
+        if historicalBenchmarks.count > maxBenchmarkHistory {
+            historicalBenchmarks.removeFirst()
+        }
+        
+        // Save to disk for persistence
+        saveBenchmarkHistory()
+        
+        Self.logger.info("Recorded benchmark: \(benchmark.testName) = \(benchmark.value) \(benchmark.unit)")
+    }
+    
+    public func analyzeRegression(for testName: String, currentValue: Double) -> RegressionAnalysis? {
+        let relevantBenchmarks = historicalBenchmarks.filter { $0.testName == testName }
+        
+        guard !relevantBenchmarks.isEmpty else {
+            Self.logger.warning("No historical data for test: \(testName)")
+            return nil
+        }
+        
+        // Calculate baseline from recent stable measurements (last 10 results)
+        let recentBenchmarks = Array(relevantBenchmarks.suffix(10))
+        let baselineValue = recentBenchmarks.map { $0.value }.reduce(0, +) / Double(recentBenchmarks.count)
+        
+        let percentageChange = ((currentValue - baselineValue) / baselineValue) * 100.0
+        let isRegression = percentageChange > (regressionThreshold * 100.0)
+        
+        let severity: RegressionAnalysis.RegressionSeverity
+        if percentageChange <= 5.0 {
+            severity = .none
+        } else if percentageChange <= 15.0 {
+            severity = .minor
+        } else if percentageChange <= 30.0 {
+            severity = .moderate
+        } else {
+            severity = .severe
+        }
+        
+        let analysis = RegressionAnalysis(
+            testName: testName,
+            currentValue: currentValue,
+            baselineValue: baselineValue,
+            percentageChange: percentageChange,
+            isRegression: isRegression,
+            severity: severity
+        )
+        
+        if isRegression {
+            Self.logger.warning("Performance regression detected: \(testName) - \(String(format: "%.1f", percentageChange))% degradation (\(severity.description))")
+        }
+        
+        return analysis
+    }
+    
+    public func validatePerformanceRequirements(benchmarks: [PerformanceBenchmark]) -> [String: Bool] {
+        let prdRequirements: [String: Double] = [
+            "Cold Launch Time": 2.0,
+            "Transcription Latency (5s)": 1.0,
+            "Transcription Latency (15s)": 2.0,
+            "Idle Memory Usage": 100.0,
+            "Peak Memory Usage": 700.0,
+            "CPU Utilization During Transcription": 150.0,
+            "Average CPU During Operation": 150.0
+        ]
+        
+        var results: [String: Bool] = [:]
+        
+        for (requirement, threshold) in prdRequirements {
+            if let benchmark = benchmarks.first(where: { $0.testName.contains(requirement) }) {
+                let passes = benchmark.value <= threshold
+                results[requirement] = passes
+                
+                if !passes {
+                    Self.logger.error("PRD requirement failed: \(requirement) = \(benchmark.value) (threshold: \(threshold))")
+                }
+            } else {
+                results[requirement] = false
+                Self.logger.warning("No benchmark data for PRD requirement: \(requirement)")
+            }
+        }
+        
+        return results
+    }
+    
+    private func saveBenchmarkHistory() {
+        guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            Self.logger.error("Could not access documents directory")
+            return
+        }
+        
+        let benchmarkFile = documentsPath.appendingPathComponent("performance_history.json")
+        
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            
+            let data = try encoder.encode(historicalBenchmarks)
+            try data.write(to: benchmarkFile)
+        } catch {
+            Self.logger.error("Failed to save benchmark history: \(error)")
+        }
+    }
+    
+    private func loadBenchmarkHistory() {
+        guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
+        }
+        
+        let benchmarkFile = documentsPath.appendingPathComponent("performance_history.json")
+        
+        guard FileManager.default.fileExists(atPath: benchmarkFile.path) else {
+            Self.logger.info("No existing benchmark history found")
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: benchmarkFile)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            
+            historicalBenchmarks = try decoder.decode([PerformanceBenchmark].self, from: data)
+            Self.logger.info("Loaded \(historicalBenchmarks.count) historical benchmarks")
+        } catch {
+            Self.logger.error("Failed to load benchmark history: \(error)")
+        }
+    }
+    
+    // MARK: - Continuous Performance Monitoring
+    
+    public func enableContinuousMonitoring(for operations: [String]) {
+        // TODO: Implement continuous monitoring for specific operations
+        // This would track performance during actual usage and detect regressions in real-time
+        Self.logger.info("Continuous monitoring enabled for operations: \(operations)")
+    }
+    
+    public func generatePerformanceReport() -> String {
+        var report = "# Performance Monitor Report\n\n"
+        report += "**Generated**: \(Date())\n"
+        report += "**Total Benchmarks**: \(historicalBenchmarks.count)\n\n"
+        
+        // Current system status
+        report += "## Current System Status\n\n"
+        report += "- CPU Usage: \(String(format: "%.1f", cpuUsage))%\n"
+        report += "- Memory Usage: \(String(format: "%.1f", Double(memoryUsage) / 1024.0 / 1024.0))MB\n"
+        report += "- Battery Level: \(String(format: "%.0f", batteryLevel * 100))%\n"
+        report += "- Power Source: \(isOnBattery ? "Battery" : "AC Power")\n"
+        report += "- Thermal State: \(thermalState.description)\n"
+        report += "- Throttling: \(isThrottling ? "Active" : "None")\n\n"
+        
+        // Recent benchmark summary
+        if !historicalBenchmarks.isEmpty {
+            report += "## Recent Benchmarks\n\n"
+            let recentBenchmarks = Array(historicalBenchmarks.suffix(10))
+            
+            for benchmark in recentBenchmarks {
+                report += "- \(benchmark.testName): \(benchmark.value) \(benchmark.unit) (\(benchmark.timestamp))\n"
+            }
+        }
+        
+        return report
     }
     
     // MARK: - Public Performance Metrics
