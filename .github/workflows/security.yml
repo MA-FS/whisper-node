@@ -1,0 +1,235 @@
+name: Security and Compliance (DISABLED)
+
+permissions:
+  contents: read
+
+# TEMPORARILY DISABLED - Reactivate after local builds work consistently  
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
+#   schedule:
+#     # Run security checks weekly on Sundays at 00:00 UTC
+#     - cron: '0 0 * * 0'
+#   workflow_dispatch:
+
+# Manual trigger only for testing
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: security-and-compliance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-scan:
+    name: Security Analysis
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for secrets in code
+        run: |
+          echo "Scanning for potential secrets..."
+
+          # Check for common secret patterns
+          if grep -r -E -i "(password[[:space:]]*=|secret[[:space:]]*=|key[[:space:]]*=|token[[:space:]]*=)" \
+               --include="*.swift" --include="*.rs" Sources/ whisper-rust/src/ \
+            | grep -v "// " | grep -v "WHISPERNODE_" | grep -v "example"; then
+            echo "❌ Potential hardcoded secrets found"
+            exit 1
+          fi
+
+          # Check for API keys
+          if grep -r -E "AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}" --include="*.swift" --include="*.rs" Sources/ whisper-rust/src/; then
+            echo "❌ Potential API keys found"
+            exit 1
+          fi
+
+          echo "✅ No hardcoded secrets detected"
+
+      - name: Privacy compliance check
+        run: |
+          echo "Checking privacy compliance..."
+
+          # Verify entitlements are minimal and necessary
+          if [ -f "Sources/WhisperNode/Resources/WhisperNode.entitlements" ]; then
+            echo "Checking entitlements file:"
+            cat Sources/WhisperNode/Resources/WhisperNode.entitlements
+
+            # Ensure no unnecessary entitlements
+            if grep -q "network" Sources/WhisperNode/Resources/WhisperNode.entitlements; then
+              echo "❌ Network entitlements found - app should be 100% offline"
+              exit 1
+            fi
+
+            if grep -q "com.apple.security.device.microphone" Sources/WhisperNode/Resources/WhisperNode.entitlements; then
+              echo "✅ Microphone entitlement found (required)"
+            else
+              echo "❌ Microphone entitlement missing"
+              exit 1
+            fi
+          else
+            echo "❌ Entitlements file not found"
+            exit 1
+          fi
+
+      - name: Check file permissions
+        run: |
+          echo "Checking file permissions..."
+
+          # Ensure scripts are executable
+          if [ ! -x "scripts/build-release.sh" ]; then
+            echo "❌ build-release.sh is not executable"
+            exit 1
+          fi
+
+          if [ ! -x "scripts/build-rust.sh" ]; then
+            echo "❌ build-rust.sh is not executable"
+            exit 1
+          fi
+
+          echo "✅ File permissions are correct"
+
+      - name: Cache cargo tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('whisper-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-audit-
+
+      - name: Dependency vulnerability scan
+        run: |
+          echo "Scanning dependencies for vulnerabilities..."
+
+          # Install cargo-audit if not present
+          if ! command -v cargo-audit &> /dev/null; then
+            cargo install cargo-audit
+          fi
+
+          # Run Rust dependency audit
+          cd whisper-rust
+          cargo audit
+
+          echo "✅ Rust dependencies checked"
+
+      - name: Code quality check
+        run: |
+          echo "Running code quality checks..."
+
+          # Check for TODO/FIXME comments that might indicate incomplete security
+          if grep -r "TODO.*security\|FIXME.*security\|TODO.*auth\|FIXME.*auth" --include="*.swift" --include="*.rs" Sources/ whisper-rust/src/; then
+            echo "⚠️ Security-related TODOs found - please review"
+          fi
+
+          # Check for debug statements that might leak information
+          if grep -r -E "(print\\(|NSLog\\(|println!)" --include="*.swift" --include="*.rs" Sources/ whisper-rust/src/ | grep -v "_test"; then
+            echo "⚠️ Debug print statements found - review for information leakage"
+          fi
+
+          echo "✅ Code quality check completed"
+
+  privacy-audit:
+    name: Privacy Audit
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify offline operation
+        run: |
+          echo "Verifying 100% offline operation..."
+
+          # Check for network-related imports/frameworks
+          if grep -r "URLSession\|NSURLConnection\|CFNetwork" --include="*.swift" Sources/; then
+            echo "❌ Network-related APIs found - app should be 100% offline"
+            exit 1
+          fi
+
+          # Check for analytics or telemetry
+          if grep -r -i "analytics\|telemetry\|tracking\|crashlytics" --include="*.swift" --include="*.rs" Sources/ whisper-rust/src/; then
+            echo "❌ Analytics or telemetry code found"
+            exit 1
+          fi
+
+          echo "✅ No network or telemetry code detected"
+
+      - name: Audio privacy check
+        run: |
+          echo "Checking audio privacy implementation..."
+
+          # Ensure audio data is not persisted
+          if grep -r -i "writeToFile\|save.*audio\|store.*audio" --include="*.swift" Sources/ | grep -v "test"; then
+            echo "❌ Audio persistence code found - violates privacy"
+            exit 1
+          fi
+
+          # Check for audio streaming or transmission
+          if grep -r -i "stream.*audio\|send.*audio\|upload.*audio" --include="*.swift" Sources/; then
+            echo "❌ Audio streaming/transmission code found"
+            exit 1
+          fi
+
+          echo "✅ Audio privacy checks passed"
+
+  compliance:
+    name: macOS Compliance
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check sandboxing compliance
+        run: |
+          echo "Checking sandboxing configuration..."
+
+          if [ -f "Sources/WhisperNode/Resources/WhisperNode.entitlements" ]; then
+            # Verify app sandbox is enabled for distribution builds
+            if grep -q "com.apple.security.app-sandbox" Sources/WhisperNode/Resources/WhisperNode.entitlements; then
+              echo "✅ App sandbox is enabled"
+            else
+              echo "⚠️ App sandbox not found - consider enabling for distribution"
+            fi
+          fi
+
+      - name: Verify signing configuration
+        run: |
+          echo "Checking code signing configuration..."
+
+          # Check if Info.plist has required keys
+          if [ -f "Sources/WhisperNode/Resources/Info.plist" ]; then
+            if grep -q "NSMicrophoneUsageDescription" Sources/WhisperNode/Resources/Info.plist; then
+              echo "✅ Microphone usage description found"
+            else
+              echo "❌ Microphone usage description missing from Info.plist"
+              exit 1
+            fi
+          else
+            echo "❌ Info.plist not found"
+            exit 1
+          fi
+
+      - name: Architecture compliance
+        run: |
+          echo "Checking architecture requirements..."
+
+          # Verify Apple Silicon targeting
+          if grep -q "aarch64-apple-darwin" whisper-rust/Cargo.toml || grep -q "arm64" Package.swift; then
+            echo "✅ Apple Silicon support configured"
+          else
+            echo "❌ Apple Silicon support not properly configured"
+            exit 1
+          fi
+
+          # Check macOS version requirements
+          if grep -q "macOS(.v13)" Package.swift; then
+            echo "✅ macOS 13+ requirement specified"
+          else
+            echo "❌ macOS version requirement not properly specified"
+            exit 1
+          fi
