@@ -833,7 +833,8 @@ struct HotkeySetupStep: View {
         hotkeyManager.isRecording = true
         
         // Start capturing key events using NSEvent monitoring
-        HotkeyRecorder.shared.startRecording { [self] keyCode, modifierFlags in
+        HotkeyRecorder.shared.startRecording(
+            callback: { [self] keyCode, modifierFlags in
             Task { @MainActor in
                 // Create a human-readable description for the captured hotkey
                 let description = self.createHotkeyDescription(keyCode: keyCode, modifierFlags: modifierFlags)
@@ -851,12 +852,20 @@ struct HotkeySetupStep: View {
                 // Stop recording automatically after capture
                 self.stopHotkeyRecording(with: newConfiguration)
             }
-        }
+        },
+            timeoutCallback: { [self] in
+                Task { @MainActor in
+                    // Handle timeout case
+                    print("Hotkey recording timed out")
+                    self.stopHotkeyRecording(with: nil)
+                }
+            }
+        )
         
         // Set a timeout for recording (15 seconds)
         DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
             if self.isRecording {
-                self.stopHotkeyRecording(with: nil)
+                HotkeyRecorder.shared.stopRecordingWithTimeout()
             }
         }
     }

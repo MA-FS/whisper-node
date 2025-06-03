@@ -5,7 +5,7 @@ import os.log
 
 @MainActor
 public class PerformanceMonitor: ObservableObject {
-    private static let logger = Logger(subsystem: "com.whispernode.app", category: "PerformanceMonitor")
+    private static let logger = Logger(subsystem: "com.whispernode.core", category: "PerformanceMonitor")
     
     // Published properties for UI binding
     @Published public private(set) var cpuUsage: Double = 0
@@ -186,7 +186,12 @@ public class PerformanceMonitor: ObservableObject {
         }
         
         defer {
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vm_size_t(cpuMsgCount))
+            let deallocResult = vm_deallocate(mach_task_self_, 
+                                            vm_address_t(bitPattern: cpuInfo), 
+                                            vm_size_t(UInt32(cpuMsgCount) * UInt32(MemoryLayout<integer_t>.size)))
+            if deallocResult != KERN_SUCCESS {
+                Self.logger.error("Failed to deallocate CPU info memory: \(deallocResult)")
+            }
         }
         
         // Calculate CPU usage percentage
@@ -205,7 +210,10 @@ public class PerformanceMonitor: ObservableObject {
             totalIdleTicks += idleTicks
         }
         
-        guard totalTicks > 0 else { return 0.0 }
+        guard totalTicks > 0 else { 
+            Self.logger.warning("Invalid CPU state: totalTicks is zero")
+            return 0.0 
+        }
         
         let usage = Double(totalTicks - totalIdleTicks) / Double(totalTicks) * 100.0
         return min(max(usage, 0.0), 100.0)

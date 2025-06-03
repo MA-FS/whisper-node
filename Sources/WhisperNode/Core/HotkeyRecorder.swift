@@ -27,6 +27,7 @@ public class HotkeyRecorder: ObservableObject {
     // Recording state
     @Published public private(set) var isRecording = false
     private var recordingCallback: ((UInt16, CGEventFlags) -> Void)?
+    private var timeoutCallback: (() -> Void)?
     
     // Event monitoring
     private var keyDownMonitor: Any?
@@ -38,20 +39,39 @@ public class HotkeyRecorder: ObservableObject {
     private var currentModifiers: CGEventFlags = []
     private var isAwaitingKeyRelease = false
     
+    // Key code constants
+    private static let escapeKey: UInt16 = 53
+    private static let commandQKey: UInt16 = 12
+    private static let commandWKey: UInt16 = 13
+    private static let commandTabKey: UInt16 = 48
+    
     private init() {
         Self.logger.info("HotkeyRecorder initialized")
     }
     
     deinit {
-        // Cannot call @MainActor methods from deinit
-        // Event monitors will be cleaned up automatically
+        // Force cleanup of event monitors in deinit
+        if let monitor = keyDownMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = keyUpMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = modifierMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
     
     // MARK: - Public Interface
     
     /// Start recording hotkey combinations
-    /// - Parameter callback: Called when a valid hotkey combination is captured
-    public func startRecording(callback: @escaping (UInt16, CGEventFlags) -> Void) {
+    /// - Parameters:
+    ///   - callback: Called when a valid hotkey combination is captured
+    ///   - timeoutCallback: Optional callback called when recording times out
+    public func startRecording(
+        callback: @escaping (UInt16, CGEventFlags) -> Void,
+        timeoutCallback: (() -> Void)? = nil
+    ) {
         guard !isRecording else {
             Self.logger.warning("Already recording hotkeys")
             return
@@ -61,6 +81,7 @@ public class HotkeyRecorder: ObservableObject {
         
         isRecording = true
         recordingCallback = callback
+        self.timeoutCallback = timeoutCallback
         pressedKeys.removeAll()
         currentModifiers = []
         isAwaitingKeyRelease = false
@@ -76,11 +97,25 @@ public class HotkeyRecorder: ObservableObject {
         
         isRecording = false
         recordingCallback = nil
+        timeoutCallback = nil
         pressedKeys.removeAll()
         currentModifiers = []
         isAwaitingKeyRelease = false
         
         removeEventMonitors()
+    }
+    
+    /// Stop recording due to timeout and call timeout callback
+    public func stopRecordingWithTimeout() {
+        guard isRecording else { return }
+        
+        Self.logger.info("Hotkey recording timed out")
+        
+        let callback = timeoutCallback
+        stopRecording()
+        
+        // Call timeout callback after stopping
+        callback?()
     }
     
     // MARK: - Event Monitoring
@@ -197,22 +232,22 @@ public class HotkeyRecorder: ObservableObject {
         // Reject certain problematic key combinations
         
         // Don't allow Escape key as a hotkey
-        if keyCode == 53 { // Escape key
+        if keyCode == Self.escapeKey {
             return false
         }
         
         // Don't allow Command+Q (quit shortcut)
-        if keyCode == 12 && modifiers.contains(.maskCommand) { // Q key with Command
+        if keyCode == Self.commandQKey && modifiers.contains(.maskCommand) {
             return false
         }
         
         // Don't allow Command+W (close window)
-        if keyCode == 13 && modifiers.contains(.maskCommand) { // W key with Command
+        if keyCode == Self.commandWKey && modifiers.contains(.maskCommand) {
             return false
         }
         
         // Don't allow Command+Tab (app switcher)
-        if keyCode == 48 && modifiers.contains(.maskCommand) { // Tab key with Command
+        if keyCode == Self.commandTabKey && modifiers.contains(.maskCommand) {
             return false
         }
         
