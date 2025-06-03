@@ -48,8 +48,44 @@ declare -A PERFORMANCE_THRESHOLDS=(
     ["accuracy"]="0.95"             # ≥95% WER
 )
 
+check_dependencies() {
+    log_info "Checking required dependencies..."
+    
+    # Check for required commands
+    local missing_deps=()
+    
+    if ! command -v python3 >/dev/null 2>&1; then
+        missing_deps+=("python3")
+    fi
+    
+    if ! command -v swift >/dev/null 2>&1; then
+        missing_deps+=("swift")
+    fi
+    
+    if ! command -v git >/dev/null 2>&1; then
+        missing_deps+=("git")
+    fi
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        log_error "Missing required dependencies: ${missing_deps[*]}"
+        log_error "Please install the missing tools and try again"
+        exit 2
+    fi
+    
+    # Check Python JSON module
+    if ! python3 -c "import json" 2>/dev/null; then
+        log_error "Python3 json module not available"
+        exit 2
+    fi
+    
+    log_success "All dependencies available"
+}
+
 setup_environment() {
     log_info "Setting up performance testing environment..."
+    
+    # Check dependencies first
+    check_dependencies
     
     # Create results directory
     mkdir -p "$RESULTS_DIR"
@@ -60,8 +96,26 @@ setup_environment() {
         exit 2
     fi
     
-    if [[ $(sw_vers -productVersion | cut -d. -f1) -lt 13 ]]; then
-        log_error "Performance tests require macOS 13+ (Ventura)"
+    local macos_version
+    macos_version=$(sw_vers -productVersion | cut -d. -f1)
+    if [[ $macos_version -lt 13 ]]; then
+        log_error "Performance tests require macOS 13+ (Ventura), found: $macos_version"
+        exit 2
+    fi
+    
+    # Check Xcode and Swift versions
+    if command -v xcodebuild >/dev/null 2>&1; then
+        local xcode_version
+        xcode_version=$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1)
+        if [[ $xcode_version -lt 14 ]]; then
+            log_warning "Xcode version $xcode_version may not be optimal, recommend 14+"
+        fi
+    fi
+    
+    local swift_version
+    swift_version=$(swift --version | head -1 | awk '{print $4}' | cut -d. -f1)
+    if [[ $swift_version -lt 5 ]]; then
+        log_error "Swift 5.0+ required, found: $swift_version"
         exit 2
     fi
     
@@ -96,7 +150,7 @@ run_performance_tests() {
     local test_log_file="$RESULTS_DIR/performance_test_$TIMESTAMP.log"
     
     # Run XCTest performance suite
-    swift test --filter PerformanceTestSuite \
+    swift test --filter "PerformanceTestSuite" \
         --configuration release \
         --parallel \
         2>&1 | tee "$test_log_file"

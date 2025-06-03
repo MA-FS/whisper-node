@@ -302,13 +302,87 @@ public class PerformanceBenchmarkRunner {
     // MARK: - Helper Methods
     
     private func generateTestAudio(duration: TimeInterval) -> Data? {
+        // First try to load real test audio data
+        if let realAudioData = loadRealTestAudio(duration: duration) {
+            logger.info("Using real test audio for duration: \(duration)s")
+            return realAudioData
+        }
+        
+        // Fallback to synthetic audio with warning
+        logger.warning("Real test audio not available for \(duration)s, using synthetic audio. This may affect accuracy testing.")
+        return generateSyntheticAudio(duration: duration)
+    }
+    
+    private func loadRealTestAudio(duration: TimeInterval) -> Data? {
+        // Try to load from test bundle first
+        if let bundle = Bundle(for: type(of: self)) {
+            let resourceName = "test_audio_\(Int(duration))s"
+            if let audioPath = bundle.path(forResource: resourceName, ofType: "wav") {
+                do {
+                    let audioData = try Data(contentsOf: URL(fileURLWithPath: audioPath))
+                    return validateAndConvertAudioData(audioData, expectedDuration: duration)
+                } catch {
+                    logger.warning("Failed to load test audio \(resourceName).wav: \(error)")
+                }
+            }
+        }
+        
+        // Try to load from project test resources directory
+        let projectPath = FileManager.default.currentDirectoryPath
+        let testResourcesPath = "\(projectPath)/Tests/WhisperNodeTests/TestResources"
+        let resourceName = "test_audio_\(Int(duration))s.wav"
+        let audioPath = "\(testResourcesPath)/\(resourceName)"
+        
+        if FileManager.default.fileExists(atPath: audioPath) {
+            do {
+                let audioData = try Data(contentsOf: URL(fileURLWithPath: audioPath))
+                return validateAndConvertAudioData(audioData, expectedDuration: duration)
+            } catch {
+                logger.warning("Failed to load test audio from \(audioPath): \(error)")
+            }
+        }
+        
+        return nil
+    }
+    
+    private func validateAndConvertAudioData(_ data: Data, expectedDuration: TimeInterval) -> Data? {
+        // Basic validation - ensure we have enough data for the expected duration
+        // For 16kHz mono 16-bit: duration * 16000 * 2 bytes per sample
+        let expectedBytes = Int(expectedDuration * 16000 * 2)
+        let minBytes = Int(Double(expectedBytes) * 0.8) // Allow 20% variance
+        let maxBytes = Int(Double(expectedBytes) * 1.2)
+        
+        guard data.count >= minBytes && data.count <= maxBytes else {
+            logger.warning("Audio data size (\(data.count) bytes) outside expected range (\(minBytes)-\(maxBytes) bytes)")
+            return nil
+        }
+        
+        // TODO: Add more sophisticated validation for sample rate, channels, etc.
+        // For now, assume the audio file is in correct format
+        return data
+    }
+    
+    private func generateSyntheticAudio(duration: TimeInterval) -> Data? {
         let sampleRate: Double = 16000
         let samples = Int(duration * sampleRate)
         var audioData = Data()
         
+        // Generate more realistic audio pattern (speech-like formants)
         for i in 0..<samples {
-            let sample = sin(2.0 * Double.pi * 440.0 * Double(i) / sampleRate)
+            let t = Double(i) / sampleRate
+            
+            // Create speech-like formants with varying amplitude
+            let fundamental = 200.0 // Base frequency
+            let formant1 = sin(2.0 * Double.pi * fundamental * t)
+            let formant2 = sin(2.0 * Double.pi * fundamental * 2.5 * t) * 0.6
+            let formant3 = sin(2.0 * Double.pi * fundamental * 4.0 * t) * 0.3
+            
+            // Add some amplitude modulation to simulate speech patterns
+            let ampMod = 0.5 + 0.5 * sin(2.0 * Double.pi * 5.0 * t) // 5Hz modulation
+            
+            let sample = (formant1 + formant2 + formant3) * ampMod * 0.3
             let scaledSample = Int16(sample * 16384)
+            
             withUnsafeBytes(of: scaledSample) { bytes in
                 audioData.append(contentsOf: bytes)
             }
@@ -318,21 +392,34 @@ public class PerformanceBenchmarkRunner {
     }
     
     private func getCurrentMemoryUsage() -> Double {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let task = mach_task_self_
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
         
-        let kerr = withUnsafeMutablePointer(to: &info) {
+        let result = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                task_info(mach_task_self_,
-                         task_flavor_t(MACH_TASK_BASIC_INFO),
-                         $0,
-                         &count)
+                task_info(task, task_flavor_t(TASK_VM_INFO), $0, &count)
             }
         }
         
-        guard kerr == KERN_SUCCESS else { return 0 }
+        guard result == KERN_SUCCESS else { 
+            logger.warning("Failed to get accurate memory usage, falling back to basic measurement")
+            // Fallback to basic measurement if task_vm_info fails
+            var basicInfo = mach_task_basic_info()
+            var basicCount = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+            
+            let basicResult = withUnsafeMutablePointer(to: &basicInfo) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                    task_info(task, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &basicCount)
+                }
+            }
+            
+            guard basicResult == KERN_SUCCESS else { return 0 }
+            return Double(basicInfo.resident_size) / 1024.0 / 1024.0
+        }
         
-        return Double(info.resident_size) / 1024.0 / 1024.0 // Convert to MB
+        // Use physical footprint for accurate RSS measurement (Apple Technical Note TN2434)
+        return Double(info.phys_footprint) / 1024.0 / 1024.0 // Convert to MB
     }
     
     private func getCurrentCPUUsage() -> Double {

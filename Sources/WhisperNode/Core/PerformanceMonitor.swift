@@ -299,6 +299,7 @@ public class PerformanceMonitor: ObservableObject {
     private var historicalBenchmarks: [PerformanceBenchmark] = []
     private let maxBenchmarkHistory = 50
     private let regressionThreshold = 0.15 // 15% performance degradation threshold
+    private let benchmarkQueue = DispatchQueue(label: "performance.benchmark.queue", qos: .utility)
     
     public struct PerformanceBenchmark: Codable {
         public let testName: String
@@ -344,21 +345,27 @@ public class PerformanceMonitor: ObservableObject {
     }
     
     public func recordBenchmark(_ benchmark: PerformanceBenchmark) {
-        historicalBenchmarks.append(benchmark)
-        
-        // Maintain history size limit
-        if historicalBenchmarks.count > maxBenchmarkHistory {
-            historicalBenchmarks.removeFirst()
+        benchmarkQueue.sync {
+            historicalBenchmarks.append(benchmark)
+            
+            // Maintain history size limit
+            if historicalBenchmarks.count > maxBenchmarkHistory {
+                historicalBenchmarks.removeFirst()
+            }
         }
         
-        // Save to disk for persistence
-        saveBenchmarkHistory()
+        // Save to disk for persistence (async to avoid blocking)
+        benchmarkQueue.async {
+            self.saveBenchmarkHistory()
+        }
         
         Self.logger.info("Recorded benchmark: \(benchmark.testName) = \(benchmark.value) \(benchmark.unit)")
     }
     
     public func analyzeRegression(for testName: String, currentValue: Double) -> RegressionAnalysis? {
-        let relevantBenchmarks = historicalBenchmarks.filter { $0.testName == testName }
+        let relevantBenchmarks = benchmarkQueue.sync {
+            return historicalBenchmarks.filter { $0.testName == testName }
+        }
         
         guard !relevantBenchmarks.isEmpty else {
             Self.logger.warning("No historical data for test: \(testName)")
@@ -436,6 +443,7 @@ public class PerformanceMonitor: ObservableObject {
         }
         
         let benchmarkFile = documentsPath.appendingPathComponent("performance_history.json")
+        let tempFile = benchmarkFile.appendingPathExtension("tmp")
         
         do {
             let encoder = JSONEncoder()
@@ -443,9 +451,22 @@ public class PerformanceMonitor: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             
             let data = try encoder.encode(historicalBenchmarks)
-            try data.write(to: benchmarkFile)
+            
+            // Write to temporary file first for atomic operation
+            try data.write(to: tempFile)
+            
+            // Atomic move to final location
+            _ = try FileManager.default.replaceItem(at: benchmarkFile, withItemAt: tempFile, 
+                                                  backupItemName: nil, options: [], 
+                                                  resultingItemURL: nil)
+            
         } catch {
             Self.logger.error("Failed to save benchmark history: \(error)")
+            
+            // Clean up temp file if it exists
+            if FileManager.default.fileExists(atPath: tempFile.path) {
+                try? FileManager.default.removeItem(at: tempFile)
+            }
         }
     }
     
