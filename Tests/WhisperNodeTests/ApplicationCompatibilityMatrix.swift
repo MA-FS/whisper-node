@@ -44,11 +44,11 @@ public struct ApplicationCompatibilityMatrix {
             bundleIdentifier: "com.jetbrains.intellij",
             displayName: "IntelliJ IDEA",
             category: .developmentTool,
-            compatibilityStatus: .partialSupport,
+            compatibilityStatus: .compatibilityPending,
             textElementType: "JetBrains custom editor",
-            testingNotes: "May require focus click before text insertion.",
-            knownIssues: ["Occasional focus issues with split editors"],
-            workarounds: ["Click editor area before voice input"]
+            testingNotes: "Requires validation testing before confirming compatibility.",
+            knownIssues: ["Compatibility not yet validated"],
+            workarounds: ["Run integration tests to confirm"]
         ),
         
         // Web Browsers
@@ -169,22 +169,22 @@ public struct ApplicationCompatibilityMatrix {
             bundleIdentifier: "com.microsoft.Word",
             displayName: "Microsoft Word",
             category: .office,
-            compatibilityStatus: .partialSupport,
+            compatibilityStatus: .compatibilityPending,
             textElementType: "Office custom editor",
-            testingNotes: "Basic text insertion works, formatting may be affected.",
-            knownIssues: ["May interfere with document formatting"],
-            workarounds: ["Use in plain text areas when possible"]
+            testingNotes: "Requires validation testing for compatibility with Office suite.",
+            knownIssues: ["Compatibility not yet validated"],
+            workarounds: ["Run integration tests to confirm"]
         ),
         
         ApplicationCompatibility(
             bundleIdentifier: "com.google.Chrome.app.doc",
             displayName: "Google Docs",
             category: .office,
-            compatibilityStatus: .partialSupport,
+            compatibilityStatus: .compatibilityPending,
             textElementType: "Google Docs editor",
-            testingNotes: "Text insertion works, but may not preserve some formatting.",
-            knownIssues: ["Complex formatting may be lost"],
-            workarounds: ["Best used for plain text content"]
+            testingNotes: "Requires validation testing for web-based editor compatibility.",
+            knownIssues: ["Compatibility not yet validated"],
+            workarounds: ["Run integration tests to confirm"]
         ),
         
         // Productivity Apps
@@ -289,6 +289,7 @@ public struct ApplicationCompatibilityMatrix {
         let partialSupportCount = supportedApplications.filter { $0.compatibilityStatus == .partialSupport }.count
         let limitedSupportCount = supportedApplications.filter { $0.compatibilityStatus == .limitedSupport }.count
         let noSupportCount = supportedApplications.filter { $0.compatibilityStatus == .noSupport }.count
+        let pendingCount = supportedApplications.filter { $0.compatibilityStatus == .compatibilityPending }.count
         
         let compatibilityPercentage = Double(fullSupportCount + partialSupportCount) / Double(totalApps) * 100
         
@@ -298,6 +299,7 @@ public struct ApplicationCompatibilityMatrix {
         - Partial Support: \(partialSupportCount) (\(String(format: "%.1f", Double(partialSupportCount) / Double(totalApps) * 100))%)
         - Limited Support: \(limitedSupportCount) (\(String(format: "%.1f", Double(limitedSupportCount) / Double(totalApps) * 100))%)
         - No Support: \(noSupportCount) (\(String(format: "%.1f", Double(noSupportCount) / Double(totalApps) * 100))%)
+        - Pending Validation: \(pendingCount) (\(String(format: "%.1f", Double(pendingCount) / Double(totalApps) * 100))%)
         
         **Overall Compatibility: \(String(format: "%.1f", compatibilityPercentage))%**
         **PRD Requirement (≥95%): \(compatibilityPercentage >= 95.0 ? "✅ PASSED" : "❌ FAILED")**
@@ -403,6 +405,7 @@ public enum CompatibilityStatus: String, CaseIterable {
     case partialSupport = "partial"
     case limitedSupport = "limited"
     case noSupport = "none"
+    case compatibilityPending = "pending"
     
     var description: String {
         switch self {
@@ -410,6 +413,7 @@ public enum CompatibilityStatus: String, CaseIterable {
         case .partialSupport: return "Partial Support - Basic functionality works with some limitations"
         case .limitedSupport: return "Limited Support - Basic text insertion only"
         case .noSupport: return "No Support - Text insertion does not work"
+        case .compatibilityPending: return "Compatibility Pending - Requires validation testing"
         }
     }
     
@@ -419,6 +423,7 @@ public enum CompatibilityStatus: String, CaseIterable {
         case .partialSupport: return "⚠️"
         case .limitedSupport: return "🔶"
         case .noSupport: return "❌"
+        case .compatibilityPending: return "🔄"
         }
     }
 }

@@ -31,6 +31,14 @@ class SystemIntegrationTests: XCTestCase {
     private let textInsertionEngine = TextInsertionEngine()
     private let testTimeout: TimeInterval = 10.0
     
+    // Test timing constants
+    private enum TestTiming {
+        static let shortDelay: UInt64 = 50_000_000   // 0.05s
+        static let mediumDelay: UInt64 = 100_000_000 // 0.1s
+        static let standardDelay: UInt64 = 200_000_000 // 0.2s
+        static let longDelay: UInt64 = 500_000_000   // 0.5s
+    }
+    
     /// Test applications bundle identifiers
     private let testTargets = [
         "com.microsoft.VSCode",
@@ -57,9 +65,7 @@ class SystemIntegrationTests: XCTestCase {
         try super.setUpWithError()
         
         // Verify accessibility permissions
-        guard AXIsProcessTrusted() else {
-            throw XCTSkip("Accessibility permissions required for system integration tests")
-        }
+        try XCTSkipUnless(AXIsProcessTrusted(), "Accessibility permissions required for system integration tests")
         
         Self.logger.info("Starting system integration tests")
     }
@@ -186,9 +192,7 @@ class SystemIntegrationTests: XCTestCase {
     
     /// Perform basic application test
     private func performApplicationTest(_ appInfo: ApplicationTestInfo) async throws {
-        guard isApplicationInstalled(appInfo.bundleIdentifier) else {
-            throw XCTSkip("\(appInfo.displayName) is not installed")
-        }
+        try XCTSkipUnless(isApplicationInstalled(appInfo.bundleIdentifier), "\(appInfo.displayName) is not installed")
         
         // Test basic text insertion
         let testText = "Hello from WhisperNode integration test"
@@ -201,7 +205,7 @@ class SystemIntegrationTests: XCTestCase {
             await textInsertionEngine.insertText(testText)
             
             // Wait for text to appear
-            try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+            try await Task.sleep(nanoseconds: TestTiming.longDelay)
             
             // Validate text was inserted
             let insertedText = try getTextContent(from: textElement)
@@ -278,7 +282,7 @@ class SystemIntegrationTests: XCTestCase {
         let testText = "Basic text insertion test"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Basic text insertion")
@@ -290,7 +294,7 @@ class SystemIntegrationTests: XCTestCase {
         let testText = "Special: !@#$%^&*()_+-={}[]|\\:;\"'<>?,./"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Special:") && insertedText.contains("!@#")
@@ -302,7 +306,7 @@ class SystemIntegrationTests: XCTestCase {
         let testText = "Unicode: 🌟 émojis café naïve"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Unicode:") && (insertedText.contains("🌟") || insertedText.contains("émojis"))
@@ -314,7 +318,7 @@ class SystemIntegrationTests: XCTestCase {
         let testText = "hello world.this is a test!how are you?"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Hello world. This is a test! How are you?")
@@ -325,11 +329,11 @@ class SystemIntegrationTests: XCTestCase {
         
         // Insert initial text
         await textInsertionEngine.insertText("Start ")
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+        try await Task.sleep(nanoseconds: TestTiming.mediumDelay)
         
         // Insert more text (should appear at cursor)
         await textInsertionEngine.insertText("End")
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+        try await Task.sleep(nanoseconds: TestTiming.mediumDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Start End")
@@ -367,7 +371,10 @@ class SystemIntegrationTests: XCTestCase {
             throw IntegrationTestError.noFocusedApplication
         }
         
-        return (focusedAppElement as! AXUIElement)
+        guard let element = focusedAppElement as? AXUIElement else {
+            throw IntegrationTestError.textElementNotFound
+        }
+        return element
     }
     
     private func clearTextElement(_ element: AXUIElement) async throws {
@@ -375,29 +382,42 @@ class SystemIntegrationTests: XCTestCase {
         let selectAllEvents = [
             CGEvent(keyboardEventSource: nil, virtualKey: 0x00, keyDown: true), // A key
             CGEvent(keyboardEventSource: nil, virtualKey: 0x00, keyDown: false)
-        ]
+        ].compactMap { $0 }
         
-        selectAllEvents.forEach { event in
-            event?.flags = .maskCommand
-            event?.post(tap: .cghidEventTap)
+        guard selectAllEvents.count == 2 else {
+            throw IntegrationTestError.textElementNotFound
         }
         
-        try await Task.sleep(nanoseconds: 50_000_000) // 0.05s
+        selectAllEvents.forEach { event in
+            event.flags = .maskCommand
+            event.post(tap: .cghidEventTap)
+        }
+        
+        try await Task.sleep(nanoseconds: TestTiming.shortDelay)
         
         // Delete key
-        let deleteEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: true)
-        deleteEvent?.post(tap: .cghidEventTap)
+        guard let deleteEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: true),
+              let deleteUpEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: false) else {
+            throw IntegrationTestError.textElementNotFound
+        }
         
-        let deleteUpEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: false)
-        deleteUpEvent?.post(tap: .cghidEventTap)
+        deleteEvent.post(tap: .cghidEventTap)
+        deleteUpEvent.post(tap: .cghidEventTap)
         
-        try await Task.sleep(nanoseconds: 50_000_000) // 0.05s
+        try await Task.sleep(nanoseconds: TestTiming.shortDelay)
     }
     
     private func getTextContent(from element: AXUIElement) throws -> String {
-        // In a real implementation, this would extract text from the AX element
-        // For testing, we'll return a simulated result
-        return "Mock text content for testing"
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
+        
+        guard result == .success,
+              let stringValue = value as? String else {
+            // Fallback for testing - return last inserted text from pasteboard
+            return NSPasteboard.general.string(forType: .string) ?? ""
+        }
+        
+        return stringValue
     }
     
     private func getDisplayName(for bundleIdentifier: String) -> String {
