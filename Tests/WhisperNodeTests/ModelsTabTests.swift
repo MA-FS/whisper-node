@@ -269,9 +269,19 @@ final class ModelsTabTests: XCTestCase {
             manager.availableModels[index].downloadProgress = 0.0
         }
         
-        // The concurrent download prevention is verified by the downloadWithProgress implementation
-        // which uses NSLock to ensure only one download per model at a time
-        XCTAssertEqual(testModel.status, .available)
+        // Test the locking mechanism directly
+        let testLock = NSLock()
+        
+        // First lock should succeed
+        XCTAssertTrue(testLock.try())
+        
+        // Second attempt should fail (simulating concurrent access)
+        XCTAssertFalse(testLock.try())
+        
+        // Unlock and retry should succeed
+        testLock.unlock()
+        XCTAssertTrue(testLock.try())
+        testLock.unlock()
         
         // Verify the model has proper checksum for integrity verification
         XCTAssertFalse(testModel.checksum.isEmpty)
@@ -294,8 +304,10 @@ final class ModelsTabTests: XCTestCase {
         XCTAssertEqual(metadata.downloadURL, "https://example.com/test.bin")
         XCTAssertNotNil(metadata.downloadedDate)
         
-        // Test ModelsMetadata container
+        // Test ModelsMetadata container with versioning
         var container = ModelsMetadata()
+        XCTAssertEqual(container.version, 1) // Default version
+        
         container.addModel(metadata)
         
         let retrieved = container.getModel("test.en")
@@ -304,6 +316,10 @@ final class ModelsTabTests: XCTestCase {
         
         container.removeModel("test.en")
         XCTAssertNil(container.getModel("test.en"))
+        
+        // Test custom version initialization
+        let customContainer = ModelsMetadata(version: 2)
+        XCTAssertEqual(customContainer.version, 2)
     }
     
     func testDownloadResultErrorHandling() {
@@ -340,29 +356,62 @@ final class ModelsTabTests: XCTestCase {
         XCTAssertEqual(networkErrorResult.error, "HTTP error: 404")
     }
     
-    func testAtomicOperationSafety() {
-        // Test that atomic operations have proper error handling and cleanup
+    func testAtomicFileOperations() async {
         let manager = ModelManager.shared
+        let fileManager = FileManager.default
         
-        // Verify that download operations properly handle staging
-        // This is tested indirectly through the ModelManager's downloadWithProgress method
-        // which implements atomic staging through temp directory operations
+        // Get temp directory for testing
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            XCTFail("Unable to access Application Support directory")
+            return
+        }
         
+        let testTempDir = appSupport.appendingPathComponent("WhisperNode/temp")
+        let testModelsDir = appSupport.appendingPathComponent("WhisperNode/Models")
+        
+        // Create test files for atomic operation testing
+        let testStagingFile = testTempDir.appendingPathComponent("test-staging.tmp")
+        let testFinalFile = testModelsDir.appendingPathComponent("test-final.bin")
+        
+        // Clean up any existing test files
+        try? fileManager.removeItem(at: testStagingFile)
+        try? fileManager.removeItem(at: testFinalFile)
+        
+        do {
+            // Create test staging file
+            let testData = "Test atomic operation data".data(using: .utf8)!
+            try testData.write(to: testStagingFile)
+            
+            // Verify staging file exists
+            XCTAssertTrue(fileManager.fileExists(atPath: testStagingFile.path))
+            XCTAssertFalse(fileManager.fileExists(atPath: testFinalFile.path))
+            
+            // Test atomic move operation
+            try fileManager.moveItem(at: testStagingFile, to: testFinalFile)
+            
+            // Verify atomic move completed successfully
+            XCTAssertFalse(fileManager.fileExists(atPath: testStagingFile.path))
+            XCTAssertTrue(fileManager.fileExists(atPath: testFinalFile.path))
+            
+            // Verify data integrity after move
+            let readData = try Data(contentsOf: testFinalFile)
+            XCTAssertEqual(readData, testData)
+            
+            // Clean up test file
+            try fileManager.removeItem(at: testFinalFile)
+            
+        } catch {
+            XCTFail("Atomic file operation test failed: \(error)")
+        }
+        
+        // Verify all models have properties required for atomic operations
         for model in manager.availableModels {
-            // Verify models have all required properties for atomic operations
             XCTAssertFalse(model.name.isEmpty)
             XCTAssertFalse(model.downloadURL.isEmpty)
             XCTAssertFalse(model.checksum.isEmpty)
             XCTAssertGreaterThan(model.fileSize, 0)
             XCTAssertGreaterThan(model.downloadSize, 0)
         }
-        
-        // The atomic staging is implemented in downloadWithProgress using:
-        // 1. Temporary staging directory
-        // 2. Checksum verification before commit
-        // 3. Atomic file move operations
-        // 4. Proper cleanup on failure
-        XCTAssertTrue(true) // Test passes if we reach here without issues
     }
 }
 

@@ -64,7 +64,7 @@ public struct DownloadResult {
 }
 
 /// Metadata for tracking model installations
-private struct ModelMetadata: Codable {
+public struct ModelMetadata: Codable {
     let name: String
     let version: String
     let downloadedDate: Date
@@ -72,7 +72,7 @@ private struct ModelMetadata: Codable {
     let checksum: String
     let downloadURL: String
     
-    init(name: String, version: String = "1.0", downloadedDate: Date = Date(), fileSize: UInt64, checksum: String, downloadURL: String) {
+    public init(name: String, version: String = "1.0", downloadedDate: Date = Date(), fileSize: UInt64, checksum: String, downloadURL: String) {
         self.name = name
         self.version = version
         self.downloadedDate = downloadedDate
@@ -83,19 +83,24 @@ private struct ModelMetadata: Codable {
 }
 
 /// Container for all model metadata
-private struct ModelsMetadata: Codable {
+public struct ModelsMetadata: Codable {
+    let version: Int
     var models: [String: ModelMetadata] = [:]
     
-    mutating func addModel(_ metadata: ModelMetadata) {
+    public mutating func addModel(_ metadata: ModelMetadata) {
         models[metadata.name] = metadata
     }
     
-    mutating func removeModel(_ name: String) {
+    public mutating func removeModel(_ name: String) {
         models.removeValue(forKey: name)
     }
     
-    func getModel(_ name: String) -> ModelMetadata? {
+    public func getModel(_ name: String) -> ModelMetadata? {
         return models[name]
+    }
+    
+    public init(version: Int = 1) {
+        self.version = version
     }
 }
 
@@ -119,6 +124,7 @@ public class ModelManager: ObservableObject {
     
     private static let requestTimeout: TimeInterval = 30 // 30 seconds for request timeout
     private static let resourceTimeout: TimeInterval = 3600 // 1 hour for large downloads
+    private static let tempFileCleanupInterval: TimeInterval = 3600 // 1 hour for temp file cleanup
     private static let modelFileExtension = ".bin"
     
     // MARK: - Private Properties
@@ -132,6 +138,7 @@ public class ModelManager: ObservableObject {
     private let errorManager = ErrorHandlingManager.shared
     private var modelsMetadata: ModelsMetadata = ModelsMetadata()
     private let metadataQueue = DispatchQueue(label: "com.whispernode.metadata", qos: .utility)
+    private let metadataLock = NSLock()
     private var downloadLocks: [String: NSLock] = [:]
     
     // Base URLs for model downloads (Hugging Face)
@@ -395,7 +402,7 @@ public class ModelManager: ObservableObject {
         downloadLocks[model.name] = lock
         
         guard lock.try() else {
-            return DownloadResult(success: false, error: "Download already in progress for \(model.name)")
+            return DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete.")
         }
         defer { lock.unlock() }
         
@@ -510,6 +517,9 @@ public class ModelManager: ObservableObject {
     // MARK: - Metadata Management
     
     private func loadMetadata() {
+        metadataLock.lock()
+        defer { metadataLock.unlock() }
+        
         guard fileManager.fileExists(atPath: metadataURL.path) else {
             modelsMetadata = ModelsMetadata()
             return
@@ -517,7 +527,16 @@ public class ModelManager: ObservableObject {
         
         do {
             let data = try Data(contentsOf: metadataURL)
-            modelsMetadata = try JSONDecoder().decode(ModelsMetadata.self, from: data)
+            let loadedMetadata = try JSONDecoder().decode(ModelsMetadata.self, from: data)
+            
+            // Handle metadata schema migrations
+            if loadedMetadata.version < 1 {
+                print("Migrating metadata from version \(loadedMetadata.version) to 1")
+                // For now, just create new metadata - in future versions, implement actual migration
+                modelsMetadata = ModelsMetadata(version: 1)
+            } else {
+                modelsMetadata = loadedMetadata
+            }
         } catch {
             print("Warning: Failed to load metadata, using empty metadata: \(error)")
             modelsMetadata = ModelsMetadata()
@@ -527,27 +546,36 @@ public class ModelManager: ObservableObject {
     private func saveMetadata() async {
         await withCheckedContinuation { continuation in
             metadataQueue.async {
+                self.metadataLock.lock()
+                defer { 
+                    self.metadataLock.unlock()
+                    continuation.resume()
+                }
+                
                 do {
                     let encoder = JSONEncoder()
                     encoder.dateEncodingStrategy = .iso8601
                     encoder.outputFormatting = .prettyPrinted
                     let data = try encoder.encode(self.modelsMetadata)
-                    try data.write(to: self.metadataURL)
+                    try data.write(to: self.metadataURL, options: .atomic)
                 } catch {
                     print("Warning: Failed to save metadata: \(error)")
                 }
-                continuation.resume()
             }
         }
     }
     
     private func saveModelMetadata(_ metadata: ModelMetadata) async {
+        metadataLock.lock()
         modelsMetadata.addModel(metadata)
+        metadataLock.unlock()
         await saveMetadata()
     }
     
     private func removeModelMetadata(_ name: String) async {
+        metadataLock.lock()
         modelsMetadata.removeModel(name)
+        metadataLock.unlock()
         await saveMetadata()
     }
     
@@ -556,7 +584,7 @@ public class ModelManager: ObservableObject {
     private func cleanupTempFiles() async {
         do {
             let tempContents = try fileManager.contentsOfDirectory(at: tempDirectory, includingPropertiesForKeys: [.creationDateKey])
-            let cutoffDate = Date().addingTimeInterval(-3600) // 1 hour ago
+            let cutoffDate = Date().addingTimeInterval(-Self.tempFileCleanupInterval)
             
             for fileURL in tempContents {
                 do {
@@ -579,11 +607,9 @@ public class ModelManager: ObservableObject {
             let tempContents = try fileManager.contentsOfDirectory(at: tempDirectory, includingPropertiesForKeys: nil)
             let modelPrefix = "\(modelName)-"
             
-            for fileURL in tempContents {
-                if fileURL.lastPathComponent.hasPrefix(modelPrefix) {
-                    try fileManager.removeItem(at: fileURL)
-                    print("Cleaned up temp file: \(fileURL.lastPathComponent)")
-                }
+            for fileURL in tempContents where fileURL.lastPathComponent.hasPrefix(modelPrefix) {
+                try fileManager.removeItem(at: fileURL)
+                print("Cleaned up temp file: \(fileURL.lastPathComponent)")
             }
         } catch {
             print("Warning: Failed to clean up temp files for \(modelName): \(error)")
