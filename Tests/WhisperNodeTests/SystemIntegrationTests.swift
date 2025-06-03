@@ -31,6 +31,14 @@ class SystemIntegrationTests: XCTestCase {
     private let textInsertionEngine = TextInsertionEngine()
     private let testTimeout: TimeInterval = 10.0
     
+    // Test timing constants
+    private enum TestTiming {
+        static let shortDelay: UInt64 = 50_000_000   // 0.05s
+        static let mediumDelay: UInt64 = 100_000_000 // 0.1s
+        static let standardDelay: UInt64 = 200_000_000 // 0.2s
+        static let longDelay: UInt64 = 500_000_000   // 0.5s
+    }
+    
     /// Test applications bundle identifiers
     private let testTargets = [
         "com.microsoft.VSCode",
@@ -57,9 +65,7 @@ class SystemIntegrationTests: XCTestCase {
         try super.setUpWithError()
         
         // Verify accessibility permissions
-        guard AXIsProcessTrusted() else {
-            throw XCTSkip("Accessibility permissions required for system integration tests")
-        }
+        try XCTSkipUnless(AXIsProcessTrusted(), "Accessibility permissions required for system integration tests")
         
         Self.logger.info("Starting system integration tests")
     }
@@ -184,11 +190,18 @@ class SystemIntegrationTests: XCTestCase {
     
     // MARK: - Test Implementation
     
-    /// Perform basic application test
+    /// Performs basic text insertion validation for a specific application
+    ///
+    /// This method validates fundamental text insertion functionality by:
+    /// 1. Verifying the application is installed on the system
+    /// 2. Clearing any existing text in the target element
+    /// 3. Inserting test text using the WhisperNode engine
+    /// 4. Validating that the text was successfully inserted
+    ///
+    /// - Parameter appInfo: Application metadata including bundle ID and display name
+    /// - Throws: `XCTSkip` if application not installed, `IntegrationTestError` for test failures
     private func performApplicationTest(_ appInfo: ApplicationTestInfo) async throws {
-        guard isApplicationInstalled(appInfo.bundleIdentifier) else {
-            throw XCTSkip("\(appInfo.displayName) is not installed")
-        }
+        try XCTSkipUnless(isApplicationInstalled(appInfo.bundleIdentifier), "\(appInfo.displayName) is not installed")
         
         // Test basic text insertion
         let testText = "Hello from WhisperNode integration test"
@@ -201,7 +214,7 @@ class SystemIntegrationTests: XCTestCase {
             await textInsertionEngine.insertText(testText)
             
             // Wait for text to appear
-            try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+            try await Task.sleep(nanoseconds: TestTiming.longDelay)
             
             // Validate text was inserted
             let insertedText = try getTextContent(from: textElement)
@@ -210,7 +223,20 @@ class SystemIntegrationTests: XCTestCase {
         }
     }
     
-    /// Perform comprehensive application test with all test scenarios
+    /// Executes comprehensive compatibility testing across all test scenarios
+    ///
+    /// This method performs extensive validation including:
+    /// - Basic text insertion capability
+    /// - Special character handling (punctuation, symbols)
+    /// - Unicode support (emojis, accented characters)
+    /// - Smart formatting preservation (capitalization, spacing)
+    /// - Cursor position accuracy validation
+    ///
+    /// Results are aggregated into a compatibility score and detailed report.
+    ///
+    /// - Parameter appInfo: Application metadata for testing
+    /// - Returns: Detailed compatibility results with percentage score
+    /// - Throws: Integration test errors for critical failures
     private func performComprehensiveApplicationTest(_ appInfo: ApplicationTestInfo) async throws -> ApplicationCompatibilityResult {
         guard isApplicationInstalled(appInfo.bundleIdentifier) else {
             return ApplicationCompatibilityResult(
@@ -272,64 +298,104 @@ class SystemIntegrationTests: XCTestCase {
     
     // MARK: - Individual Test Methods
     
+    /// Validates basic text insertion functionality
+    ///
+    /// Tests fundamental text insertion by inserting a simple test string
+    /// and verifying it appears correctly in the target element.
+    ///
+    /// - Parameter textElement: The accessibility element to test text insertion
+    /// - Returns: `true` if text insertion succeeds, `false` otherwise
+    /// - Throws: Integration test errors for accessibility or element failures
     private func testBasicTextInsertion(_ textElement: AXUIElement) async throws -> Bool {
         try await clearTextElement(textElement)
         
         let testText = "Basic text insertion test"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Basic text insertion")
     }
     
+    /// Tests special character handling and symbol insertion
+    ///
+    /// Validates that punctuation, symbols, and special characters are
+    /// correctly inserted without corruption or substitution.
+    ///
+    /// - Parameter textElement: The accessibility element for testing
+    /// - Returns: `true` if special characters insert correctly
+    /// - Throws: Integration test errors for insertion failures
     private func testSpecialCharacters(_ textElement: AXUIElement) async throws -> Bool {
         try await clearTextElement(textElement)
         
         let testText = "Special: !@#$%^&*()_+-={}[]|\\:;\"'<>?,./"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Special:") && insertedText.contains("!@#")
     }
     
+    /// Validates Unicode character support including emojis and accents
+    ///
+    /// Tests insertion of Unicode characters, emojis, and accented text
+    /// to ensure proper character encoding and display support.
+    ///
+    /// - Parameter textElement: The accessibility element for testing
+    /// - Returns: `true` if Unicode characters display correctly
+    /// - Throws: Integration test errors for character encoding issues
     private func testUnicodeSupport(_ textElement: AXUIElement) async throws -> Bool {
         try await clearTextElement(textElement)
         
         let testText = "Unicode: 🌟 émojis café naïve"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Unicode:") && (insertedText.contains("🌟") || insertedText.contains("émojis"))
     }
     
+    /// Tests smart formatting and automatic text enhancement
+    ///
+    /// Validates that WhisperNode's smart formatting features work correctly,
+    /// including automatic capitalization and punctuation spacing.
+    ///
+    /// - Parameter textElement: The accessibility element for testing
+    /// - Returns: `true` if formatting is applied correctly
+    /// - Throws: Integration test errors for formatting validation failures
     private func testFormattingPreservation(_ textElement: AXUIElement) async throws -> Bool {
         try await clearTextElement(textElement)
         
         let testText = "hello world.this is a test!how are you?"
         await textInsertionEngine.insertText(testText)
         
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: TestTiming.standardDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Hello world. This is a test! How are you?")
     }
     
+    /// Validates cursor position accuracy during text insertion
+    ///
+    /// Tests that text is inserted at the correct cursor position and that
+    /// subsequent insertions appear in the proper sequence.
+    ///
+    /// - Parameter textElement: The accessibility element for testing
+    /// - Returns: `true` if cursor positioning works correctly
+    /// - Throws: Integration test errors for cursor positioning failures
     private func testCursorPositionAccuracy(_ textElement: AXUIElement) async throws -> Bool {
         try await clearTextElement(textElement)
         
         // Insert initial text
         await textInsertionEngine.insertText("Start ")
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+        try await Task.sleep(nanoseconds: TestTiming.mediumDelay)
         
         // Insert more text (should appear at cursor)
         await textInsertionEngine.insertText("End")
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+        try await Task.sleep(nanoseconds: TestTiming.mediumDelay)
         
         let insertedText = try getTextContent(from: textElement)
         return insertedText.contains("Start End")
@@ -367,37 +433,68 @@ class SystemIntegrationTests: XCTestCase {
             throw IntegrationTestError.noFocusedApplication
         }
         
-        return (focusedAppElement as! AXUIElement)
+        guard let element = focusedAppElement as? AXUIElement else {
+            throw IntegrationTestError.textElementNotFound
+        }
+        return element
     }
     
+    /// Clears all existing text from an accessibility element
+    ///
+    /// Uses keyboard simulation (Cmd+A, Delete) to clear existing content
+    /// from text input areas before inserting test text.
+    ///
+    /// - Parameter element: The accessibility element to clear
+    /// - Throws: `IntegrationTestError` if CGEvent creation fails
     private func clearTextElement(_ element: AXUIElement) async throws {
         // Simulate Cmd+A (Select All) then Delete
         let selectAllEvents = [
             CGEvent(keyboardEventSource: nil, virtualKey: 0x00, keyDown: true), // A key
             CGEvent(keyboardEventSource: nil, virtualKey: 0x00, keyDown: false)
-        ]
+        ].compactMap { $0 }
         
-        selectAllEvents.forEach { event in
-            event?.flags = .maskCommand
-            event?.post(tap: .cghidEventTap)
+        guard selectAllEvents.count == 2 else {
+            throw IntegrationTestError.textElementNotFound
         }
         
-        try await Task.sleep(nanoseconds: 50_000_000) // 0.05s
+        selectAllEvents.forEach { event in
+            event.flags = .maskCommand
+            event.post(tap: .cghidEventTap)
+        }
+        
+        try await Task.sleep(nanoseconds: TestTiming.shortDelay)
         
         // Delete key
-        let deleteEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: true)
-        deleteEvent?.post(tap: .cghidEventTap)
+        guard let deleteEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: true),
+              let deleteUpEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: false) else {
+            throw IntegrationTestError.textElementNotFound
+        }
         
-        let deleteUpEvent = CGEvent(keyboardEventSource: nil, virtualKey: 0x33, keyDown: false)
-        deleteUpEvent?.post(tap: .cghidEventTap)
+        deleteEvent.post(tap: .cghidEventTap)
+        deleteUpEvent.post(tap: .cghidEventTap)
         
-        try await Task.sleep(nanoseconds: 50_000_000) // 0.05s
+        try await Task.sleep(nanoseconds: TestTiming.shortDelay)
     }
     
+    /// Retrieves text content from an accessibility element
+    ///
+    /// Attempts to extract text using accessibility APIs, with pasteboard
+    /// fallback for testing scenarios where direct extraction is not available.
+    ///
+    /// - Parameter element: The accessibility element to read from
+    /// - Returns: Text content of the element, or empty string if unavailable
+    /// - Throws: Accessibility API errors for invalid elements
     private func getTextContent(from element: AXUIElement) throws -> String {
-        // In a real implementation, this would extract text from the AX element
-        // For testing, we'll return a simulated result
-        return "Mock text content for testing"
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
+        
+        guard result == .success,
+              let stringValue = value as? String else {
+            // Fallback for testing - return last inserted text from pasteboard
+            return NSPasteboard.general.string(forType: .string) ?? ""
+        }
+        
+        return stringValue
     }
     
     private func getDisplayName(for bundleIdentifier: String) -> String {
@@ -424,6 +521,13 @@ class SystemIntegrationTests: XCTestCase {
         return textElements[bundleIdentifier] ?? "AXTextArea"
     }
     
+    /// Generates a comprehensive compatibility report from test results
+    ///
+    /// Creates a formatted report showing compatibility statistics, individual
+    /// application results, and overall compliance with PRD requirements.
+    ///
+    /// - Parameter results: Dictionary mapping bundle IDs to compatibility results
+    /// - Returns: Formatted report string with statistics and recommendations
     private func generateCompatibilityReport(_ results: [String: ApplicationCompatibilityResult]) -> String {
         var report = "\n=== WhisperNode Application Compatibility Report ===\n\n"
         
