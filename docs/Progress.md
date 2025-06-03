@@ -31,7 +31,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | ✅ Done | 100% | Complete onboarding with functional hotkey recording |
 | T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | ✅ Done | 100% | Comprehensive error handling verified |
 | T16 | [Performance Monitoring & Optimization](tasks/T16-performance-monitoring.md) | Medium | ✅ Done | 100% | Complete system monitoring with automatic adjustments |
-| T17 | [Model Storage & Management System](tasks/T17-model-storage.md) | Medium | 🚧 Partial | 25% | Basic storage, needs atomic downloads + checksums |
+| T17 | [Model Storage & Management System](tasks/T17-model-storage.md) | Medium | ✅ Done | 100% | Atomic downloads, real SHA256 checksums, metadata tracking complete |
 | T18 | [Haptic Feedback Integration](tasks/T18-haptic-feedback.md) | Low | ⏳ WIP | 0% | Not started |
 | T19 | [Accessibility Features Implementation](tasks/T19-accessibility-features.md) | Medium | 🚧 Partial | 40% | Basic accessibility, needs VoiceOver enhancement |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ✅ Done | 100% | Signing scripts + notarization workflow complete |
@@ -53,18 +53,18 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 **Status**: 6/6 complete - All UI components verified complete
 
 ### Phase 4 - Polish & Distribution (T14-T19, T21-T25)
-**Status**: 0/12 complete - Onboarding partial, performance monitoring partial, remaining tasks not started
+**Status**: 4/12 complete - T14-T17 complete, T19 partial, remaining tasks not started
 
 ## Overall Progress Summary (VERIFIED)
 
 **Total Tasks**: 25  
-**Completed & Verified**: 15 (60%)  
+**Completed & Verified**: 16 (64%)  
 **In Testing**: 0 (0%)
-**Partially Implemented**: 2 (8%)
+**Partially Implemented**: 1 (4%)
 **Work in Progress**: 8 (32%)
 
-**Actual Core Functionality**: 16/17 core features complete (94%)
-**Distribution & Polish**: 3/8 tasks complete (37.5%)
+**Actual Core Functionality**: 17/17 core features complete (100%)
+**Distribution & Polish**: 4/8 tasks complete (50%)
 
 **Phase 1 (Foundation)**: T01, T02, T20 ✅ - Complete foundation with signing infrastructure  
 **Phase 2 (Core Features)**: T03-T07 ✅ - Complete speech-to-text pipeline functional  
@@ -97,7 +97,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 ### High Priority (Beta Ready)  
 4. **T16 - Performance Monitoring** ✅ - Complete CPU/memory tracking
-5. **T17 - Model Storage** - Atomic downloads + checksum validation
+5. **T17 - Model Storage** ✅ - Atomic downloads + checksum validation complete
 6. **T24 - Integration Testing** - Cross-app compatibility validation
 
 ### Production Ready (MVP)
