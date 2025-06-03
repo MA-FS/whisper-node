@@ -5,6 +5,7 @@ import CoreAudio
 struct VoiceTab: View {
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var audioEngine = AudioCaptureEngine()
+    @StateObject private var hapticManager = HapticManager.shared
     
     @State private var availableDevices: [(deviceID: AudioDeviceID, name: String)] = []
     @State private var permissionStatus: AudioCaptureEngine.PermissionStatus = .undetermined
@@ -238,6 +239,84 @@ struct VoiceTab: View {
                         }
                         
                         Text("Record a short test to verify your microphone setup")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // Haptic Feedback
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Haptic Feedback")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        
+                        VStack(spacing: 12) {
+                            // Enable/Disable Toggle
+                            HStack {
+                                Toggle(isOn: $hapticManager.isEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Enable Haptic Feedback")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        Text("Subtle feedback for recording events on supported devices")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .toggleStyle(SwitchToggleStyle())
+                                .accessibilityLabel("Enable haptic feedback")
+                                .accessibilityHint("Provides subtle haptic feedback during recording start and stop events")
+                            }
+                            
+                            if hapticManager.isEnabled {
+                                // Intensity Slider
+                                VStack(spacing: 4) {
+                                    HStack {
+                                        Text("Intensity:")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        
+                                        Slider(value: $hapticManager.intensity, in: 0.1...1.0, step: 0.1) {
+                                            Text("Haptic Intensity")
+                                        } minimumValueLabel: {
+                                            Text("Light")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                        } maximumValueLabel: {
+                                            Text("Strong")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .accessibilityLabel("Haptic feedback intensity")
+                                        .accessibilityValue("\(Int(hapticManager.intensity * 100))%")
+                                        
+                                        Text("\(Int(hapticManager.intensity * 100))%")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .frame(width: 35, alignment: .trailing)
+                                    }
+                                    
+                                    // Test Haptic Button
+                                    HStack {
+                                        Button("Test Haptic") {
+                                            hapticManager.testHaptic()
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        .accessibilityLabel("Test haptic feedback")
+                                        .accessibilityHint("Trigger a test haptic pulse to feel the current intensity setting")
+                                        
+                                        Spacer()
+                                    }
+                                }
+                                .padding(.leading, 20)
+                                .transition(.opacity.combined(with: .slide))
+                            }
+                        }
+                        .padding(12)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(8)
+                        
+                        Text("Haptic feedback is only available on MacBooks with Force Touch trackpads")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

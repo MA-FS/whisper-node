@@ -410,6 +410,11 @@ public class WhisperNodeCore: ObservableObject {
             // Insert transcribed text at cursor position
             await textInsertionEngine.insertText(result.text)
             
+            // Haptic feedback for successful text insertion
+            await MainActor.run {
+                HapticManager.shared.textInserted()
+            }
+            
             // Check for performance warnings
             if let metrics = result.metrics, metrics.isDowngradeNeeded {
                 Self.logger.warning("High CPU usage detected, model downgrade recommended")
@@ -420,6 +425,8 @@ public class WhisperNodeCore: ObservableObject {
             // Handle transcription failure with error manager (silent failure with red orb flash)
             await MainActor.run {
                 errorManager.handleTranscriptionFailure()
+                // Haptic feedback for transcription error
+                HapticManager.shared.errorOccurred()
             }
         }
     }
@@ -464,6 +471,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         self.isRecording = true
         Self.logger.info("Voice recording started")
         
+        // Haptic feedback for recording start
+        HapticManager.shared.recordingStarted()
+        
         // Update menu bar state
         menuBarManager.updateState(.recording)
         
@@ -501,6 +511,8 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
                 
                 self.isRecording = false
                 indicatorManager.hideIndicator()
+                // Haptic feedback for audio capture error
+                HapticManager.shared.errorOccurred()
                 // Performance monitoring continues in background
             }
         }
@@ -514,6 +526,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCompleteRecording duration: CFTimeInterval) {
         isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
+        
+        // Haptic feedback for recording completion
+        HapticManager.shared.recordingStopped()
         
         // Update menu bar state back to normal
         menuBarManager.updateState(.normal)
@@ -543,6 +558,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         isRecording = false
         Self.logger.info("Voice recording cancelled")
         
+        // Haptic feedback for recording cancellation
+        HapticManager.shared.recordingStopped()
+        
         // Update menu bar state back to normal
         menuBarManager.updateState(.normal)
         
@@ -560,6 +578,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     /// The error indicator is shown immediately and then hidden after a short delay. This method is called when the hotkey manager encounters an error.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didFailWithError error: HotkeyError) {
         Self.logger.error("Hotkey manager error: \(error.localizedDescription)")
+        
+        // Haptic feedback for error
+        HapticManager.shared.errorOccurred()
         
         // Update menu bar state to indicate error
         menuBarManager.updateState(.error)
