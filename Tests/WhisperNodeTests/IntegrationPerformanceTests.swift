@@ -27,6 +27,12 @@ class IntegrationPerformanceTests: XCTestCase {
     
     // Performance test constants
     private let shortTextSample = "Hello, this is a short test message."
+    
+    // Timing constants for test execution
+    private static let memoryStabilizationDelay: UInt64 = 100_000_000 // 0.1s
+    private static let memoryCleanupDelay: UInt64 = 500_000_000 // 0.5s
+    private static let iterationDelay: UInt64 = 50_000_000 // 0.05s
+    private static let cpuMonitoringDelay: UInt64 = 200_000_000 // 0.2s
     private let mediumTextSample = String(repeating: "This is a medium length text sample for performance testing. ", count: 10)
     private let longTextSample = String(repeating: "This is a longer text sample designed to test performance with substantial content insertion across different applications and text input scenarios. ", count: 50)
     
@@ -93,7 +99,8 @@ class IntegrationPerformanceTests: XCTestCase {
         
         Self.logger.info("Unicode insertion: \(unicodeText.count) chars in \(String(format: "%.3f", totalTime))s")
         
-        // Unicode insertion should complete within reasonable time (≤100ms for this sample)
+        // Unicode insertion should complete within reasonable time
+        // Based on ~50 characters and 1ms/char requirement, allow 2x margin = 100ms
         XCTAssertLessThan(totalTime, 0.1, "Unicode text insertion should complete within 100ms")
     }
     
@@ -108,11 +115,11 @@ class IntegrationPerformanceTests: XCTestCase {
             await textInsertionEngine.insertText("Memory test iteration \(i): \(shortTextSample)")
             
             // Small delay to allow for memory monitoring
-            try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+            try await Task.sleep(nanoseconds: Self.memoryStabilizationDelay)
         }
         
         // Allow for cleanup
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+        try await Task.sleep(nanoseconds: Self.memoryCleanupDelay)
         
         let finalMemory = getCurrentMemoryUsage()
         let memoryIncrease = finalMemory - initialMemory
@@ -162,7 +169,7 @@ class IntegrationPerformanceTests: XCTestCase {
         let operationTime = endTime - startTime
         
         // Monitor CPU usage after operations
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        try await Task.sleep(nanoseconds: Self.cpuMonitoringDelay)
         let finalMetrics = await performanceMonitor.getCurrentMetrics()
         let peakCPU = finalMetrics.cpuUsage
         
@@ -208,7 +215,7 @@ class IntegrationPerformanceTests: XCTestCase {
         // Simulate application switching by varying insertion patterns
         let switchingScenarios = [
             ("Short burst", shortTextSample),
-            ("Medium content", mediumTextSample.prefix(100).description),
+            ("Medium content", String(mediumTextSample.prefix(100))),
             ("Unicode content", "Test with émojis 🌟 and accénts"),
             ("Punctuation heavy", "Test! With? Lots. Of: Punctuation; Here, Right?"),
             ("Numbers and symbols", "Order #123: $45.67 (15% off) = $38.82")
@@ -251,7 +258,7 @@ class IntegrationPerformanceTests: XCTestCase {
             insertionTimes.append(endTime - startTime)
             
             // Brief pause between iterations
-            try await Task.sleep(nanoseconds: 50_000_000) // 0.05s
+            try await Task.sleep(nanoseconds: Self.iterationDelay)
         }
         
         let averageTime = insertionTimes.reduce(0, +) / Double(insertionTimes.count)
@@ -271,6 +278,7 @@ class IntegrationPerformanceTests: XCTestCase {
     // MARK: - Helper Methods
     
     /// Measure execution time of async operations
+    @discardableResult
     private func measure<T>(_ name: String, iterations: Int = 5, operation: () async throws -> T) async rethrows -> [Double] {
         var measurements: [Double] = []
         
@@ -282,7 +290,7 @@ class IntegrationPerformanceTests: XCTestCase {
             measurements.append(endTime - startTime)
             
             // Brief pause between iterations
-            try await Task.sleep(nanoseconds: 50_000_000) // 0.05s
+            try await Task.sleep(nanoseconds: Self.iterationDelay)
         }
         
         let average = measurements.reduce(0, +) / Double(measurements.count)
@@ -303,6 +311,7 @@ class IntegrationPerformanceTests: XCTestCase {
         }
         
         guard result == KERN_SUCCESS else {
+            Self.logger.warning("Failed to get memory usage: kern_return_t = \(result)")
             return 0.0
         }
         

@@ -145,13 +145,13 @@ For each target application:
 ### Common Issues
 
 #### Accessibility Permission Errors
-```
+```text
 Error: Accessibility permissions required for integration testing
 Solution: Grant accessibility permissions to test runner application
 ```
 
 #### Text Insertion Failures
-```
+```text
 Issue: Text not appearing in target application
 Diagnosis: 
 1. Check if application has focus
@@ -161,7 +161,7 @@ Diagnosis:
 ```
 
 #### Performance Issues
-```
+```text
 Issue: Slow text insertion or system lag
 Diagnosis:
 1. Monitor CPU usage (should be <150%)
@@ -171,7 +171,7 @@ Diagnosis:
 ```
 
 #### Unicode Character Problems
-```
+```text
 Issue: Emojis or accented characters not appearing
 Diagnosis:
 1. Verify application supports Unicode

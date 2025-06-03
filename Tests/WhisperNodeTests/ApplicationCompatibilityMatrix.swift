@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Application Compatibility Matrix for WhisperNode
 ///
@@ -260,6 +261,17 @@ public struct ApplicationCompatibilityMatrix {
             validationCriteria: ["Line breaks maintained", "Indentation preserved", "No extra spacing"]
         )
     ]
+    
+    /// Validate which applications are currently installed on the system
+    public static func validateInstalledApplications() -> [String: Bool] {
+        var results: [String: Bool] = [:]
+        for app in supportedApplications {
+            let workspace = NSWorkspace.shared
+            let isInstalled = workspace.urlForApplication(withBundleIdentifier: app.bundleIdentifier) != nil
+            results[app.bundleIdentifier] = isInstalled
+        }
+        return results
+    }
     
     /// Generate compatibility report
     public static func generateReport() -> String {

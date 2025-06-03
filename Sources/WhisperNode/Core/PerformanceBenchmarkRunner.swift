@@ -115,7 +115,7 @@ public class PerformanceBenchmarkRunner {
      * - Parameter performanceMonitor: The performance monitor to use for historical tracking.
      *   Defaults to the shared instance if not provided.
      */
-    public init(performanceMonitor: PerformanceMonitor = PerformanceMonitor()) {
+    public init(performanceMonitor: PerformanceMonitor = PerformanceMonitor.shared) {
         self.performanceMonitor = performanceMonitor
     }
     
@@ -190,8 +190,8 @@ public class PerformanceBenchmarkRunner {
         let startTime = CFAbsoluteTimeGetCurrent()
         
         // Simulate cold launch
-        let core = WhisperNodeCore()
-        _ = await withCheckedContinuation { continuation in
+        let core = WhisperNodeCore.shared
+        _ = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 let success = core.initialize()
                 continuation.resume(returning: success)
@@ -227,10 +227,10 @@ public class PerformanceBenchmarkRunner {
         
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        let core = WhisperNodeCore()
+        let core = WhisperNodeCore.shared
         _ = core.initialize()
         
-        let transcriptionSuccess = await withCheckedContinuation { continuation in
+        let transcriptionSuccess = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             core.processAudio(audioData) { result in
                 continuation.resume(returning: result.isSuccess)
             }

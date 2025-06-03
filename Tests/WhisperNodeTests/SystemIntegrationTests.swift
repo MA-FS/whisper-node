@@ -361,11 +361,13 @@ class SystemIntegrationTests: XCTestCase {
         var focusedApp: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedApplicationAttribute as CFString, &focusedApp)
         
-        guard result == .success, let focusedAppElement = focusedApp else {
+        guard result == .success, 
+              let focusedAppElement = focusedApp,
+              CFGetTypeID(focusedAppElement) == AXUIElementGetTypeID() else {
             throw IntegrationTestError.noFocusedApplication
         }
         
-        return focusedAppElement as! AXUIElement
+        return (focusedAppElement as! AXUIElement)
     }
     
     private func clearTextElement(_ element: AXUIElement) async throws {
