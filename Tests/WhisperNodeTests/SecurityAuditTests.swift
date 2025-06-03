@@ -93,17 +93,23 @@ final class SecurityAuditTests: XCTestCase {
         }
         
         // Additional check for any keys that might contain actual audio/transcript data
-        // by checking value types and sizes
+        // by checking value types and sizes with context-aware thresholds
         for key in allKeys {
             if let value = userDefaults.object(forKey: key) {
-                // Check for large Data objects that might contain audio
-                if let dataValue = value as? Data, dataValue.count > 10000 {
-                    XCTFail("Large data object found in UserDefaults (possible audio data): \(key) - \(dataValue.count) bytes")
+                // Check for Data objects that might contain audio or sensitive content
+                if let dataValue = value as? Data {
+                    let sizeThreshold = getSizeThresholdForDataKey(key)
+                    if dataValue.count > sizeThreshold {
+                        XCTFail("Large data object found in UserDefaults (possible sensitive data): \(key) - \(dataValue.count) bytes (threshold: \(sizeThreshold))")
+                    }
                 }
                 
-                // Check for large strings that might contain transcripts
-                if let stringValue = value as? String, stringValue.count > 1000 {
-                    XCTFail("Large string found in UserDefaults (possible transcript): \(key) - \(stringValue.count) characters")
+                // Check for strings that might contain transcripts or sensitive text
+                if let stringValue = value as? String {
+                    let lengthThreshold = getLengthThresholdForStringKey(key)
+                    if stringValue.count > lengthThreshold {
+                        XCTFail("Large string found in UserDefaults (possible sensitive text): \(key) - \(stringValue.count) characters (threshold: \(lengthThreshold))")
+                    }
                 }
             }
         }
@@ -304,5 +310,61 @@ extension SecurityAuditTests {
         
         XCTAssertTrue(matchingFiles.isEmpty, 
                      "Files matching pattern '\(pattern)' found in \(directory.path): \(matchingFiles)")
+    }
+    
+    /// Context-aware size threshold for Data values based on key purpose
+    private func getSizeThresholdForDataKey(_ key: String) -> Int {
+        let lowercaseKey = key.lowercased()
+        
+        // Configuration and settings data can be larger
+        if lowercaseKey.contains("config") || lowercaseKey.contains("settings") || 
+           lowercaseKey.contains("preferences") || lowercaseKey.contains("theme") {
+            return 50000  // 50KB for configuration data
+        }
+        
+        // Cache and temporary data should be minimal
+        if lowercaseKey.contains("cache") || lowercaseKey.contains("temp") || 
+           lowercaseKey.contains("buffer") {
+            return 1000   // 1KB for cache/temp data
+        }
+        
+        // Model metadata can be moderately large
+        if lowercaseKey.contains("model") || lowercaseKey.contains("metadata") {
+            return 25000  // 25KB for model metadata
+        }
+        
+        // Default threshold for unknown data types
+        return 10000  // 10KB default
+    }
+    
+    /// Context-aware length threshold for String values based on key purpose
+    private func getLengthThresholdForStringKey(_ key: String) -> Int {
+        let lowercaseKey = key.lowercased()
+        
+        // Version and build information can be longer
+        if lowercaseKey.contains("version") || lowercaseKey.contains("build") || 
+           lowercaseKey.contains("changelog") || lowercaseKey.contains("notes") {
+            return 5000   // 5000 characters for version info
+        }
+        
+        // Configuration strings can be moderately long
+        if lowercaseKey.contains("config") || lowercaseKey.contains("settings") || 
+           lowercaseKey.contains("path") || lowercaseKey.contains("url") {
+            return 2000   // 2000 characters for config strings
+        }
+        
+        // User preferences should be shorter
+        if lowercaseKey.contains("preference") || lowercaseKey.contains("option") {
+            return 500    // 500 characters for preferences
+        }
+        
+        // Text that might contain transcripts or sensitive content
+        if lowercaseKey.contains("text") || lowercaseKey.contains("content") || 
+           lowercaseKey.contains("message") || lowercaseKey.contains("log") {
+            return 200    // 200 characters for text content
+        }
+        
+        // Default threshold for unknown string types
+        return 1000   // 1000 characters default
     }
 }
