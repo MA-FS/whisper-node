@@ -126,6 +126,10 @@ certificates/
 release/
 dist/
 
+# DMG Installer Assets (generated)
+installer-background.png
+installer-icon.icns
+
 # Documentation Generation
 docs/generated/
 api-docs/
