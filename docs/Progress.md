@@ -28,9 +28,9 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T11 | [Preferences Window - Models Tab](tasks/T11-preferences-models.md) | High | ✅ Done | 100% | Model download + management verified |
 | T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ✅ Done | 100% | Hotkey recording & conflicts verified |
 | T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | ✅ Done | 100% | Version info + Sparkle integration verified |
-| T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | 🧪 Testing | 85% | Complete implementation, minor hotkey capture completion needed |
+| T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | ✅ Done | 100% | Complete onboarding with functional hotkey recording |
 | T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | ✅ Done | 100% | Comprehensive error handling verified |
-| T16 | [Performance Monitoring & Optimization](tasks/T16-performance-monitoring.md) | Medium | 🚧 Partial | 30% | Basic CPU monitoring, needs full implementation |
+| T16 | [Performance Monitoring & Optimization](tasks/T16-performance-monitoring.md) | Medium | ✅ Done | 100% | Complete system monitoring with automatic adjustments |
 | T17 | [Model Storage & Management System](tasks/T17-model-storage.md) | Medium | 🚧 Partial | 25% | Basic storage, needs atomic downloads + checksums |
 | T18 | [Haptic Feedback Integration](tasks/T18-haptic-feedback.md) | Low | ⏳ WIP | 0% | Not started |
 | T19 | [Accessibility Features Implementation](tasks/T19-accessibility-features.md) | Medium | 🚧 Partial | 40% | Basic accessibility, needs VoiceOver enhancement |
@@ -58,13 +58,13 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary (VERIFIED)
 
 **Total Tasks**: 25  
-**Completed & Verified**: 13 (52%)  
+**Completed & Verified**: 15 (60%)  
 **In Testing**: 0 (0%)
-**Partially Implemented**: 4 (16%)
+**Partially Implemented**: 2 (8%)
 **Work in Progress**: 8 (32%)
 
-**Actual Core Functionality**: 14/17 core features complete (82%)
-**Distribution & Polish**: 1/8 tasks complete (12.5%)
+**Actual Core Functionality**: 16/17 core features complete (94%)
+**Distribution & Polish**: 3/8 tasks complete (37.5%)
 
 **Phase 1 (Foundation)**: T01, T02, T20 ✅ - Complete foundation with signing infrastructure  
 **Phase 2 (Core Features)**: T03-T07 ✅ - Complete speech-to-text pipeline functional  
@@ -91,12 +91,12 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Critical Next Steps for Production Release
 
 ### Immediate Priority (Alpha Ready)
-1. **T14 - Onboarding Flow** - Complete first-run setup wizard
-2. **T20 - App Bundle & Code Signing** - Enable distribution 
-3. **T23 - Performance Testing** - Validate against PRD requirements
+1. **T14 - Onboarding Flow** ✅ - Complete first-run setup wizard
+2. **T20 - App Bundle & Code Signing** ✅ - Enable distribution 
+3. **T23 - Performance Testing** - Validate against PRD requirements (dependency T16 now complete)
 
 ### High Priority (Beta Ready)  
-4. **T16 - Performance Monitoring** - Complete CPU/memory tracking
+4. **T16 - Performance Monitoring** ✅ - Complete CPU/memory tracking
 5. **T17 - Model Storage** - Atomic downloads + checksum validation
 6. **T24 - Integration Testing** - Cross-app compatibility validation
 
