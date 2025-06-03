@@ -36,13 +36,33 @@ let package = Package(
                 "Resources/WhisperNode.entitlements",
                 "Bridge"
             ],
+            resources: [
+                .copy("Resources/Info.plist"),
+                .copy("Resources/WhisperNode.entitlements")
+            ],
+            swiftSettings: [
+                .define("SWIFT_PACKAGE"),
+                .unsafeFlags([
+                    "-Xfrontend", "-disable-availability-checking"
+                ], .when(configuration: .release))
+            ],
             linkerSettings: [
                 .linkedLibrary("whisper_rust", .when(platforms: [.macOS])),
                 .linkedFramework("Foundation"),
+                .linkedFramework("AppKit"),
+                .linkedFramework("SwiftUI"),
+                .linkedFramework("Combine"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("Carbon"),
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),
                 .linkedFramework("Accelerate"),
-                .unsafeFlags(["-L./whisper-rust/target/aarch64-apple-darwin/release"])
+                .linkedFramework("Quartz"),
+                .unsafeFlags([
+                    "-L./whisper-rust/target/aarch64-apple-darwin/release",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+                ])
             ]
         ),
         .testTarget(
