@@ -11,13 +11,13 @@ Test text insertion compatibility across macOS applications and text fields.
 
 ## Acceptance Criteria
 
-- [ ] VS Code text insertion testing
-- [ ] Safari form field compatibility
-- [ ] Slack message composition testing
-- [ ] TextEdit document insertion
-- [ ] Mail app compatibility verification
-- [ ] Terminal command insertion testing
-- [ ] 95% Cocoa text view compatibility validation
+- [x] VS Code text insertion testing
+- [x] Safari form field compatibility
+- [x] Slack message composition testing
+- [x] TextEdit document insertion
+- [x] Mail app compatibility verification
+- [x] Terminal command insertion testing
+- [x] 95% Cocoa text view compatibility validation
 
 ## Implementation Details
 
