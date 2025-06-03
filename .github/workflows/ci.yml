@@ -1,0 +1,163 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  lint:
+    name: Lint and Format Check
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: aarch64-apple-darwin
+
+      - name: Check Rust formatting
+        run: |
+          cd whisper-rust
+          cargo fmt -- --check
+
+      - name: Run Rust Clippy
+        run: |
+          cd whisper-rust
+          cargo clippy --target aarch64-apple-darwin -- -D warnings
+
+      - name: Check Swift formatting (if swiftformat is available)
+        run: |
+          if command -v swiftformat &> /dev/null; then
+            swiftformat --lint Sources/
+          else
+            echo "SwiftFormat not available, skipping Swift format check"
+          fi
+
+  test:
+    name: Build and Test
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            whisper-rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('whisper-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build Rust library
+        run: |
+          build_type=$(echo "${{ matrix.configuration }}" | tr '[:upper:]' '[:lower:]')
+          ./scripts/build-rust.sh $build_type
+
+      - name: Run Swift tests
+        run: swift test --configuration ${{ matrix.configuration }} --build-path build
+
+      - name: Build application (no signing)
+        run: |
+          swift build --configuration ${{ matrix.configuration }} --arch arm64 --build-path build
+
+      - name: Verify build artifacts
+        run: |
+          find build -name "WhisperNode" -type f -executable ! -path "*.dSYM*" | head -1 | xargs file
+
+  integration-test:
+    name: Integration Tests
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            whisper-rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('whisper-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build Rust library
+        run: ./scripts/build-rust.sh release
+
+      - name: Run performance tests
+        run: ./scripts/run-performance-tests.sh
+
+      - name: Run integration tests
+        run: swift test --filter "Integration" --build-path build
+
+  dependencies:
+    name: Dependency Check
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust dependency audit
+        run: |
+          cargo install cargo-audit
+          cd whisper-rust
+          cargo audit
+
+      - name: Check for outdated Rust dependencies
+        run: |
+          cargo install cargo-outdated
+          cd whisper-rust
+          cargo outdated --exit-code 1
+
+      - name: Swift dependency resolution
+        run: swift package resolve
+
+      - name: Check Swift Package.resolved for issues
+        run: |
+          if [ -f Package.resolved ]; then
+            cat Package.resolved
+          fi
