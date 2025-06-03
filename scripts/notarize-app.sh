@@ -81,10 +81,16 @@ ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
 # Step 4: Submit for notarization
 log_info "Submitting app for notarization..."
-SUBMISSION_INFO=$(xcrun notarytool submit "$ZIP_PATH" \
+
+# Create temporary keychain item for secure credential handling
+KEYCHAIN_PROFILE="whispernode-notarization"
+xcrun notarytool store-credentials "$KEYCHAIN_PROFILE" \
     --apple-id "$APPLE_ID" \
     --password "$APP_PASSWORD" \
-    --team-id "$TEAM_ID" \
+    --team-id "$TEAM_ID" 2>/dev/null || true
+
+SUBMISSION_INFO=$(xcrun notarytool submit "$ZIP_PATH" \
+    --keychain-profile "$KEYCHAIN_PROFILE" \
     --wait 2>&1)
 
 # Extract submission ID
@@ -102,9 +108,7 @@ log_info "Submission ID: $SUBMISSION_ID"
 # Step 5: Check notarization status
 log_info "Checking notarization status..."
 STATUS_INFO=$(xcrun notarytool info "$SUBMISSION_ID" \
-    --apple-id "$APPLE_ID" \
-    --password "$APP_PASSWORD" \
-    --team-id "$TEAM_ID" 2>&1)
+    --keychain-profile "$KEYCHAIN_PROFILE" 2>&1)
 
 # Check if notarization was successful
 if echo "$STATUS_INFO" | grep -q "status: Accepted"; then
@@ -116,9 +120,7 @@ else
     # Get detailed log
     log_info "Fetching notarization log..."
     xcrun notarytool log "$SUBMISSION_ID" \
-        --apple-id "$APPLE_ID" \
-        --password "$APP_PASSWORD" \
-        --team-id "$TEAM_ID"
+        --keychain-profile "$KEYCHAIN_PROFILE"
     
     rm -f "$ZIP_PATH"
     exit 1
@@ -156,6 +158,9 @@ fi
 
 # Cleanup
 rm -f "$ZIP_PATH"
+
+# Clean up temporary keychain profile
+xcrun notarytool delete-credentials "$KEYCHAIN_PROFILE" 2>/dev/null || true
 
 log_info "Notarization complete for $APP_NAME $VERSION"
 log_info "The app at $APP_PATH is ready for distribution"

@@ -102,8 +102,8 @@ create_app_bundle() {
     mkdir -p "$APP_PATH/Contents/Resources"
     mkdir -p "$APP_PATH/Contents/Frameworks"
     
-    # Find the built executable
-    EXECUTABLE_PATH=$(find "$BUILD_DIR" -name "WhisperNode" -type f -perm +111 | grep -v ".dSYM" | head -1)
+    # Find the built executable with safer find options
+    EXECUTABLE_PATH=$(find "$BUILD_DIR" -name "WhisperNode" -type f -executable ! -path "*.dSYM*" | head -1)
     
     if [ -z "$EXECUTABLE_PATH" ]; then
         log_error "Built executable not found"
@@ -156,7 +156,7 @@ sign_app() {
     
     # Sign any embedded frameworks first
     if [ -d "$APP_PATH/Contents/Frameworks" ]; then
-        find "$APP_PATH/Contents/Frameworks" -name "*.dylib" -o -name "*.framework" | while read -r framework; do
+        find "$APP_PATH/Contents/Frameworks" \( -name "*.dylib" -o -name "*.framework" \) -print0 | while IFS= read -r -d '' framework; do
             log_info "Signing framework: $(basename "$framework")"
             codesign --force --deep --sign "$SIGNING_IDENTITY" \
                 --entitlements "$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode.entitlements" \
@@ -196,10 +196,10 @@ verify_app() {
     
     # Check entitlements
     log_info "Checking entitlements..."
-    codesign -d --entitlements - "$APP_PATH" 2>&1 | grep -q "com.apple.security.device.microphone" || {
+    if ! codesign -d --entitlements - "$APP_PATH" 2>&1 | grep -q "com.apple.security.device.microphone"; then
         log_error "Microphone entitlement not found"
         exit 1
-    }
+    fi
     
     # Display signing info
     log_info "Signing information:"

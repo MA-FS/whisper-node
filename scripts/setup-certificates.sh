@@ -80,24 +80,17 @@ validate_certificate() {
 export_certificate() {
     local cert_name="$1"
     local output_file="$2"
-    local password="$3"
     
     log_section "Exporting Certificate"
-    
-    if [ -z "$password" ]; then
-        log_error "Password required for export"
-        return 1
-    fi
     
     log_info "Exporting certificate: $cert_name"
     log_info "Output file: $output_file"
     
-    # Export from keychain
+    # Export from keychain (password will be prompted securely)
     security export -k ~/Library/Keychains/login.keychain-db \
         -t identities \
         -f pkcs12 \
         -o "$output_file" \
-        -P "$password" \
         -T /usr/bin/codesign
     
     if [ -f "$output_file" ]; then
@@ -112,7 +105,6 @@ export_certificate() {
 # Import certificate from file
 import_certificate() {
     local cert_file="$1"
-    local password="$2"
     
     log_section "Importing Certificate"
     
@@ -121,10 +113,9 @@ import_certificate() {
         return 1
     fi
     
-    # Import to keychain
+    # Import to keychain (password will be prompted securely)
     security import "$cert_file" \
         -k ~/Library/Keychains/login.keychain-db \
-        -P "$password" \
         -T /usr/bin/codesign \
         -T /usr/bin/security
     
@@ -141,36 +132,35 @@ setup_environment() {
     log_section "Environment Setup"
     
     # Check if environment variables are set
+    log_warning "Environment variables should be set manually in your shell config for security"
+    log_info "Required environment variables:"
+    log_info "  WHISPERNODE_TEAM_ID - Your Apple Developer Team ID"
+    log_info "  WHISPERNODE_APPLE_ID - Your Apple ID email"
+    log_info "  WHISPERNODE_APP_PASSWORD - App-specific password for notarization"
+    log_info ""
+    log_info "Example for ~/.zshrc or ~/.bashrc:"
+    log_info "  export WHISPERNODE_TEAM_ID=\"YOUR_TEAM_ID\""
+    log_info "  export WHISPERNODE_APPLE_ID=\"your@email.com\""
+    log_info "  export WHISPERNODE_APP_PASSWORD=\"xxxx-xxxx-xxxx-xxxx\""
+    log_info ""
+    log_info "Current status:"
+    
     if [ -z "${WHISPERNODE_TEAM_ID:-}" ]; then
-        log_warning "WHISPERNODE_TEAM_ID not set"
-        echo -n "Enter your Apple Developer Team ID: "
-        read -r TEAM_ID
-        echo "export WHISPERNODE_TEAM_ID=\"$TEAM_ID\"" >> ~/.zshrc
-        export WHISPERNODE_TEAM_ID="$TEAM_ID"
+        log_warning "  WHISPERNODE_TEAM_ID: Not set"
     else
-        log_info "Team ID: $WHISPERNODE_TEAM_ID"
+        log_info "  WHISPERNODE_TEAM_ID: Set"
     fi
     
     if [ -z "${WHISPERNODE_APPLE_ID:-}" ]; then
-        log_warning "WHISPERNODE_APPLE_ID not set"
-        echo -n "Enter your Apple ID email: "
-        read -r APPLE_ID
-        echo "export WHISPERNODE_APPLE_ID=\"$APPLE_ID\"" >> ~/.zshrc
-        export WHISPERNODE_APPLE_ID="$APPLE_ID"
+        log_warning "  WHISPERNODE_APPLE_ID: Not set"
     else
-        log_info "Apple ID: $WHISPERNODE_APPLE_ID"
+        log_info "  WHISPERNODE_APPLE_ID: Set"
     fi
     
     if [ -z "${WHISPERNODE_APP_PASSWORD:-}" ]; then
-        log_warning "WHISPERNODE_APP_PASSWORD not set"
-        log_info "Generate an app-specific password at: https://appleid.apple.com/account/manage"
-        echo -n "Enter your app-specific password: "
-        read -rs APP_PASSWORD
-        echo
-        echo "export WHISPERNODE_APP_PASSWORD=\"$APP_PASSWORD\"" >> ~/.zshrc
-        export WHISPERNODE_APP_PASSWORD="$APP_PASSWORD"
+        log_warning "  WHISPERNODE_APP_PASSWORD: Not set"
     else
-        log_info "App-specific password is set"
+        log_info "  WHISPERNODE_APP_PASSWORD: Set"
     fi
 }
 
@@ -240,18 +230,12 @@ main() {
                 read -r cert_name
                 echo -n "Enter output filename (e.g., developer-id.p12): "
                 read -r output_file
-                echo -n "Enter password for export: "
-                read -rs password
-                echo
-                export_certificate "$cert_name" "$output_file" "$password"
+                export_certificate "$cert_name" "$output_file"
                 ;;
             4)
                 echo -n "Enter certificate file path: "
                 read -r cert_file
-                echo -n "Enter certificate password: "
-                read -rs password
-                echo
-                import_certificate "$cert_file" "$password"
+                import_certificate "$cert_file"
                 ;;
             5)
                 setup_environment
