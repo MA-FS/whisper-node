@@ -59,20 +59,6 @@ struct OnboardingFlow: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Onboarding wizard")
-                    .onKeyPress(.leftArrow) {
-                        if currentStep > 0 {
-                            previousStep()
-                            return .handled
-                        }
-                        return .ignored
-                    }
-                    .onKeyPress(.rightArrow) {
-                        if currentStep < steps.count - 1 {
-                            nextStep()
-                            return .handled
-                        }
-                        return .ignored
-                    }
                 }
             }
         }
@@ -752,6 +738,7 @@ struct HotkeySetupStep: View {
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var hotkeyManager = GlobalHotkeyManager.shared
     @State private var isRecording = false
+    @State private var recordedHotkeyDescription: String = ""
     
     var body: some View {
         VStack(spacing: 30) {
@@ -836,7 +823,8 @@ struct HotkeySetupStep: View {
         }
         .padding(.horizontal, 40)
         .onAppear {
-            // Hotkey text is now automatically updated from hotkeyManager.currentHotkey.description
+            // Initialize with current hotkey description
+            recordedHotkeyDescription = hotkeyManager.currentHotkey.description
         }
     }
     
@@ -844,24 +832,102 @@ struct HotkeySetupStep: View {
         isRecording = true
         hotkeyManager.isRecording = true
         
-        // TODO: Implement actual hotkey capture
-        // This is a simplified implementation for onboarding demo
-        // The actual implementation should capture key events and validate the combination
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+        // Start capturing key events using NSEvent monitoring
+        HotkeyRecorder.shared.startRecording(
+            callback: { [self] keyCode, modifierFlags in
+            Task { @MainActor in
+                // Create a human-readable description for the captured hotkey
+                let description = self.createHotkeyDescription(keyCode: keyCode, modifierFlags: modifierFlags)
+                
+                // Create new hotkey configuration
+                let newConfiguration = HotkeyConfiguration(
+                    keyCode: keyCode,
+                    modifierFlags: modifierFlags,
+                    description: description
+                )
+                
+                // Update the hotkey configuration
+                self.recordedHotkeyDescription = description
+                
+                // Stop recording automatically after capture
+                self.stopHotkeyRecording(with: newConfiguration)
+            }
+        },
+            timeoutCallback: { [self] in
+                Task { @MainActor in
+                    // Handle timeout case
+                    print("Hotkey recording timed out")
+                    self.stopHotkeyRecording(with: nil)
+                }
+            }
+        )
+        
+        // Set a timeout for recording (15 seconds)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
             if self.isRecording {
-                self.stopHotkeyRecording()
+                HotkeyRecorder.shared.stopRecordingWithTimeout()
             }
         }
     }
     
-    private func stopHotkeyRecording() {
+    private func stopHotkeyRecording(with configuration: HotkeyConfiguration? = nil) {
         isRecording = false
         hotkeyManager.isRecording = false
         
-        // TODO: In a complete implementation, this would save the recorded hotkey
-        // For now, we'll keep the existing hotkey configuration
-        // Future implementation should validate the captured key combination
-        // and update the settings with the new hotkey
+        // Stop the hotkey recorder
+        HotkeyRecorder.shared.stopRecording()
+        
+        // If we captured a valid hotkey, update the hotkey manager
+        if let config = configuration {
+            hotkeyManager.updateHotkey(config)
+            recordedHotkeyDescription = config.description
+        } else {
+            // Reset to previous state if no hotkey was captured
+            recordedHotkeyDescription = hotkeyManager.currentHotkey.description
+        }
+    }
+    
+    private func createHotkeyDescription(keyCode: UInt16, modifierFlags: CGEventFlags) -> String {
+        var parts: [String] = []
+        
+        // Add modifier keys
+        if modifierFlags.contains(.maskCommand) {
+            parts.append("⌘")
+        }
+        if modifierFlags.contains(.maskAlternate) {
+            parts.append("⌥")
+        }
+        if modifierFlags.contains(.maskShift) {
+            parts.append("⇧")
+        }
+        if modifierFlags.contains(.maskControl) {
+            parts.append("⌃")
+        }
+        
+        // Add the main key
+        let keyName = keyCodeToString(keyCode)
+        parts.append(keyName)
+        
+        return parts.joined(separator: "")
+    }
+    
+    private static let keyCodeMappings: [UInt16: String] = [
+        // Special keys
+        49: "Space", 36: "Return", 48: "Tab", 53: "Escape", 51: "Delete",
+        
+        // Letters
+        0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
+        11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T", 31: "O", 32: "U",
+        33: "[", 34: "I", 35: "P", 37: "L", 38: "J", 39: "'", 40: "K", 41: ";", 42: "\\",
+        43: ",", 44: "/", 45: "N", 46: "M", 47: ".", 50: "`", 30: "]",
+        
+        // Numbers and symbols
+        18: "1", 19: "2", 20: "3", 21: "4", 22: "6", 23: "5", 24: "=", 25: "9",
+        26: "7", 27: "-", 28: "8", 29: "0"
+    ]
+    
+    private func keyCodeToString(_ keyCode: UInt16) -> String {
+        return Self.keyCodeMappings[keyCode] ?? "Key \(keyCode)"
     }
 }
 
