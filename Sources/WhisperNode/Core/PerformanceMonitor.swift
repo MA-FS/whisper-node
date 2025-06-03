@@ -3,6 +3,25 @@ import IOKit.ps
 import mach
 import os.log
 
+/// Configuration struct for performance monitoring thresholds
+public struct PerformanceThresholds {
+    let cpuThrottleThreshold: Double
+    let lowBatteryThreshold: Float
+    let thermalThrottleStates: Set<ProcessInfo.ThermalState>
+    
+    public static let `default` = PerformanceThresholds(
+        cpuThrottleThreshold: 80.0,
+        lowBatteryThreshold: 0.15,
+        thermalThrottleStates: [.serious, .critical]
+    )
+    
+    public init(cpuThrottleThreshold: Double, lowBatteryThreshold: Float, thermalThrottleStates: Set<ProcessInfo.ThermalState>) {
+        self.cpuThrottleThreshold = cpuThrottleThreshold
+        self.lowBatteryThreshold = lowBatteryThreshold
+        self.thermalThrottleStates = thermalThrottleStates
+    }
+}
+
 @MainActor
 public class PerformanceMonitor: ObservableObject {
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "PerformanceMonitor")
@@ -22,13 +41,12 @@ public class PerformanceMonitor: ObservableObject {
     private let maxHistorySize = 10
     
     // Performance thresholds
-    private let cpuThrottleThreshold: Double = 80.0
-    private let thermalThrottleStates: Set<ProcessInfo.ThermalState> = [.serious, .critical]
-    private let lowBatteryThreshold: Float = 0.15
+    private let thresholds: PerformanceThresholds
     
     public static let shared = PerformanceMonitor()
     
-    private init() {
+    private init(thresholds: PerformanceThresholds = .default) {
+        self.thresholds = thresholds
         Self.logger.info("PerformanceMonitor initializing...")
         startMonitoring()
     }
@@ -143,9 +161,9 @@ public class PerformanceMonitor: ObservableObject {
         let previousThrottling = isThrottling
         
         // Determine if we should throttle based on multiple factors
-        let cpuThrottling = cpuUsage > cpuThrottleThreshold
-        let thermalThrottling = thermalThrottleStates.contains(thermalState)
-        let batteryThrottling = isOnBattery && batteryLevel < lowBatteryThreshold
+        let cpuThrottling = cpuUsage > thresholds.cpuThrottleThreshold
+        let thermalThrottling = thresholds.thermalThrottleStates.contains(thermalState)
+        let batteryThrottling = isOnBattery && batteryLevel < thresholds.lowBatteryThreshold
         
         isThrottling = cpuThrottling || thermalThrottling || batteryThrottling
         

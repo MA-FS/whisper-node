@@ -164,12 +164,14 @@ public class WhisperNodeCore: ObservableObject {
     private func applyBatteryOptimizations(_ settings: [String: Any]) {
         if let enablePowerSaving = settings["enablePowerSaving"] as? Bool, enablePowerSaving {
             Self.logger.info("Applying battery power saving optimizations")
+            // TODO: Implement battery optimizations
             // Reduce processing frequency or quality when battery is low
         }
     }
     
     private func applyThermalOptimizations() {
         Self.logger.info("Applying thermal throttling optimizations")
+        // TODO: Implement thermal optimizations  
         // Reduce processing intensity during thermal pressure
     }
     
