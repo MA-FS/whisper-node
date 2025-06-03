@@ -124,22 +124,22 @@ gh workflow run build-and-release.yml
 
 ### Common Issues
 
-**1. Code Signing Failures**
+### Code Signing Failures
 - Verify certificate is valid and not expired
 - Check that certificate includes "Developer ID Application"
 - Ensure certificate is in the correct .p12 format
 
-**2. Notarization Failures**
+### Notarization Failures
 - Verify Apple ID credentials are correct
 - Check that Team ID matches the certificate
 - Ensure app-specific password is current
 
-**3. Test Failures**
-- Check if Rust toolchain is properly installed
+### Test Failures
+- Check if the Rust toolchain is properly installed
 - Verify that all dependencies are available
 - Review test logs for specific failure reasons
 
-**4. Build Failures**
+### Build Failures
 - Ensure all required frameworks are linked
 - Check that Rust library builds successfully
 - Verify Xcode version compatibility

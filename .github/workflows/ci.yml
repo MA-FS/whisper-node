@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -141,15 +142,30 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-tools-${{ hashFiles('whisper-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tools-
+
+      - name: Install cargo tools
+        run: |
+          if ! command -v cargo-audit &> /dev/null; then
+            cargo install cargo-audit
+          fi
+          if ! command -v cargo-outdated &> /dev/null; then
+            cargo install cargo-outdated
+          fi
+
       - name: Rust dependency audit
         run: |
-          cargo install cargo-audit
           cd whisper-rust
           cargo audit
 
       - name: Check for outdated Rust dependencies
         run: |
-          cargo install cargo-outdated
           cd whisper-rust
           cargo outdated --exit-code 1
 

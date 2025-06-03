@@ -114,30 +114,30 @@ jobs:
           retention-days: 30
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             build/*.dmg
           body: |
             ## WhisperNode ${{ github.ref_name }}
-            
+
             ### 🎤 Blazingly Fast Speech-to-Text for macOS
-            
+
             On-device speech recognition with press-and-hold activation for developers and power users.
-            
+
             **System Requirements:**
             - macOS 13.0+ (Ventura)
             - Apple Silicon (M1/M2/M3) processor
-            
+
             **Installation:**
             1. Download the DMG file below
             2. Mount the DMG and drag WhisperNode to Applications
             3. Run WhisperNode and complete the first-time setup
-            
+
             **What's New:**
             - See commit history for detailed changes
-            
+
             **Note:** This release is automatically built and notarized by Apple.
           draft: false
           prerelease: false
@@ -159,12 +159,12 @@ jobs:
             echo "❌ Potential hardcoded secrets found"
             exit 1
           fi
-          
+
           # Check entitlements
           if [ -f "Sources/WhisperNode/Resources/WhisperNode.entitlements" ]; then
             echo "✅ Entitlements file found"
             cat Sources/WhisperNode/Resources/WhisperNode.entitlements
           fi
-          
+
           # Verify required security settings
           echo "✅ Security scan completed"
