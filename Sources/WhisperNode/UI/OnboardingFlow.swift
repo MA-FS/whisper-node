@@ -52,12 +52,27 @@ struct OnboardingFlow: View {
                                 .tag(index)
                                 .accessibilityLabel("Onboarding step \(index + 1) of \(steps.count): \(step.title)")
                                 .accessibilityHint("Navigate through onboarding steps")
+                                .focusable()
                         }
                     }
                     .tabViewStyle(DefaultTabViewStyle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Onboarding wizard")
+                    .onKeyPress(.leftArrow) {
+                        if currentStep > 0 {
+                            previousStep()
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.rightArrow) {
+                        if currentStep < steps.count - 1 {
+                            nextStep()
+                            return .handled
+                        }
+                        return .ignored
+                    }
                 }
             }
         }
