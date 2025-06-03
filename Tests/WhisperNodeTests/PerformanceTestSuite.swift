@@ -3,14 +3,51 @@ import Foundation
 import AVFoundation
 @testable import WhisperNode
 
-/// Comprehensive performance testing suite validating PRD requirements
-/// 
-/// Performance Requirements from PRD:
-/// - Cold launch: ≤2s
-/// - Transcription latency: ≤1s for 5s utterances, ≤2s for 15s utterances  
-/// - Memory usage: ≤100MB idle, ≤700MB peak with small.en model
-/// - CPU utilization: <150% during transcription
-/// - Accuracy: ≥95% WER on Librispeech test subset
+/**
+ * # PerformanceTestSuite
+ * 
+ * Comprehensive XCTest performance testing suite that validates all WhisperNode PRD requirements.
+ * 
+ * ## Overview
+ * 
+ * This test suite provides systematic validation of all performance requirements defined in the
+ * Product Requirements Document (PRD) using XCTest's built-in performance measurement capabilities.
+ * 
+ * ## Performance Requirements Validated
+ * 
+ * - **Cold Launch**: ≤2s application initialization
+ * - **Transcription Latency**: ≤1s for 5s utterances, ≤2s for 15s utterances
+ * - **Memory Usage**: ≤100MB idle, ≤700MB peak with small.en model
+ * - **CPU Utilization**: <150% during transcription
+ * - **Battery Impact**: <150% average CPU during operation
+ * - **Accuracy**: ≥95% WER on Librispeech test subset
+ * 
+ * ## Test Execution
+ * 
+ * Tests are designed to run in CI environments and provide detailed performance metrics.
+ * Each test includes proper setup, measurement, and teardown phases with comprehensive logging.
+ * 
+ * ## Usage
+ * 
+ * ```bash
+ * # Run the complete performance test suite
+ * swift test --filter PerformanceTestSuite --configuration release
+ * 
+ * # Run specific performance test
+ * swift test --filter PerformanceTestSuite.testColdLaunchTime --configuration release
+ * ```
+ * 
+ * ## Requirements
+ * 
+ * - macOS 13+ (Ventura)
+ * - Apple Silicon (M1+)
+ * - Release build configuration for accurate measurements
+ * - Optional: Real test audio files in TestResources/ for accuracy testing
+ * 
+ * - Author: WhisperNode Development Team
+ * - Version: 1.0
+ * - Since: T23 Performance Testing Implementation
+ */
 class PerformanceTestSuite: XCTestCase {
     
     private var core: WhisperNodeCore!

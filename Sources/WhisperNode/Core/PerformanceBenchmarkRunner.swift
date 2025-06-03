@@ -1,29 +1,107 @@
 import Foundation
 import OSLog
 
-/// Automated performance benchmark runner for continuous monitoring
-/// Integrates with the performance test suite to validate PRD requirements
+/**
+ * # PerformanceBenchmarkRunner
+ * 
+ * Automated performance benchmark runner for continuous monitoring and validation of WhisperNode performance requirements.
+ * 
+ * ## Overview
+ * 
+ * The `PerformanceBenchmarkRunner` provides comprehensive performance testing capabilities that validate all PRD requirements:
+ * - Cold launch time (≤2s)
+ * - Transcription latency (≤1s for 5s, ≤2s for 15s utterances)
+ * - Memory usage (≤100MB idle, ≤700MB peak)
+ * - CPU utilization (<150% during transcription)
+ * - Battery impact monitoring
+ * - Accuracy validation (≥95% WER)
+ * 
+ * ## Features
+ * 
+ * - **Asynchronous Execution**: All benchmarks run using async/await for non-blocking performance measurement
+ * - **Real Audio Support**: Automatically loads real test audio files with fallback to improved synthetic audio
+ * - **Accurate Memory Measurement**: Uses `task_vm_info` with physical footprint for precise RSS tracking
+ * - **Regression Detection**: Integrates with `PerformanceMonitor` for historical tracking and regression analysis
+ * - **CI/CD Integration**: Designed for automated testing in continuous integration environments
+ * 
+ * ## Usage
+ * 
+ * ```swift
+ * let runner = PerformanceBenchmarkRunner()
+ * let results = await runner.runAllBenchmarks()
+ * 
+ * if results.overallPassed {
+ *     print("All performance requirements satisfied!")
+ * } else {
+ *     print("Performance issues detected: \(results.results.filter { !$0.passed })")
+ * }
+ * ```
+ * 
+ * ## Test Audio Requirements
+ * 
+ * For accurate testing, place audio files in `Tests/WhisperNodeTests/TestResources/`:
+ * - `test_audio_3s.wav`, `test_audio_5s.wav`, `test_audio_10s.wav`, `test_audio_15s.wav`
+ * - Format: 16kHz mono, 16-bit WAV
+ * - Content: Clear English speech without background noise
+ * 
+ * ## Thread Safety
+ * 
+ * This class is thread-safe for concurrent benchmark execution. Memory and CPU measurements
+ * use system APIs that are safe for concurrent access.
+ * 
+ * - Author: WhisperNode Development Team
+ * - Version: 1.0
+ * - Since: T23 Performance Testing Implementation
+ */
 public class PerformanceBenchmarkRunner {
     
     private let logger = Logger(subsystem: "com.whispernode.benchmarks", category: "PerformanceBenchmarkRunner")
     private let performanceMonitor: PerformanceMonitor
     
+    /**
+     * Represents the result of an individual benchmark test.
+     * 
+     * Contains all necessary information to evaluate whether a specific performance
+     * requirement has been met, including the measured value, threshold, and success status.
+     */
     public struct BenchmarkResult {
+        /// Human-readable name of the benchmark test
         public let testName: String
+        /// Whether the benchmark execution completed successfully
         public let success: Bool
+        /// The measured performance value
         public let value: Double
+        /// The maximum allowed value for this benchmark (PRD requirement)
         public let threshold: Double
+        /// Unit of measurement (e.g., "seconds", "MB", "%")
         public let unit: String
+        /// When this benchmark was executed
         public let timestamp: Date
         
+        /// Whether this benchmark passed (success && value <= threshold)
         public var passed: Bool { success && value <= threshold }
     }
     
+    /**
+     * Aggregated results from a complete benchmark suite execution.
+     * 
+     * Provides overall assessment and detailed results for each individual benchmark.
+     */
     public struct BenchmarkSuite {
+        /// Name of the benchmark suite
         public let name: String
+        /// Individual benchmark results
         public let results: [BenchmarkResult]
+        /// Whether all benchmarks in the suite passed
         public let overallPassed: Bool
         
+        /**
+         * Creates a new benchmark suite with calculated overall status.
+         * 
+         * - Parameters:
+         *   - name: The name identifier for this benchmark suite
+         *   - results: Array of individual benchmark results
+         */
         public init(name: String, results: [BenchmarkResult]) {
             self.name = name
             self.results = results
@@ -31,12 +109,40 @@ public class PerformanceBenchmarkRunner {
         }
     }
     
+    /**
+     * Creates a new benchmark runner with the specified performance monitor.
+     * 
+     * - Parameter performanceMonitor: The performance monitor to use for historical tracking.
+     *   Defaults to the shared instance if not provided.
+     */
     public init(performanceMonitor: PerformanceMonitor = PerformanceMonitor()) {
         self.performanceMonitor = performanceMonitor
     }
     
     // MARK: - Main Benchmark Execution
     
+    /**
+     * Executes the complete performance benchmark suite asynchronously.
+     * 
+     * Runs all PRD-required performance tests in sequence and aggregates the results.
+     * Each benchmark is executed independently with proper error handling and logging.
+     * 
+     * ## Benchmarks Executed
+     * 
+     * 1. **Cold Launch** - Application initialization time (≤2s)
+     * 2. **Transcription Latency** - Audio processing speed for 5s (≤1s) and 15s (≤2s) samples
+     * 3. **Memory Usage** - Idle (≤100MB) and peak (≤700MB) memory consumption
+     * 4. **CPU Utilization** - Processing load during transcription (<150%)
+     * 5. **Battery Impact** - Average CPU usage during extended operation (<150%)
+     * 
+     * ## Performance
+     * 
+     * Total execution time is approximately 2-3 minutes depending on system performance.
+     * All benchmarks are executed sequentially to ensure accurate measurements.
+     * 
+     * - Returns: A `BenchmarkSuite` containing all benchmark results and overall pass/fail status
+     * - Note: Results are automatically recorded with the performance monitor for regression tracking
+     */
     public func runAllBenchmarks() async -> BenchmarkSuite {
         logger.info("Starting comprehensive performance benchmark suite")
         

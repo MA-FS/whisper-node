@@ -301,6 +301,12 @@ public class PerformanceMonitor: ObservableObject {
     private let regressionThreshold = 0.15 // 15% performance degradation threshold
     private let benchmarkQueue = DispatchQueue(label: "performance.benchmark.queue", qos: .utility)
     
+    /**
+     * Represents a performance benchmark measurement for regression tracking.
+     * 
+     * Used to store historical performance data and detect regressions over time.
+     * All benchmarks are persisted to disk for analysis across application launches.
+     */
     public struct PerformanceBenchmark: Codable {
         public let testName: String
         public let value: Double
@@ -344,6 +350,15 @@ public class PerformanceMonitor: ObservableObject {
         }
     }
     
+    /**
+     * Records a performance benchmark for historical tracking and regression detection.
+     * 
+     * Benchmarks are stored in memory (up to 50 entries) and persisted to disk automatically.
+     * This method is thread-safe and can be called from any queue.
+     * 
+     * - Parameter benchmark: The benchmark result to record
+     * - Note: Older benchmarks are automatically removed when the history limit is exceeded
+     */
     public func recordBenchmark(_ benchmark: PerformanceBenchmark) {
         benchmarkQueue.sync {
             historicalBenchmarks.append(benchmark)
@@ -362,6 +377,24 @@ public class PerformanceMonitor: ObservableObject {
         Self.logger.info("Recorded benchmark: \(benchmark.testName) = \(benchmark.value) \(benchmark.unit)")
     }
     
+    /**
+     * Analyzes a current performance measurement for regression compared to historical data.
+     * 
+     * Uses the last 10 measurements as baseline and calculates percentage change.
+     * Regressions are detected when performance degrades by more than 15%.
+     * 
+     * ## Regression Severity Levels
+     * 
+     * - **None**: ≤5% change
+     * - **Minor**: 5-15% degradation  
+     * - **Moderate**: 15-30% degradation
+     * - **Severe**: >30% degradation
+     * 
+     * - Parameters:
+     *   - testName: The name of the performance test to analyze
+     *   - currentValue: The current measured value to compare against historical data
+     * - Returns: Regression analysis result, or nil if no historical data exists
+     */
     public func analyzeRegression(for testName: String, currentValue: Double) -> RegressionAnalysis? {
         let relevantBenchmarks = benchmarkQueue.sync {
             return historicalBenchmarks.filter { $0.testName == testName }
