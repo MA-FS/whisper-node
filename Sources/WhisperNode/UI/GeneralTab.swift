@@ -2,9 +2,10 @@ import SwiftUI
 
 struct GeneralTab: View {
     @StateObject private var settings = SettingsManager.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: dynamicSpacing) {
             // App Icon and Title
             HStack {
                 Image(systemName: "mic.circle.fill")
@@ -67,9 +68,41 @@ struct GeneralTab: View {
                 Spacer()
             }
         }
-        .padding(20)
+        .padding(dynamicPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.windowBackgroundColor))
+    }
+    
+    // MARK: - Dynamic Text Support
+    
+    private var dynamicSpacing: CGFloat {
+        switch dynamicTypeSize {
+        case .xSmall, .small, .medium:
+            return 20
+        case .large, .xLarge:
+            return 24
+        case .xxLarge, .xxxLarge:
+            return 28
+        case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
+            return 32
+        @unknown default:
+            return 20
+        }
+    }
+    
+    private var dynamicPadding: CGFloat {
+        switch dynamicTypeSize {
+        case .xSmall, .small, .medium:
+            return 20
+        case .large, .xLarge:
+            return 24
+        case .xxLarge, .xxxLarge:
+            return 28
+        case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
+            return 32
+        @unknown default:
+            return 20
+        }
     }
 }
 

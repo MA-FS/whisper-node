@@ -116,7 +116,9 @@ public struct RecordingIndicatorView: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(accessibilityLabel)
+                .accessibilityHint(accessibilityHint)
                 .accessibilityValue(accessibilityValue)
+                .accessibilityAddTraits(.isStaticText)
             }
         }
         .allowsHitTesting(false) // Allow clicks to pass through
@@ -147,8 +149,8 @@ public struct RecordingIndicatorView: View {
             baseOpacity = 0.7
         }
         
-        // Increase opacity for high contrast accessibility
-        return differentiateWithoutColor ? min(baseOpacity + 0.2, 1.0) : baseOpacity
+        // High contrast mode support - use 90% opacity as per T19 requirements
+        return differentiateWithoutColor ? 0.9 : baseOpacity
     }
     
     // MARK: - Accessibility
@@ -168,15 +170,19 @@ public struct RecordingIndicatorView: View {
     }
     
     private var accessibilityLabel: String {
+        return "Recording indicator"
+    }
+    
+    private var accessibilityHint: String {
         switch state {
         case .idle:
-            return "Recording indicator idle"
+            return "Shows current recording status. Currently idle and ready to record."
         case .recording:
-            return "Recording in progress"
+            return "Shows current recording status. Currently recording audio input."
         case .processing:
-            return "Processing recording"
+            return "Shows current recording status. Currently processing recorded audio."
         case .error:
-            return "Recording error"
+            return "Shows current recording status. An error has occurred during recording."
         }
     }
     
