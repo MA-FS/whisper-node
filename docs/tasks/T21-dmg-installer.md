@@ -85,6 +85,11 @@ create-dmg \
 - Creates proper macOS installer experience
 - Handles timeout issues with AppleScript phases
 - Integrates with existing code signing from T20
+- **Security Enhanced**: Fixed shell injection vulnerability in Python code generation
+- **Robust Error Handling**: Comprehensive timeout handling and exit code analysis
+- **Input Validation**: Full app bundle structure validation before processing
+- **Cleanup Management**: Automatic cleanup of temporary files and mounted volumes
+- **Professional Logging**: Enhanced status reporting with signing and notarization checks
 
 ## Tags
 `installer`, `dmg`, `distribution`, `packaging`
