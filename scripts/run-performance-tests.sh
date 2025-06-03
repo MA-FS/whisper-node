@@ -175,48 +175,89 @@ run_benchmark_suite() {
     
     local benchmark_results_file="$RESULTS_DIR/benchmark_results_$TIMESTAMP.json"
     
-    # Create a simple Swift script to run benchmarks
-    cat > "$RESULTS_DIR/run_benchmarks.swift" << 'EOF'
-import Foundation
-
-// Import WhisperNode framework
-#if canImport(WhisperNode)
-import WhisperNode
-
-@main
-struct BenchmarkRunner {
-    static func main() async {
-        let runner = PerformanceBenchmarkRunner()
-        let results = await runner.runAllBenchmarks()
-        
-        // Output results as JSON
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        
-        do {
-            let jsonData = try encoder.encode(results)
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print(jsonString)
-            }
-        } catch {
-            print("Error encoding results: \(error)")
-            exit(1)
-        }
-    }
-}
-EOF
+    # Use XCTest infrastructure to run benchmarks with proper module access
+    # This approach ensures proper linking with the WhisperNode package
+    log_info "Using XCTest infrastructure for benchmark execution..."
     
-    # Run the benchmark suite
-    swift run -c release "$RESULTS_DIR/run_benchmarks.swift" > "$benchmark_results_file" 2>&1
+    # Run benchmark tests that output JSON results
+    swift test --filter ".*Benchmark.*" \
+        --configuration release \
+        --parallel \
+        2>&1 | tee "$RESULTS_DIR/benchmark_test_$TIMESTAMP.log"
     
-    if [[ $? -eq 0 ]]; then
+    local benchmark_exit_code=${PIPESTATUS[0]}
+    
+    if [[ $benchmark_exit_code -eq 0 ]]; then
         log_success "Benchmark suite completed"
+        
+        # Extract benchmark results from test output
+        extract_benchmark_metrics "$RESULTS_DIR/benchmark_test_$TIMESTAMP.log" "$benchmark_results_file"
+        
+        # Validate the results
         validate_benchmark_results "$benchmark_results_file"
     else
-        log_error "Benchmark suite failed"
+        log_error "Benchmark suite failed. Check log: $RESULTS_DIR/benchmark_test_$TIMESTAMP.log"
         return 1
     fi
+}
+
+extract_benchmark_metrics() {
+    local log_file="$1"
+    local output_file="$2"
+    
+    log_info "Extracting benchmark metrics..."
+    
+    # Parse benchmark test results and create JSON summary
+    python3 << EOF > "$output_file"
+import json
+import re
+import sys
+from datetime import datetime
+
+results = {
+    "timestamp": datetime.now().isoformat(),
+    "test_suite": "BenchmarkSuite",
+    "benchmarks": {},
+    "overall_passed": True
+}
+
+try:
+    with open("$log_file", "r") as f:
+        content = f.read()
+        
+    # Extract benchmark results from XCTest output
+    # Look for benchmark test patterns in the output
+    
+    # Extract individual benchmark results
+    benchmark_patterns = [
+        (r"benchmarkColdLaunch.*?(\d+\.\d+).*?seconds", "cold_launch", 2.0),
+        (r"benchmarkTranscriptionLatency5s.*?(\d+\.\d+).*?seconds", "transcription_5s", 1.0),
+        (r"benchmarkTranscriptionLatency15s.*?(\d+\.\d+).*?seconds", "transcription_15s", 2.0),
+        (r"benchmarkIdleMemory.*?(\d+\.\d+).*?MB", "idle_memory", 100.0),
+        (r"benchmarkPeakMemory.*?(\d+\.\d+).*?MB", "peak_memory", 700.0),
+        (r"benchmarkCPUUtilization.*?(\d+\.\d+).*?percent", "cpu_utilization", 150.0),
+    ]
+    
+    for pattern, metric_name, threshold in benchmark_patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            value = float(match.group(1))
+            passed = value <= threshold
+            results["benchmarks"][metric_name] = {
+                "value": value,
+                "threshold": threshold,
+                "passed": passed,
+                "unit": "seconds" if "latency" in metric_name or "launch" in metric_name else ("MB" if "memory" in metric_name else "percent")
+            }
+            if not passed:
+                results["overall_passed"] = False
+    
+    print(json.dumps(results, indent=2, sort_keys=True))
+    
+except Exception as e:
+    print(f"Error parsing benchmark results: {e}", file=sys.stderr)
+    sys.exit(1)
+EOF
 }
 
 extract_performance_metrics() {
@@ -291,38 +332,37 @@ try:
     with open("$results_file", "r") as f:
         results = json.load(f)
     
-    overall_passed = results.get("overallPassed", False)
-    test_results = results.get("results", [])
+    overall_passed = results.get("overall_passed", False)
+    benchmarks = results.get("benchmarks", {})
     
     print(f"\\n{'='*60}")
     print(f"PERFORMANCE VALIDATION RESULTS")
     print(f"{'='*60}")
     print(f"Overall Status: {'PASSED' if overall_passed else 'FAILED'}")
-    print(f"Tests Run: {len(test_results)}")
+    print(f"Benchmarks Run: {len(benchmarks)}")
     print(f"Timestamp: {results.get('timestamp', 'Unknown')}")
     print(f"{'='*60}")
     
-    failed_tests = []
+    failed_benchmarks = []
     
-    for test in test_results:
-        test_name = test.get("testName", "Unknown")
-        value = test.get("value", 0)
-        threshold = test.get("threshold", 0)
-        unit = test.get("unit", "")
-        passed = test.get("passed", False)
+    for benchmark_name, benchmark_data in benchmarks.items():
+        value = benchmark_data.get("value", 0)
+        threshold = benchmark_data.get("threshold", 0)
+        unit = benchmark_data.get("unit", "")
+        passed = benchmark_data.get("passed", False)
         
         status = "PASS" if passed else "FAIL"
-        print(f"[{status}] {test_name}: {value} {unit} (≤ {threshold} {unit})")
+        print(f"[{status}] {benchmark_name}: {value} {unit} (≤ {threshold} {unit})")
         
         if not passed:
-            failed_tests.append(test_name)
+            failed_benchmarks.append(benchmark_name)
     
     print(f"{'='*60}")
     
-    if failed_tests:
-        print(f"FAILED TESTS ({len(failed_tests)}):")
-        for test in failed_tests:
-            print(f"  - {test}")
+    if failed_benchmarks:
+        print(f"FAILED BENCHMARKS ({len(failed_benchmarks)}):")
+        for benchmark in failed_benchmarks:
+            print(f"  - {benchmark}")
         print(f"{'='*60}")
         sys.exit(1)
     else:
