@@ -31,7 +31,9 @@ class OnboardingWindowManager: ObservableObject {
     func showOnboarding() {
         guard onboardingWindow == nil else {
             // Window is already shown, bring it to front
-            onboardingWindow?.makeKeyAndOrderFront(nil)
+            if let window = onboardingWindow {
+                window.makeKeyAndOrderFront(nil)
+            }
             return
         }
         
@@ -75,7 +77,12 @@ class OnboardingWindowManager: ObservableObject {
     
     /// Hides the onboarding window
     func hideOnboarding() {
-        onboardingWindow?.close()
+        guard let window = onboardingWindow else {
+            Self.logger.warning("Attempted to hide onboarding window that was already nil")
+            return
+        }
+        
+        window.close()
         onboardingWindow = nil
         windowDelegate = nil
         isOnboardingPresented = false

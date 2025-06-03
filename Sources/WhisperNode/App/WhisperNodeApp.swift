@@ -22,6 +22,15 @@ struct WhisperNodeApp: App {
                         } else {
                             // Handle initialization error
                             print("Error: Core not initialized")
+                            // Show user-facing error notification
+                            DispatchQueue.main.async {
+                                let alert = NSAlert()
+                                alert.messageText = "Whisper Node Failed to Initialize"
+                                alert.informativeText = "The application failed to initialize properly. Please restart Whisper Node. If the problem persists, check your system permissions and try again."
+                                alert.alertStyle = .critical
+                                alert.addButton(withTitle: "OK")
+                                alert.runModal()
+                            }
                         }
                     }
                 }

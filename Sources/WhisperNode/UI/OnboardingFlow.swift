@@ -16,10 +16,10 @@ struct OnboardingFlow: View {
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var core = WhisperNodeCore.shared
     @State private var currentStep: Int = 0
-    @State private var isPresented: Bool = true
     @Environment(\.dismiss) private var dismiss
     
     private static let logger = Logger(subsystem: "com.whispernode.onboarding", category: "flow")
+    private static let stepTransitionDuration: TimeInterval = 0.3
     
     private let steps: [OnboardingStep] = [
         .welcome,
@@ -91,7 +91,7 @@ struct OnboardingFlow: View {
     
     private func nextStep() {
         if currentStep < steps.count - 1 {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(.easeInOut(duration: Self.stepTransitionDuration)) {
                 currentStep += 1
             }
         }
@@ -99,7 +99,7 @@ struct OnboardingFlow: View {
     
     private func previousStep() {
         if currentStep > 0 {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(.easeInOut(duration: Self.stepTransitionDuration)) {
                 currentStep -= 1
             }
         }
@@ -492,6 +492,8 @@ struct ModelSelectionStep: View {
                         isSelected: selectedModel == model.name,
                         onSelect: { selectedModel = model.name }
                     )
+                    .accessibilityLabel("\(model.displayName), \(model.downloadSize / 1024 / 1024) MB, Status: \(statusText(for: model.status))")
+                    .accessibilityHint("Double tap to select this model for speech recognition")
                 }
             }
             .padding(.horizontal, 20)
@@ -544,9 +546,24 @@ struct ModelSelectionStep: View {
         }
     }
     
+    private func statusText(for status: ModelStatus) -> String {
+        switch status {
+        case .bundled:
+            return "Included with app"
+        case .installed:
+            return "Downloaded"
+        case .available:
+            return "Available for download"
+        case .downloading:
+            return "Downloading"
+        case .failed:
+            return "Download failed"
+        }
+    }
+    
     private func downloadAndContinue() {
         guard let selectedModelInfo = modelManager.availableModels.first(where: { $0.name == selectedModel }) else {
-            downloadError = "Selected model not found"
+            downloadError = "Selected model not found in available models"
             return
         }
         
@@ -570,29 +587,48 @@ struct ModelSelectionStep: View {
     }
     
     private func monitorDownloadProgress() async {
-        while isDownloading {
-            if let model = modelManager.availableModels.first(where: { $0.name == selectedModel }) {
+        var iterationCount = 0
+        let maxIterations = 1200 // 2 minutes max (120 seconds / 0.1 second intervals)
+        
+        while isDownloading && iterationCount < maxIterations {
+            iterationCount += 1
+            
+            guard let model = modelManager.availableModels.first(where: { $0.name == selectedModel }) else {
                 DispatchQueue.main.async {
-                    self.downloadProgress = model.downloadProgress
-                    
-                    switch model.status {
-                    case .installed:
-                        self.isDownloading = false
-                        self.settings.activeModelName = self.selectedModel
-                        self.onNext()
-                    case .failed:
-                        self.isDownloading = false
-                        self.downloadError = model.errorMessage ?? "Download failed"
-                    case .downloading:
-                        // Continue monitoring
-                        break
-                    default:
-                        break
-                    }
+                    self.downloadError = "Model not found during monitoring"
+                    self.isDownloading = false
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                self.downloadProgress = model.downloadProgress
+                
+                switch model.status {
+                case .installed:
+                    self.isDownloading = false
+                    self.settings.activeModelName = self.selectedModel
+                    self.onNext()
+                case .failed:
+                    self.isDownloading = false
+                    self.downloadError = model.errorMessage ?? "Download failed"
+                case .downloading:
+                    // Continue monitoring
+                    break
+                default:
+                    break
                 }
             }
             
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        }
+        
+        // Handle timeout case
+        if iterationCount >= maxIterations && isDownloading {
+            DispatchQueue.main.async {
+                self.downloadError = "Download timed out after 2 minutes"
+                self.isDownloading = false
+            }
         }
     }
 }
@@ -793,11 +829,12 @@ struct HotkeySetupStep: View {
         isRecording = true
         hotkeyManager.isRecording = true
         
-        // Note: In a complete implementation, this would capture the next key combination
-        // For now, we'll just show the recording state and automatically stop after a delay
+        // TODO: Implement actual hotkey capture
+        // This is a simplified implementation for onboarding demo
+        // The actual implementation should capture key events and validate the combination
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            if isRecording {
-                stopHotkeyRecording()
+            if self.isRecording {
+                self.stopHotkeyRecording()
             }
         }
     }
@@ -806,8 +843,10 @@ struct HotkeySetupStep: View {
         isRecording = false
         hotkeyManager.isRecording = false
         
-        // In a complete implementation, this would save the recorded hotkey
-        // For now, we'll keep the existing hotkey
+        // TODO: In a complete implementation, this would save the recorded hotkey
+        // For now, we'll keep the existing hotkey configuration
+        // Future implementation should validate the captured key combination
+        // and update the settings with the new hotkey
     }
 }
 
