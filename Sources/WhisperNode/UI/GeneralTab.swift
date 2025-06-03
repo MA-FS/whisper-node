@@ -2,9 +2,10 @@ import SwiftUI
 
 struct GeneralTab: View {
     @StateObject private var settings = SettingsManager.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: dynamicScaling) {
             // App Icon and Title
             HStack {
                 Image(systemName: "mic.circle.fill")
@@ -67,10 +68,40 @@ struct GeneralTab: View {
                 Spacer()
             }
         }
-        .padding(20)
+        .padding(dynamicScaling)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.windowBackgroundColor))
     }
+    
+    // MARK: - Dynamic Text Support
+    
+    /// Calculates responsive spacing and padding values based on the user's dynamic text size preference.
+    /// 
+    /// This computed property ensures the UI adapts appropriately for users who need larger text sizes,
+    /// providing more generous spacing for accessibility text size categories.
+    /// 
+    /// - Returns: CGFloat value ranging from 20 (standard sizes) to 32 (accessibility sizes)
+    /// 
+    /// **Size Categories:**
+    /// - Standard sizes (xSmall through medium): 20pt spacing
+    /// - Large sizes (large through xLarge): 24pt spacing  
+    /// - Extra large sizes (xxLarge through xxxLarge): 28pt spacing
+    /// - Accessibility sizes (accessibility1 through accessibility5): 32pt spacing
+    private var dynamicScaling: CGFloat {
+        switch dynamicTypeSize {
+        case .xSmall, .small, .medium:
+            return 20
+        case .large, .xLarge:
+            return 24
+        case .xxLarge, .xxxLarge:
+            return 28
+        case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
+            return 32
+        @unknown default:
+            return 20
+        }
+    }
+    
 }
 
 #Preview {

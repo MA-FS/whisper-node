@@ -248,6 +248,7 @@ struct ModelRowView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .accessibilityLabel("Download \(model.displayName)")
+                    .accessibilityHint("Downloads the \(model.displayName) model for voice transcription")
                     
                 case .downloading:
                     VStack(spacing: 4) {
@@ -268,6 +269,7 @@ struct ModelRowView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .accessibilityLabel("Delete \(model.displayName)")
+                    .accessibilityHint("Removes the \(model.displayName) model from storage")
                     
                 case .bundled:
                     Text("Built-in")
@@ -282,12 +284,13 @@ struct ModelRowView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .accessibilityLabel("Retry download of \(model.displayName)")
+                        .accessibilityHint("Attempts to download the \(model.displayName) model again")
                         
                         Text("Failed")
                             .font(.caption2)
                             .foregroundColor(.red)
                     }
-                    .accessibilityLabel("Download failed for \(model.displayName), retry available")
                 }
             }
         }
