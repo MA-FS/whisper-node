@@ -262,7 +262,12 @@ public struct ApplicationCompatibilityMatrix {
         )
     ]
     
-    /// Validate which applications are currently installed on the system
+    /// Validates which applications from the compatibility matrix are currently installed
+    ///
+    /// Checks the system workspace for each application in the supported applications list
+    /// to determine installation status, useful for conditional test execution.
+    ///
+    /// - Returns: Dictionary mapping bundle IDs to installation status (true = installed)
     public static func validateInstalledApplications() -> [String: Bool] {
         var results: [String: Bool] = [:]
         for app in supportedApplications {
@@ -273,7 +278,15 @@ public struct ApplicationCompatibilityMatrix {
         return results
     }
     
-    /// Generate compatibility report
+    /// Generates a comprehensive compatibility report for all supported applications
+    ///
+    /// Creates a detailed markdown-formatted report including:
+    /// - Summary statistics by compatibility status
+    /// - Individual application details and known issues
+    /// - Test scenarios and validation criteria
+    /// - PRD compliance assessment
+    ///
+    /// - Returns: Formatted markdown report string
     public static func generateReport() -> String {
         var report = """
         # WhisperNode Application Compatibility Report
