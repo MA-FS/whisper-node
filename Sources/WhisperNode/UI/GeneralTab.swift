@@ -75,6 +75,14 @@ struct GeneralTab: View {
     
     // MARK: - Dynamic Text Support
     
+    /// Constants for dynamic spacing based on text size categories
+    private enum DynamicSpacing {
+        static let standard: CGFloat = 20
+        static let large: CGFloat = 24
+        static let extraLarge: CGFloat = 28
+        static let accessibility: CGFloat = 32
+    }
+    
     /// Calculates responsive spacing and padding values based on the user's dynamic text size preference.
     /// 
     /// This computed property ensures the UI adapts appropriately for users who need larger text sizes,
@@ -90,15 +98,15 @@ struct GeneralTab: View {
     private var dynamicScaling: CGFloat {
         switch dynamicTypeSize {
         case .xSmall, .small, .medium:
-            return 20
+            return DynamicSpacing.standard
         case .large, .xLarge:
-            return 24
+            return DynamicSpacing.large
         case .xxLarge, .xxxLarge:
-            return 28
+            return DynamicSpacing.extraLarge
         case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
-            return 32
+            return DynamicSpacing.accessibility
         @unknown default:
-            return 20
+            return DynamicSpacing.standard
         }
     }
     

@@ -121,7 +121,7 @@ public struct RecordingIndicatorView: View {
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityHint(accessibilityHint)
                 .accessibilityValue(accessibilityValue)
-                .accessibilityAddTraits(.playsSound)
+                .accessibilityAddTraits(accessibilityTraits)
             }
         }
         .allowsHitTesting(false) // Allow clicks to pass through
@@ -214,6 +214,19 @@ public struct RecordingIndicatorView: View {
             return "\(percentage)% complete"
         default:
             return ""
+        }
+    }
+    
+    /// Provides state-appropriate accessibility traits for the recording indicator.
+    /// 
+    /// Uses `.updatesFrequently` during processing to indicate dynamic content,
+    /// and `.playsSound` for other states where audio feedback occurs.
+    private var accessibilityTraits: AccessibilityTraits {
+        switch state {
+        case .processing:
+            return .updatesFrequently
+        default:
+            return .playsSound
         }
     }
     
