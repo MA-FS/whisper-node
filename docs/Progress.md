@@ -28,7 +28,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T11 | [Preferences Window - Models Tab](tasks/T11-preferences-models.md) | High | ✅ Done | 100% | Model download + management verified |
 | T12 | [Preferences Window - Shortcut Tab](tasks/T12-preferences-shortcut.md) | Medium | ✅ Done | 100% | Hotkey recording & conflicts verified |
 | T13 | [Preferences Window - About Tab](tasks/T13-preferences-about.md) | Low | ✅ Done | 100% | Version info + Sparkle integration verified |
-| T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | 🚧 Partial | 15% | Skeleton exists, needs full implementation |
+| T14 | [First-Run Onboarding Flow](tasks/T14-onboarding-flow.md) | High | 🧪 Testing | 85% | Complete implementation, minor hotkey capture completion needed |
 | T15 | [Error Handling & Recovery System](tasks/T15-error-handling.md) | High | ✅ Done | 100% | Comprehensive error handling verified |
 | T16 | [Performance Monitoring & Optimization](tasks/T16-performance-monitoring.md) | Medium | 🚧 Partial | 30% | Basic CPU monitoring, needs full implementation |
 | T17 | [Model Storage & Management System](tasks/T17-model-storage.md) | Medium | 🚧 Partial | 25% | Basic storage, needs atomic downloads + checksums |

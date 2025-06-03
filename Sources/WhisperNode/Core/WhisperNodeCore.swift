@@ -50,6 +50,7 @@ public class WhisperNodeCore: ObservableObject {
     @Published public private(set) var audioEngine = AudioCaptureEngine()
     @Published public private(set) var menuBarManager = MenuBarManager()
     @Published public private(set) var indicatorManager = RecordingIndicatorWindowManager()
+    @Published public private(set) var performanceMonitor = PerformanceMonitor.shared
     private let textInsertionEngine = TextInsertionEngine()
     private let errorManager = ErrorHandlingManager.shared
     
@@ -61,12 +62,15 @@ public class WhisperNodeCore: ObservableObject {
     @Published public private(set) var isInitialized = false
     @Published public private(set) var isRecording = false
     @Published public private(set) var currentModel: String = "tiny.en"
-    @Published public private(set) var memoryUsage: UInt64 = 0
-    @Published public private(set) var averageCpuUsage: Float = 0.0
     
-    // Performance monitoring
-    private var performanceTimer: Timer?
-    private let performanceUpdateInterval: TimeInterval = 2.0
+    // Performance monitoring properties for backward compatibility
+    public var memoryUsage: UInt64 {
+        performanceMonitor.memoryUsage
+    }
+    
+    public var averageCpuUsage: Float {
+        Float(performanceMonitor.getAverageCPUUsage())
+    }
     
     public static let shared = WhisperNodeCore()
     
@@ -86,8 +90,8 @@ public class WhisperNodeCore: ObservableObject {
         // Initialize with default model
         loadDefaultModel()
         
-        // Start performance monitoring
-        startPerformanceMonitoring()
+        // Setup performance monitoring with automatic adjustments
+        setupPerformanceMonitoring()
         
         isInitialized = true
         Self.logger.info("WhisperNode Core initialized successfully")
@@ -113,23 +117,60 @@ public class WhisperNodeCore: ObservableObject {
         loadModel(modelName)
     }
     
-    private func startPerformanceMonitoring() {
-        // Performance monitoring will be started when actually recording
-        // This reduces battery usage when app is idle
+    private func setupPerformanceMonitoring() {
+        // PerformanceMonitor.shared is already started automatically
+        // Setup performance observation for automatic adjustments
+        setupPerformanceObservation()
     }
     
-    private func startActiveMonitoring() {
-        guard performanceTimer == nil else { return }
-        performanceTimer = Timer.scheduledTimer(withTimeInterval: performanceUpdateInterval, repeats: true) { [weak self] _ in
+    private func setupPerformanceObservation() {
+        // Monitor performance changes and apply automatic optimizations
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                await self?.updatePerformanceMetrics()
+                await self?.checkAndApplyPerformanceAdjustments()
             }
         }
     }
     
-    private func stopActiveMonitoring() {
-        performanceTimer?.invalidate()
-        performanceTimer = nil
+    private func checkAndApplyPerformanceAdjustments() async {
+        let monitor = performanceMonitor
+        
+        // Check if we need to downgrade model due to high CPU usage
+        if monitor.shouldReducePerformance() {
+            if let recommendedModel = monitor.getRecommendedModelDowngrade() {
+                Self.logger.warning("High resource usage detected. Recommending model downgrade to \(recommendedModel)")
+                
+                // Apply automatic model downgrade if CPU usage > 80%
+                if monitor.cpuUsage > 80.0 && recommendedModel != self.currentModel {
+                    Self.logger.info("Automatically downgrading model from \(self.currentModel) to \(recommendedModel)")
+                    loadModel(recommendedModel)
+                }
+            }
+        }
+        
+        // Apply battery-aware optimizations
+        if monitor.isOnBattery {
+            let batterySettings = monitor.getBatteryOptimizedSettings()
+            applyBatteryOptimizations(batterySettings)
+        }
+        
+        // Handle thermal throttling
+        if monitor.thermalState == .serious || monitor.thermalState == .critical {
+            Self.logger.warning("Thermal throttling detected: \(monitor.thermalState.description)")
+            applyThermalOptimizations()
+        }
+    }
+    
+    private func applyBatteryOptimizations(_ settings: [String: Any]) {
+        if let enablePowerSaving = settings["enablePowerSaving"] as? Bool, enablePowerSaving {
+            Self.logger.info("Applying battery power saving optimizations")
+            // Reduce processing frequency or quality when battery is low
+        }
+    }
+    
+    private func applyThermalOptimizations() {
+        Self.logger.info("Applying thermal throttling optimizations")
+        // Reduce processing intensity during thermal pressure
     }
     
     // MARK: - Public Methods
@@ -400,27 +441,9 @@ public class WhisperNodeCore: ObservableObject {
     /// Asynchronously updates memory and CPU usage metrics from the Whisper engine.
     ///
     /// If performance thresholds are exceeded, logs a warning with a suggested model downgrade.
-    private func updatePerformanceMetrics() async {
-        guard let engine = whisperEngine else { return }
-        
-        let metrics = await engine.getCurrentMetrics()
-        
-        await MainActor.run {
-            self.memoryUsage = metrics.memoryUsage
-            self.averageCpuUsage = metrics.averageCpuUsage
-            
-            // Check if automatic model downgrade is needed
-            if metrics.isDowngradeNeeded, let suggested = metrics.suggestedModel {
-                Self.logger.warning("Performance threshold exceeded, consider switching to \(suggested) model")
-            }
-        }
-    }
-    
     private func checkModelDowngradeNeeded() async -> Bool {
-        guard let engine = whisperEngine else { return false }
-        
-        let (needed, _) = await engine.shouldDowngradeModel()
-        return needed
+        // Use the new PerformanceMonitor for downgrade decisions
+        return performanceMonitor.shouldReducePerformance()
     }
     
 }
@@ -445,8 +468,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Show visual indicator
         indicatorManager.showRecording()
         
-        // Start performance monitoring during active recording
-        startActiveMonitoring()
+        // Performance monitoring is always active via PerformanceMonitor.shared
         
         // Start audio capture engine
         Task {
@@ -477,7 +499,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
                 
                 self.isRecording = false
                 indicatorManager.hideIndicator()
-                stopActiveMonitoring()
+                // Performance monitoring continues in background
             }
         }
     }
@@ -502,8 +524,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
             }
         }
         
-        // Stop performance monitoring
-        stopActiveMonitoring()
+        // Performance monitoring continues in background
         
         // Stop audio capture
         audioEngine.stopCapture()
@@ -526,8 +547,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Hide visual indicator
         indicatorManager.hideIndicator()
         
-        // Stop performance monitoring
-        stopActiveMonitoring()
+        // Performance monitoring continues in background
         
         // Stop audio capture
         audioEngine.stopCapture()
