@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import SwiftUI
 
 /// Status of a Whisper model
 public enum ModelStatus {
@@ -64,7 +65,7 @@ public struct DownloadResult {
 }
 
 /// Metadata for tracking model installations
-public struct ModelMetadata: Codable {
+public struct ModelMetadata: Codable, Sendable {
     let name: String
     let version: String
     let downloadedDate: Date
@@ -83,7 +84,7 @@ public struct ModelMetadata: Codable {
 }
 
 /// Container for all model metadata
-public struct ModelsMetadata: Codable {
+public struct ModelsMetadata: Codable, Sendable {
     let version: Int
     var models: [String: ModelMetadata] = [:]
     
@@ -106,7 +107,7 @@ public struct ModelsMetadata: Codable {
 
 /// Manages Whisper model downloads, storage, and lifecycle
 @MainActor
-public class ModelManager: ObservableObject {
+public final class ModelManager: ObservableObject {
     public static let shared = ModelManager()
     
     // MARK: - Published Properties
@@ -192,6 +193,7 @@ public class ModelManager: ObservableObject {
     // MARK: - Public Methods
     
     /// Refresh the list of available models and their status
+    @MainActor
     public func refreshModels() async {
         await checkInstalledModels()
         await updateDiskSpace()
@@ -199,6 +201,7 @@ public class ModelManager: ObservableObject {
     }
     
     /// Download a model with progress tracking and checksum verification
+    @MainActor
     public func downloadModel(_ model: ModelInfo) async {
         guard model.status != .downloading else { return }
         
@@ -241,13 +244,6 @@ public class ModelManager: ObservableObject {
                 errorManager.handleModelDownloadFailure(errorDetails) {
                     await self.retryDownload(model)
                 }
-            }
-        } catch {
-            // Handle general download error
-            let errorDetails = error.localizedDescription
-            updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
-            errorManager.handleModelDownloadFailure(errorDetails) {
-                await self.retryDownload(model)
             }
         }
     }
@@ -397,72 +393,77 @@ public class ModelManager: ObservableObject {
     }
     
     private func downloadWithProgress(_ model: ModelInfo) async -> DownloadResult {
-        // Ensure atomic access with download lock
-        let lock = downloadLocks[model.name] ?? NSLock()
-        downloadLocks[model.name] = lock
-        
-        guard lock.try() else {
-            return DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete.")
-        }
-        defer { lock.unlock() }
-        
-        guard let url = URL(string: model.downloadURL) else {
-            return DownloadResult(success: false, error: "Invalid download URL")
-        }
-        
-        // Create atomic staging file in temp directory
-        let stagingURL = tempDirectory.appendingPathComponent("\(model.name)-\(UUID().uuidString)\(Self.modelFileExtension)")
-        let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
-        
-        do {
-            // Download to staging area first
-            let (tempURL, response) = try await urlSession.download(from: url)
-            
-            guard let httpResponse = response as? HTTPURLResponse,
-                  200...299 ~= httpResponse.statusCode else {
-                return DownloadResult(success: false, error: "HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        // Use async-safe actor isolation instead of NSLock
+        return await withCheckedContinuation { continuation in
+            Task {
+                // Check if download is already in progress using thread-safe lookup
+                if downloadTasks[model.name] != nil {
+                    continuation.resume(returning: DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete."))
+                    return
+                }
+                
+                guard let url = URL(string: model.downloadURL) else {
+                    continuation.resume(returning: DownloadResult(success: false, error: "Invalid download URL"))
+                    return
+                }
+                
+                // Create atomic staging file in temp directory
+                let stagingURL = tempDirectory.appendingPathComponent("\(model.name)-\(UUID().uuidString)\(Self.modelFileExtension)")
+                let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
+                
+                do {
+                    // Download to staging area first
+                    let (tempURL, response) = try await urlSession.download(from: url)
+                    
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          200...299 ~= httpResponse.statusCode else {
+                        continuation.resume(returning: DownloadResult(success: false, error: "HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? 0)"))
+                        return
+                    }
+                    
+                    // Move downloaded file to our staging location
+                    try fileManager.moveItem(at: tempURL, to: stagingURL)
+                    
+                    // Verify checksum before committing
+                    let checksumValid = await verifyChecksum(filePath: stagingURL.path, expectedChecksum: model.checksum)
+                    guard checksumValid else {
+                        // Clean up corrupted staging file
+                        try? fileManager.removeItem(at: stagingURL)
+                        continuation.resume(returning: DownloadResult(success: false, error: "Checksum verification failed"))
+                        return
+                    }
+                    
+                    // Get file size for metadata
+                    let attributes = try fileManager.attributesOfItem(atPath: stagingURL.path)
+                    let downloadedSize = attributes[.size] as? UInt64 ?? 0
+                    
+                    // Atomic move from staging to final destination
+                    if fileManager.fileExists(atPath: destinationURL.path) {
+                        try fileManager.removeItem(at: destinationURL)
+                    }
+                    try fileManager.moveItem(at: stagingURL, to: destinationURL)
+                    
+                    // Update metadata after successful atomic installation
+                    let metadata = ModelMetadata(
+                        name: model.name,
+                        fileSize: downloadedSize,
+                        checksum: model.checksum,
+                        downloadURL: model.downloadURL
+                    )
+                    await saveModelMetadata(metadata)
+                    
+                    continuation.resume(returning: DownloadResult(
+                        success: true,
+                        filePath: destinationURL.path,
+                        bytesDownloaded: downloadedSize
+                    ))
+                    
+                } catch {
+                    // Clean up any staging files on error
+                    try? fileManager.removeItem(at: stagingURL)
+                    continuation.resume(returning: DownloadResult(success: false, error: error.localizedDescription))
+                }
             }
-            
-            // Move downloaded file to our staging location
-            try fileManager.moveItem(at: tempURL, to: stagingURL)
-            
-            // Verify checksum before committing
-            let checksumValid = await verifyChecksum(filePath: stagingURL.path, expectedChecksum: model.checksum)
-            guard checksumValid else {
-                // Clean up corrupted staging file
-                try? fileManager.removeItem(at: stagingURL)
-                return DownloadResult(success: false, error: "Checksum verification failed")
-            }
-            
-            // Get file size for metadata
-            let attributes = try fileManager.attributesOfItem(atPath: stagingURL.path)
-            let downloadedSize = attributes[.size] as? UInt64 ?? 0
-            
-            // Atomic move from staging to final destination
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try fileManager.removeItem(at: destinationURL)
-            }
-            try fileManager.moveItem(at: stagingURL, to: destinationURL)
-            
-            // Update metadata after successful atomic installation
-            let metadata = ModelMetadata(
-                name: model.name,
-                fileSize: downloadedSize,
-                checksum: model.checksum,
-                downloadURL: model.downloadURL
-            )
-            await saveModelMetadata(metadata)
-            
-            return DownloadResult(
-                success: true,
-                filePath: destinationURL.path,
-                bytesDownloaded: downloadedSize
-            )
-            
-        } catch {
-            // Clean up any staging files on error
-            try? fileManager.removeItem(at: stagingURL)
-            return DownloadResult(success: false, error: error.localizedDescription)
         }
     }
     
@@ -538,16 +539,14 @@ public class ModelManager: ObservableObject {
                 modelsMetadata = loadedMetadata
             }
         } catch {
-            print("Warning: Failed to load metadata, attempting to rebuild from disk: \(error)")
-            // Temporarily release lock for rebuild operation
-            metadataLock.unlock()
-            await rebuildMetadataFromDisk()
-            metadataLock.lock() // Re-acquire for the defer unlock
+            print("Warning: Failed to load metadata, will rebuild from disk on next operation: \(error)")
+            // Initialize with empty metadata, rebuild will happen async later
+            modelsMetadata = ModelsMetadata()
         }
     }
     
     private func saveMetadata() async {
-        await withCheckedContinuation { continuation in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             metadataQueue.async {
                 self.metadataLock.lock()
                 defer { 
@@ -569,56 +568,73 @@ public class ModelManager: ObservableObject {
     }
     
     private func saveModelMetadata(_ metadata: ModelMetadata) async {
-        metadataLock.lock()
-        modelsMetadata.addModel(metadata)
-        metadataLock.unlock()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            metadataQueue.async {
+                self.metadataLock.lock()
+                self.modelsMetadata.addModel(metadata)
+                self.metadataLock.unlock()
+                continuation.resume()
+            }
+        }
         await saveMetadata()
     }
     
     private func removeModelMetadata(_ name: String) async {
-        metadataLock.lock()
-        modelsMetadata.removeModel(name)
-        metadataLock.unlock()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            metadataQueue.async {
+                self.metadataLock.lock()
+                self.modelsMetadata.removeModel(name)
+                self.metadataLock.unlock()
+                continuation.resume()
+            }
+        }
         await saveMetadata()
     }
     
     /// Rebuild metadata from disk if metadata.json is corrupted or missing
     private func rebuildMetadataFromDisk() async {
-        metadataLock.lock()
-        defer { metadataLock.unlock() }
-        
-        var rebuiltMetadata = ModelsMetadata()
-        
-        do {
-            let modelFiles = try fileManager.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
-            
-            for fileURL in modelFiles where fileURL.pathExtension == "bin" {
-                let modelName = fileURL.deletingPathExtension().lastPathComponent
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            metadataQueue.async {
+                self.metadataLock.lock()
+                defer { 
+                    self.metadataLock.unlock()
+                    continuation.resume()
+                }
                 
-                // Get file attributes
-                let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
-                let fileSize = UInt64(resourceValues.fileSize ?? 0)
-                let creationDate = resourceValues.creationDate ?? Date()
+                var rebuiltMetadata = ModelsMetadata()
                 
-                // Find matching model info for checksum and URL
-                if let modelInfo = availableModels.first(where: { $0.name == modelName }) {
-                    let metadata = ModelMetadata(
-                        name: modelName,
-                        downloadedDate: creationDate,
-                        fileSize: fileSize,
-                        checksum: modelInfo.checksum,
-                        downloadURL: modelInfo.downloadURL
-                    )
-                    rebuiltMetadata.addModel(metadata)
+                do {
+                    let modelFiles = try self.fileManager.contentsOfDirectory(at: self.modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
+                    
+                    for fileURL in modelFiles where fileURL.pathExtension == "bin" {
+                        let modelName = fileURL.deletingPathExtension().lastPathComponent
+                        
+                        // Get file attributes
+                        let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
+                        let fileSize = UInt64(resourceValues.fileSize ?? 0)
+                        let creationDate = resourceValues.creationDate ?? Date()
+                        
+                        // Find matching model info for checksum and URL
+                        if let modelInfo = self.availableModels.first(where: { $0.name == modelName }) {
+                            let metadata = ModelMetadata(
+                                name: modelName,
+                                downloadedDate: creationDate,
+                                fileSize: fileSize,
+                                checksum: modelInfo.checksum,
+                                downloadURL: modelInfo.downloadURL
+                            )
+                            rebuiltMetadata.addModel(metadata)
+                        }
+                    }
+                    
+                    self.modelsMetadata = rebuiltMetadata
+                    print("Rebuilt metadata for \(rebuiltMetadata.models.count) models from disk")
+                    
+                } catch {
+                    print("Warning: Failed to rebuild metadata from disk: \(error)")
+                    self.modelsMetadata = ModelsMetadata()
                 }
             }
-            
-            modelsMetadata = rebuiltMetadata
-            print("Rebuilt metadata for \(rebuiltMetadata.models.count) models from disk")
-            
-        } catch {
-            print("Warning: Failed to rebuild metadata from disk: \(error)")
-            modelsMetadata = ModelsMetadata()
         }
     }
     

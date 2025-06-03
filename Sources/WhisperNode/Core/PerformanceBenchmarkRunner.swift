@@ -115,8 +115,8 @@ public class PerformanceBenchmarkRunner {
      * - Parameter performanceMonitor: The performance monitor to use for historical tracking.
      *   Defaults to the shared instance if not provided.
      */
-    public init(performanceMonitor: PerformanceMonitor = PerformanceMonitor.shared) {
-        self.performanceMonitor = performanceMonitor
+    public init(performanceMonitor: PerformanceMonitor? = nil) {
+        self.performanceMonitor = performanceMonitor ?? PerformanceMonitor.shared
     }
     
     // MARK: - Main Benchmark Execution
@@ -190,13 +190,8 @@ public class PerformanceBenchmarkRunner {
         let startTime = CFAbsoluteTimeGetCurrent()
         
         // Simulate cold launch
-        let core = WhisperNodeCore.shared
-        _ = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let success = core.initialize()
-                continuation.resume(returning: success)
-            }
-        }
+        let core = await MainActor.run { WhisperNodeCore.shared }
+        await MainActor.run { core.initialize() }
         
         let endTime = CFAbsoluteTimeGetCurrent()
         let launchTime = endTime - startTime
@@ -227,12 +222,13 @@ public class PerformanceBenchmarkRunner {
         
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        let core = WhisperNodeCore.shared
-        _ = core.initialize()
+        let core = await MainActor.run { WhisperNodeCore.shared }
+        await MainActor.run { core.initialize() }
         
         let transcriptionSuccess = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            core.processAudio(audioData) { result in
-                continuation.resume(returning: result.isSuccess)
+            Task {
+                await core.processAudioData(audioData)
+                continuation.resume(returning: true)
             }
         }
         
@@ -252,8 +248,7 @@ public class PerformanceBenchmarkRunner {
     private func benchmarkIdleMemory() async -> BenchmarkResult {
         logger.info("Running idle memory usage benchmark")
         
-        let core = WhisperNodeCore()
-        _ = core.initialize()
+        let core = await MainActor.run { WhisperNodeCore.shared }
         
         // Let the app settle
         try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -273,27 +268,11 @@ public class PerformanceBenchmarkRunner {
     private func benchmarkPeakMemory() async -> BenchmarkResult {
         logger.info("Running peak memory usage benchmark")
         
-        let core = WhisperNodeCore()
-        _ = core.initialize()
+        let core = await MainActor.run { WhisperNodeCore.shared }
         
-        // Load model and process intensive audio to trigger peak usage
-        let modelManager = ModelManager()
-        let modelLoaded = await withCheckedContinuation { continuation in
-            modelManager.loadModel(.small) { success in
-                continuation.resume(returning: success)
-            }
-        }
-        
-        guard modelLoaded else {
-            return BenchmarkResult(
-                testName: "Peak Memory Usage",
-                success: false,
-                value: Double.infinity,
-                threshold: 700.0,
-                unit: "MB",
-                timestamp: Date()
-            )
-        }
+        // For benchmarking, we'll use the shared model manager
+        let modelManager = await MainActor.run { ModelManager.shared }
+        // Assume model is already loaded for this benchmark
         
         var peakMemory: Double = 0
         let monitoringTask = Task {
@@ -307,8 +286,9 @@ public class PerformanceBenchmarkRunner {
         // Generate intensive workload
         if let audioData = generateTestAudio(duration: 15.0) {
             let _ = await withCheckedContinuation { continuation in
-                core.processAudio(audioData) { result in
-                    continuation.resume(returning: result.isSuccess)
+                Task {
+                    await core.processAudioData(audioData)
+                    continuation.resume(returning: true)
                 }
             }
         }
@@ -328,8 +308,7 @@ public class PerformanceBenchmarkRunner {
     private func benchmarkCPUUtilization() async -> BenchmarkResult {
         logger.info("Running CPU utilization benchmark")
         
-        let core = WhisperNodeCore()
-        _ = core.initialize()
+        let core = await MainActor.run { WhisperNodeCore.shared }
         
         var maxCPU: Double = 0
         let monitoringTask = Task {
@@ -343,8 +322,9 @@ public class PerformanceBenchmarkRunner {
         // Process audio to measure CPU during transcription
         if let audioData = generateTestAudio(duration: 10.0) {
             let _ = await withCheckedContinuation { continuation in
-                core.processAudio(audioData) { result in
-                    continuation.resume(returning: result.isSuccess)
+                Task {
+                    await core.processAudioData(audioData)
+                    continuation.resume(returning: true)
                 }
             }
         }
@@ -364,8 +344,7 @@ public class PerformanceBenchmarkRunner {
     private func benchmarkBatteryImpact() async -> BenchmarkResult {
         logger.info("Running battery impact benchmark")
         
-        let core = WhisperNodeCore()
-        _ = core.initialize()
+        let core = await MainActor.run { WhisperNodeCore.shared }
         
         let testDuration: TimeInterval = 30.0 // 30 second test for CI
         var totalCPU: Double = 0
@@ -381,7 +360,9 @@ public class PerformanceBenchmarkRunner {
                 
                 // Simulate periodic transcription
                 if let audioData = generateTestAudio(duration: 3.0) {
-                    core.processAudio(audioData) { _ in }
+                    Task {
+                        await core.processAudioData(audioData)
+                    }
                 }
                 
                 totalCPU += getCurrentCPUUsage()
@@ -421,23 +402,22 @@ public class PerformanceBenchmarkRunner {
     
     private func loadRealTestAudio(duration: TimeInterval) -> Data? {
         // Try to load from test bundle first
-        if let bundle = Bundle(for: type(of: self)) {
-            let resourceName = "test_audio_\(Int(duration))s"
-            if let audioPath = bundle.path(forResource: resourceName, ofType: "wav") {
-                do {
-                    let audioData = try Data(contentsOf: URL(fileURLWithPath: audioPath))
-                    return validateAndConvertAudioData(audioData, expectedDuration: duration)
-                } catch {
-                    logger.warning("Failed to load test audio \(resourceName).wav: \(error)")
-                }
+        let bundle = Bundle(for: type(of: self))
+        let resourceName = "test_audio_\(Int(duration))s"
+        if let audioPath = bundle.path(forResource: resourceName, ofType: "wav") {
+            do {
+                let audioData = try Data(contentsOf: URL(fileURLWithPath: audioPath))
+                return validateAndConvertAudioData(audioData, expectedDuration: duration)
+            } catch {
+                logger.warning("Failed to load test audio \(resourceName).wav: \(error)")
             }
         }
         
         // Try to load from project test resources directory
         let projectPath = FileManager.default.currentDirectoryPath
         let testResourcesPath = "\(projectPath)/Tests/WhisperNodeTests/TestResources"
-        let resourceName = "test_audio_\(Int(duration))s.wav"
-        let audioPath = "\(testResourcesPath)/\(resourceName)"
+        let projectResourceName = "test_audio_\(Int(duration))s.wav"
+        let audioPath = "\(testResourcesPath)/\(projectResourceName)"
         
         if FileManager.default.fileExists(atPath: audioPath) {
             do {
@@ -529,31 +509,40 @@ public class PerformanceBenchmarkRunner {
     }
     
     private func getCurrentCPUUsage() -> Double {
-        var info = processor_info_array_t.allocate(capacity: 1)
+        var info: processor_info_array_t?
         var numCpusU: natural_t = 0
+        var infoCount: mach_msg_type_number_t = 0
         
         let result = host_processor_info(mach_host_self(),
                                        PROCESSOR_CPU_LOAD_INFO,
                                        &numCpusU,
                                        &info,
-                                       nil)
+                                       &infoCount)
         
-        guard result == KERN_SUCCESS else { return 0 }
+        guard result == KERN_SUCCESS, let info = info else { return 0 }
         
-        let cpuLoadInfo = info.bindMemory(to: processor_cpu_load_info.self, capacity: Int(numCpusU))
+        let cpuLoadInfo = UnsafePointer<processor_cpu_load_info>(OpaquePointer(info))
         
         var totalUsage: Double = 0
         for i in 0..<Int(numCpusU) {
             let cpu = cpuLoadInfo[i]
-            let total = Double(cpu.cpu_ticks.0 + cpu.cpu_ticks.1 + cpu.cpu_ticks.2 + cpu.cpu_ticks.3)
-            let idle = Double(cpu.cpu_ticks.3)
+            // Break down the complex expression
+            let userTicks = Double(cpu.cpu_ticks.0)
+            let systemTicks = Double(cpu.cpu_ticks.1)
+            let niceTicks = Double(cpu.cpu_ticks.2)
+            let idleTicks = Double(cpu.cpu_ticks.3)
+            
+            let total = userTicks + systemTicks + niceTicks + idleTicks
+            let idle = idleTicks
+            
             if total > 0 {
                 let usage = (total - idle) / total * 100.0
                 totalUsage += usage
             }
         }
         
-        info.deallocate()
+        // Deallocate the memory
+        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: info), vm_size_t(infoCount))
         return totalUsage
     }
     

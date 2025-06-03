@@ -370,8 +370,8 @@ public class PerformanceMonitor: ObservableObject {
         }
         
         // Save to disk for persistence (async to avoid blocking)
-        benchmarkQueue.async {
-            self.saveBenchmarkHistory()
+        Task {
+            await self.saveBenchmarkHistory()
         }
         
         Self.logger.info("Recorded benchmark: \(benchmark.testName) = \(benchmark.value) \(benchmark.unit)")
@@ -469,7 +469,7 @@ public class PerformanceMonitor: ObservableObject {
         return results
     }
     
-    private func saveBenchmarkHistory() {
+    private func saveBenchmarkHistory() async {
         guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             Self.logger.error("Could not access documents directory")
             return
@@ -520,8 +520,8 @@ public class PerformanceMonitor: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             
-            historicalBenchmarks = try decoder.decode([PerformanceBenchmark].self, from: data)
-            Self.logger.info("Loaded \(historicalBenchmarks.count) historical benchmarks")
+            self.historicalBenchmarks = try decoder.decode([PerformanceBenchmark].self, from: data)
+            Self.logger.info("Loaded \(self.historicalBenchmarks.count) historical benchmarks")
         } catch {
             Self.logger.error("Failed to load benchmark history: \(error)")
         }

@@ -1,5 +1,6 @@
 import Foundation
 import CoreHaptics
+import AppKit
 
 /// Manages haptic feedback for recording events on supported MacBooks.
 /// Provides subtle feedback for recording start/stop events while respecting accessibility preferences.
@@ -111,7 +112,7 @@ public class HapticManager: ObservableObject {
             
             // Set up engine state change handler
             hapticEngine?.stoppedHandler = { [weak self] reason in
-                Task { [weak self] @MainActor in
+                Task { @MainActor in
                     guard let self = self else { return }
                     self.isEngineStarted = false
                     switch reason {
@@ -122,7 +123,13 @@ public class HapticManager: ObservableObject {
                         // Will restart when app becomes active
                         break
                     case .idleTimeout:
-                        // Restart when needed
+                        // Auto restart for idle timeout
+                        break
+                    case .engineDestroyed:
+                        // Engine was destroyed, need to recreate
+                        break
+                    case .gameControllerDisconnect:
+                        // Game controller disconnected, ignore for our use case
                         break
                     case .systemError:
                         // Log error but don't crash
@@ -131,6 +138,7 @@ public class HapticManager: ObservableObject {
                         // Expected stop
                         break
                     @unknown default:
+                        // Handle future cases
                         break
                     }
                 }

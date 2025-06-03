@@ -132,11 +132,9 @@ public class MenuBarManager: ObservableObject {
         button.toolTip = "Whisper Node - Voice to Text (Click for menu)"
         
         // Enhanced accessibility support
-        if let accessibilityElement = button {
-            accessibilityElement.setAccessibilityRole(.menuButton)
-            accessibilityElement.setAccessibilityLabel("Whisper Node menu")
-            accessibilityElement.setAccessibilityHelp("Opens the Whisper Node menu with preferences and status information")
-        }
+        button.setAccessibilityRole(.menuButton)
+        button.setAccessibilityLabel("Whisper Node menu")
+        button.setAccessibilityHelp("Opens the Whisper Node menu with preferences and status information")
         
         Self.logger.info("Menu bar item configured")
     }
