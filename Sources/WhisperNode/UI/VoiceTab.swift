@@ -6,6 +6,7 @@ struct VoiceTab: View {
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var audioEngine = AudioCaptureEngine()
     @StateObject private var hapticManager = HapticManager.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     @State private var availableDevices: [(deviceID: AudioDeviceID, name: String)] = []
     @State private var permissionStatus: AudioCaptureEngine.PermissionStatus = .undetermined
@@ -234,7 +235,7 @@ struct VoiceTab: View {
                                 ProgressView(value: testRecordingProgress)
                                     .progressViewStyle(LinearProgressViewStyle())
                                     .frame(maxWidth: .infinity)
-                                    .animation(.easeInOut(duration: 0.1), value: testRecordingProgress)
+                                    .animation(reduceMotion ? .none : .easeInOut(duration: 0.1), value: testRecordingProgress)
                             }
                         }
                         
@@ -527,6 +528,7 @@ struct InputLevelMeter: View {
     let level: Float
     let vadThreshold: Float
     let isVoiceDetected: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
         GeometryReader { geometry in
@@ -541,7 +543,7 @@ struct InputLevelMeter: View {
                     .fill(levelColor)
                     .frame(width: max(0, levelWidth(for: geometry.size.width)))
                     .cornerRadius(4)
-                    .animation(.easeOut(duration: 0.1), value: level)
+                    .animation(reduceMotion ? .none : .easeOut(duration: 0.1), value: level)
                 
                 // VAD threshold indicator
                 Rectangle()

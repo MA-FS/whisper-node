@@ -75,7 +75,7 @@ struct GeneralTab: View {
     
     // MARK: - Dynamic Text Support
     
-    private var dynamicSpacing: CGFloat {
+    private var dynamicScaling: CGFloat {
         switch dynamicTypeSize {
         case .xSmall, .small, .medium:
             return 20
@@ -90,20 +90,8 @@ struct GeneralTab: View {
         }
     }
     
-    private var dynamicPadding: CGFloat {
-        switch dynamicTypeSize {
-        case .xSmall, .small, .medium:
-            return 20
-        case .large, .xLarge:
-            return 24
-        case .xxLarge, .xxxLarge:
-            return 28
-        case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
-            return 32
-        @unknown default:
-            return 20
-        }
-    }
+    private var dynamicSpacing: CGFloat { dynamicScaling }
+    private var dynamicPadding: CGFloat { dynamicScaling }
 }
 
 #Preview {

@@ -41,6 +41,9 @@ public struct RecordingIndicatorView: View {
     private let processingRotationDuration: Double = 2.0
     private let defaultAnimationDuration: Double = 0.3
     
+    // Accessibility constants
+    private static let highContrastOpacity: Double = 0.9
+    
     public init(
         isVisible: Binding<Bool>,
         state: Binding<RecordingState>,
@@ -118,7 +121,7 @@ public struct RecordingIndicatorView: View {
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityHint(accessibilityHint)
                 .accessibilityValue(accessibilityValue)
-                .accessibilityAddTraits(.isStaticText)
+                .accessibilityAddTraits(.playsSound)
             }
         }
         .allowsHitTesting(false) // Allow clicks to pass through
@@ -150,7 +153,7 @@ public struct RecordingIndicatorView: View {
         }
         
         // High contrast mode support - use 90% opacity as per T19 requirements
-        return differentiateWithoutColor ? 0.9 : baseOpacity
+        return differentiateWithoutColor ? Self.highContrastOpacity : baseOpacity
     }
     
     // MARK: - Accessibility

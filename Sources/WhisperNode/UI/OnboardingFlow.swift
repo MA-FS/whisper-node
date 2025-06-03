@@ -17,6 +17,7 @@ struct OnboardingFlow: View {
     @StateObject private var core = WhisperNodeCore.shared
     @State private var currentStep: Int = 0
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     private static let logger = Logger(subsystem: "com.whispernode.onboarding", category: "flow")
     private static let stepTransitionDuration: TimeInterval = 0.3
@@ -92,7 +93,8 @@ struct OnboardingFlow: View {
     
     private func nextStep() {
         if currentStep < steps.count - 1 {
-            withAnimation(.easeInOut(duration: Self.stepTransitionDuration)) {
+            let animation: Animation? = reduceMotion ? .none : .easeInOut(duration: Self.stepTransitionDuration)
+            withAnimation(animation) {
                 currentStep += 1
             }
         }
@@ -100,7 +102,8 @@ struct OnboardingFlow: View {
     
     private func previousStep() {
         if currentStep > 0 {
-            withAnimation(.easeInOut(duration: Self.stepTransitionDuration)) {
+            let animation: Animation? = reduceMotion ? .none : .easeInOut(duration: Self.stepTransitionDuration)
+            withAnimation(animation) {
                 currentStep -= 1
             }
         }
@@ -737,6 +740,7 @@ struct HotkeySetupStep: View {
     
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var hotkeyManager = GlobalHotkeyManager.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isRecording = false
     @State private var recordedHotkeyDescription: String = ""
     
@@ -777,7 +781,7 @@ struct HotkeySetupStep: View {
                                     .stroke(isRecording ? Color.blue : Color.gray.opacity(0.3), lineWidth: isRecording ? 2 : 1)
                             )
                     )
-                    .animation(.easeInOut(duration: 0.2), value: isRecording)
+                    .animation(reduceMotion ? .none : .easeInOut(duration: 0.2), value: isRecording)
                 
                 Button(isRecording ? "Press keys to record..." : "Change Hotkey") {
                     if isRecording {

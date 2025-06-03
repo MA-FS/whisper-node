@@ -94,18 +94,33 @@ struct PreferencesView: View {
     // MARK: - Keyboard Navigation
     
     private func setupKeyboardNavigation() {
-        // Note: TabView in SwiftUI already provides built-in keyboard navigation:
-        // - Cmd+1-5 to switch between tabs
-        // - Tab/Shift+Tab to navigate through controls within tabs
-        // - Space/Enter to activate buttons
-        // - Arrow keys for navigation in lists/pickers
+        // Set up key event monitoring for enhanced navigation
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            switch event.keyCode {
+            case 53: // Escape key
+                NSApp.mainWindow?.close()
+                return nil
+            case 18...22: // Number keys 1-5 for tab switching
+                if event.modifierFlags.contains(.command) {
+                    let tabIndex = event.keyCode - 18
+                    let tabs = ["general", "voice", "models", "shortcuts", "about"]
+                    if tabIndex < tabs.count {
+                        selectedTab = tabs[Int(tabIndex)]
+                    }
+                    return nil
+                }
+            default:
+                break
+            }
+            return event
+        }
         
         // Additional accessibility announcement for screen readers
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             NSAccessibility.post(
                 element: NSApp.mainWindow as Any,
                 notification: .announcementRequested,
-                userInfo: [.announcement: "Preferences window opened. Use Command+1 through Command+5 to switch between tabs."]
+                userInfo: [.announcement: "Preferences window opened. Use Command+1 through Command+5 to switch between tabs, or press Escape to close."]
             )
         }
     }
