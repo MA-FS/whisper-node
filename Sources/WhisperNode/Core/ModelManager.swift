@@ -96,7 +96,7 @@ public struct ModelsMetadata: Codable {
     }
     
     public func getModel(_ name: String) -> ModelMetadata? {
-        return models[name]
+        models[name]
     }
     
     public init(version: Int = 1) {
@@ -538,8 +538,11 @@ public class ModelManager: ObservableObject {
                 modelsMetadata = loadedMetadata
             }
         } catch {
-            print("Warning: Failed to load metadata, using empty metadata: \(error)")
-            modelsMetadata = ModelsMetadata()
+            print("Warning: Failed to load metadata, attempting to rebuild from disk: \(error)")
+            // Temporarily release lock for rebuild operation
+            metadataLock.unlock()
+            await rebuildMetadataFromDisk()
+            metadataLock.lock() // Re-acquire for the defer unlock
         }
     }
     
@@ -577,6 +580,46 @@ public class ModelManager: ObservableObject {
         modelsMetadata.removeModel(name)
         metadataLock.unlock()
         await saveMetadata()
+    }
+    
+    /// Rebuild metadata from disk if metadata.json is corrupted or missing
+    private func rebuildMetadataFromDisk() async {
+        metadataLock.lock()
+        defer { metadataLock.unlock() }
+        
+        var rebuiltMetadata = ModelsMetadata()
+        
+        do {
+            let modelFiles = try fileManager.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
+            
+            for fileURL in modelFiles where fileURL.pathExtension == "bin" {
+                let modelName = fileURL.deletingPathExtension().lastPathComponent
+                
+                // Get file attributes
+                let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
+                let fileSize = UInt64(resourceValues.fileSize ?? 0)
+                let creationDate = resourceValues.creationDate ?? Date()
+                
+                // Find matching model info for checksum and URL
+                if let modelInfo = availableModels.first(where: { $0.name == modelName }) {
+                    let metadata = ModelMetadata(
+                        name: modelName,
+                        downloadedDate: creationDate,
+                        fileSize: fileSize,
+                        checksum: modelInfo.checksum,
+                        downloadURL: modelInfo.downloadURL
+                    )
+                    rebuiltMetadata.addModel(metadata)
+                }
+            }
+            
+            modelsMetadata = rebuiltMetadata
+            print("Rebuilt metadata for \(rebuiltMetadata.models.count) models from disk")
+            
+        } catch {
+            print("Warning: Failed to rebuild metadata from disk: \(error)")
+            modelsMetadata = ModelsMetadata()
+        }
     }
     
     // MARK: - Temporary File Management
