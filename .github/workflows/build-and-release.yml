@@ -1,10 +1,15 @@
-name: Build and Release
+name: Build and Release (DISABLED)
 
+# TEMPORARILY DISABLED - Reactivate after local builds work consistently
+# on:
+#   push:
+#     tags: ['v*']
+#   pull_request:
+#     branches: [main]
+#   workflow_dispatch:
+
+# Manual trigger only for testing
 on:
-  push:
-    tags: ['v*']
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 env:

@@ -1,13 +1,15 @@
 # Task 22: CI/CD Pipeline Setup
 
-**Status**: ✅ Done  
+**Status**: 🚧 Shelved  
 **Priority**: Medium  
 **Estimated Hours**: 12  
-**Dependencies**: T20, T21  
+**Dependencies**: T20, T21, Core App Functionality  
 
 ## Description
 
 Configure GitHub Actions for automated building, testing, and notarization.
+
+⚠️ **CURRENTLY SHELVED**: Pipeline implementation is complete but disabled due to build failures. Will be reactivated once core application builds successfully locally.
 
 ## Acceptance Criteria
 
@@ -94,5 +96,22 @@ Created a comprehensive CI/CD pipeline with three GitHub Actions workflows:
 
 The pipeline integrates seamlessly with existing build scripts and maintains the project's privacy-first, offline-only architecture.
 
+## Current Status & Next Steps
+
+**Why Shelved**: The CI/CD pipeline encounters build failures due to:
+- Rust FFI integration issues with whisper.cpp
+- Dependency compatibility problems
+- Platform-specific build configuration challenges
+
+**Reactivation Plan**:
+1. Complete core application development locally
+2. Resolve Rust FFI and dependency issues
+3. Ensure local builds work consistently
+4. Test core functionality (audio capture, transcription, text insertion)
+5. Update workflows with working build configuration
+6. Re-enable automated testing and deployment
+
+**Local Development Focus**: Until reactivation, use local build scripts in `/scripts` directory for development and testing.
+
 ## Tags
-`ci-cd`, `github-actions`, `automation`, `notarization`
+`ci-cd`, `github-actions`, `automation`, `notarization`, `shelved`

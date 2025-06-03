@@ -10,6 +10,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 - 🧪 **Testing** - In Testing Phase
 - ❌ **Failed** - Failed/Needs Rework
 - 🚧 **Partial** - Partially Implemented
+- 🚧 **Shelved** - Complete but temporarily disabled
 
 ## Task Progress (Sequential Order)
 
@@ -36,7 +37,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T19 | [Accessibility Features Implementation](tasks/T19-accessibility-features.md) | Medium | 🚧 Partial | 40% | Basic accessibility, needs VoiceOver enhancement |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ✅ Done | 100% | Signing scripts + notarization workflow complete |
 | T21 | [DMG Installer Creation](tasks/T21-dmg-installer.md) | Medium | ✅ Done | 100% | Complete distribution infrastructure |
-| T22 | [CI/CD Pipeline Setup](tasks/T22-cicd-pipeline.md) | Medium | ✅ Done | 100% | Complete GitHub Actions pipeline with security scanning |
+| T22 | [CI/CD Pipeline Setup](tasks/T22-cicd-pipeline.md) | Medium | 🚧 Shelved | 95% | Pipeline complete but disabled due to build failures |
 | T23 | [Performance Testing & Validation](tasks/T23-performance-testing.md) | High | ✅ Done | 100% | Complete XCTest suite with CI integration verified |
 | T24 | [System Integration Testing](tasks/T24-integration-testing.md) | High | ✅ Done | 100% | Complete testing framework with 95% compatibility validation |
 | T25 | [Security & Privacy Audit](tasks/T25-security-audit.md) | High | ⏳ WIP | 0% | Not started |
@@ -58,7 +59,8 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ## Overall Progress Summary (VERIFIED)
 
 **Total Tasks**: 25  
-**Completed & Verified**: 20 (80%)  
+**Completed & Verified**: 19 (76%)  
+**Shelved**: 1 (4%)
 **In Testing**: 0 (0%)
 **Partially Implemented**: 1 (4%)
 **Work in Progress**: 4 (16%)
@@ -88,23 +90,27 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 - **Accuracy**: ≥95% WER on Librispeech test subset
 - **Compatibility**: ≥95% Cocoa text view support
 
-## Critical Next Steps for Production Release
+## Current Development Approach
 
-### Immediate Priority (Alpha Ready)
-1. **T14 - Onboarding Flow** ✅ - Complete first-run setup wizard
-2. **T20 - App Bundle & Code Signing** ✅ - Enable distribution 
-3. **T23 - Performance Testing** ✅ - Complete XCTest suite validating all PRD requirements
+**Focus**: Local development and core functionality completion before automation.
 
-### High Priority (Beta Ready)  
-4. **T16 - Performance Monitoring** ✅ - Complete CPU/memory tracking
-5. **T17 - Model Storage** ✅ - Atomic downloads + checksum validation complete
-6. **T24 - Integration Testing** - Cross-app compatibility validation
+### Immediate Priority (Core App Working Locally)
+1. **Resolve Rust FFI Issues**: Fix whisper.cpp integration and compilation errors
+2. **Local Build Verification**: Ensure all components build and link correctly
+3. **Core Feature Testing**: Verify audio capture, transcription, and text insertion work
+4. **Dependency Resolution**: Fix any remaining library compatibility issues
+
+### Next Steps (After Local Success)
+1. **T25 - Security Audit** - Privacy compliance verification  
+2. **T19 - Accessibility Features** - Complete VoiceOver enhancements (40% → 100%)
+3. **T22 - CI/CD Pipeline** - Re-enable after local builds work consistently
 
 ### Production Ready (MVP)
-7. **T21 - DMG Installer** ✅ - Complete signed installer package
-8. **T22 - CI/CD Pipeline** - Automated build & notarization
-9. **T25 - Security Audit** - Privacy compliance verification
+1. **Local Alpha Testing** - Thorough testing of all features locally
+2. **Manual Distribution** - Create signed builds using existing scripts
+3. **CI/CD Reactivation** - Restore automated pipeline once stable
+4. **Beta Release** - Automated releases via restored CI/CD
 
 ---
-*Last Updated: 2025-06-02 (VERIFIED AGAINST ACTUAL CODEBASE)*  
-*Next Review: Weekly - Focus on T14, T20, T23 for Alpha*
+*Last Updated: 2025-06-03 (CI/CD SHELVED - FOCUS ON LOCAL DEVELOPMENT)*  
+*Next Review: Weekly - Priority: Local builds, Rust FFI, core functionality*

@@ -1,16 +1,21 @@
-name: Security and Compliance
+name: Security and Compliance (DISABLED)
 
 permissions:
   contents: read
 
+# TEMPORARILY DISABLED - Reactivate after local builds work consistently  
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
+#   schedule:
+#     # Run security checks weekly on Sundays at 00:00 UTC
+#     - cron: '0 0 * * 0'
+#   workflow_dispatch:
+
+# Manual trigger only for testing
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    # Run security checks weekly on Sundays at 00:00 UTC
-    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:

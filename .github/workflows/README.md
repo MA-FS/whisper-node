@@ -1,8 +1,54 @@
 # CI/CD Pipeline Documentation
 
-This directory contains GitHub Actions workflows for automated building, testing, and releasing of WhisperNode.
+⚠️ **PIPELINE CURRENTLY SHELVED** ⚠️
 
-## Workflows Overview
+The CI/CD pipeline has been temporarily disabled due to build failures and dependency issues. It will be reactivated once the core application is fully functional locally.
+
+**Current Status**: Development focus is on completing core functionality locally before implementing automated builds.
+
+**When to Reactivate**: After the WhisperNode app builds and runs successfully on local development machines.
+
+---
+
+This directory contains GitHub Actions workflows for automated building, testing, and releasing of WhisperNode (currently disabled).
+
+## Local Development Workflow (Current Focus)
+
+Until the CI/CD pipeline is reactivated, use these local development commands:
+
+### Prerequisites
+- macOS 13+ with Apple Silicon
+- Xcode 15+ with command line tools
+- Rust toolchain with `aarch64-apple-darwin` target
+
+### Local Build Commands
+```bash
+# Build Rust library
+./scripts/build-rust.sh release
+
+# Build Swift application
+swift build --configuration release --arch arm64 --build-path build
+
+# Run tests locally
+swift test --build-path build
+
+# Create app bundle (manual)
+./scripts/build-release.sh Release
+
+# Test app locally
+open build/WhisperNode.app
+```
+
+### Before Reactivating CI/CD
+1. Ensure local builds complete without errors
+2. Verify the app runs and functions correctly locally
+3. Test all core features (audio capture, transcription, text insertion)
+4. Resolve any Rust FFI or dependency issues
+5. Update CI/CD workflows with working build configuration
+
+---
+
+## Workflows Overview (For Future Reference)
 
 ### 1. `ci.yml` - Continuous Integration
 **Trigger**: Push/PR to main or develop branches
