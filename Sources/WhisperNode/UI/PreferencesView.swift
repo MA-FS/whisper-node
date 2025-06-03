@@ -57,6 +57,12 @@ struct PreferencesView: View {
     
     // MARK: - Dynamic Text Support
     
+    /// Calculates adaptive frame width based on the user's dynamic text size preference.
+    /// 
+    /// Ensures the preferences window provides adequate space for larger text sizes and
+    /// accessibility text categories, preventing content from being truncated or cramped.
+    /// 
+    /// - Returns: CGFloat width value ranging from 480pt (standard) to 640pt (accessibility)
     private var dynamicFrameWidth: CGFloat {
         switch dynamicTypeSize {
         case .xSmall, .small, .medium:
@@ -68,12 +74,18 @@ struct PreferencesView: View {
         case .xxxLarge:
             return 600
         case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
-            return min(800, 600)
+            return 640  // Maximum reasonable width for accessibility
         @unknown default:
             return 480
         }
     }
     
+    /// Calculates adaptive frame height based on the user's dynamic text size preference.
+    /// 
+    /// Adjusts the preferences window height to accommodate larger text and ensure all
+    /// controls remain visible and accessible for users with accessibility text sizes.
+    /// 
+    /// - Returns: CGFloat height value ranging from 320pt (standard) to 480pt (accessibility)
     private var dynamicFrameHeight: CGFloat {
         switch dynamicTypeSize {
         case .xSmall, .small, .medium:
@@ -85,7 +97,7 @@ struct PreferencesView: View {
         case .xxxLarge:
             return 440
         case .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5:
-            return min(600, 480)
+            return 480  // Maximum reasonable height for accessibility
         @unknown default:
             return 320
         }
@@ -93,6 +105,15 @@ struct PreferencesView: View {
     
     // MARK: - Keyboard Navigation
     
+    /// Sets up comprehensive keyboard navigation for the preferences window.
+    /// 
+    /// Implements accessibility-compliant keyboard shortcuts and navigation patterns:
+    /// - Command+1-5: Quick tab switching for all preference categories
+    /// - Escape: Closes the preferences window
+    /// - VoiceOver announcements: Informs screen reader users of available shortcuts
+    /// 
+    /// This implementation follows macOS Human Interface Guidelines for keyboard navigation
+    /// and ensures users who rely on keyboard-only interaction can fully use the preferences.
     private func setupKeyboardNavigation() {
         // Set up key event monitoring for enhanced navigation
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in

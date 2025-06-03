@@ -5,7 +5,7 @@ struct GeneralTab: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     var body: some View {
-        VStack(alignment: .leading, spacing: dynamicSpacing) {
+        VStack(alignment: .leading, spacing: dynamicScaling) {
             // App Icon and Title
             HStack {
                 Image(systemName: "mic.circle.fill")
@@ -68,13 +68,25 @@ struct GeneralTab: View {
                 Spacer()
             }
         }
-        .padding(dynamicPadding)
+        .padding(dynamicScaling)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.windowBackgroundColor))
     }
     
     // MARK: - Dynamic Text Support
     
+    /// Calculates responsive spacing and padding values based on the user's dynamic text size preference.
+    /// 
+    /// This computed property ensures the UI adapts appropriately for users who need larger text sizes,
+    /// providing more generous spacing for accessibility text size categories.
+    /// 
+    /// - Returns: CGFloat value ranging from 20 (standard sizes) to 32 (accessibility sizes)
+    /// 
+    /// **Size Categories:**
+    /// - Standard sizes (xSmall through medium): 20pt spacing
+    /// - Large sizes (large through xLarge): 24pt spacing  
+    /// - Extra large sizes (xxLarge through xxxLarge): 28pt spacing
+    /// - Accessibility sizes (accessibility1 through accessibility5): 32pt spacing
     private var dynamicScaling: CGFloat {
         switch dynamicTypeSize {
         case .xSmall, .small, .medium:
@@ -90,8 +102,6 @@ struct GeneralTab: View {
         }
     }
     
-    private var dynamicSpacing: CGFloat { dynamicScaling }
-    private var dynamicPadding: CGFloat { dynamicScaling }
 }
 
 #Preview {

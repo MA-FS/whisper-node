@@ -172,23 +172,41 @@ public struct RecordingIndicatorView: View {
         }
     }
     
+    /// Provides a consistent accessibility label for the recording indicator across all states.
+    /// 
+    /// Returns "Recording indicator" to clearly identify this element's purpose for VoiceOver users.
+    /// This label remains constant while the hint and value provide state-specific information.
     private var accessibilityLabel: String {
         return "Recording indicator"
     }
     
+    /// Provides concise accessibility hints based on the current recording state.
+    /// 
+    /// These hints give VoiceOver users immediate context about what the indicator is showing:
+    /// - Idle: "Ready to record" 
+    /// - Recording: "Recording in progress"
+    /// - Processing: "Processing audio"
+    /// - Error: "Recording error occurred"
+    /// 
+    /// Hints are kept short to reduce cognitive load while providing essential context.
     private var accessibilityHint: String {
         switch state {
         case .idle:
-            return "Shows current recording status. Currently idle and ready to record."
+            return "Ready to record"
         case .recording:
-            return "Shows current recording status. Currently recording audio input."
+            return "Recording in progress"
         case .processing:
-            return "Shows current recording status. Currently processing recorded audio."
+            return "Processing audio"
         case .error:
-            return "Shows current recording status. An error has occurred during recording."
+            return "Recording error occurred"
         }
     }
     
+    /// Provides dynamic accessibility value information for processing state.
+    /// 
+    /// Returns percentage completion during processing to give VoiceOver users 
+    /// real-time feedback on transcription progress. Returns empty string for
+    /// other states where progress information isn't applicable.
     private var accessibilityValue: String {
         switch state {
         case .processing:
