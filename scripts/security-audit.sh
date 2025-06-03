@@ -122,8 +122,8 @@ DATA_DIRS=(
 
 PERSISTENT_DATA_FOUND=""
 for dir in "${DATA_DIRS[@]}"; do
-    if [[ -d "$dir" ]] || ls $dir 2>/dev/null; then
-        FILES=$(find $dir -name "*audio*" -o -name "*recording*" -o -name "*.wav" -o -name "*.mp3" -o -name "*.m4a" 2>/dev/null || true)
+    if [[ -d "$dir" ]]; then
+        FILES=$(find "$dir" -name "*audio*" -o -name "*recording*" -o -name "*.wav" -o -name "*.mp3" -o -name "*.m4a" 2>/dev/null || true)
         if [[ -n "$FILES" ]]; then
             PERSISTENT_DATA_FOUND="$PERSISTENT_DATA_FOUND\n$dir: $FILES"
         fi
@@ -148,14 +148,14 @@ TEMP_MONITOR_DIR="/tmp/whisper_audit_$$"
 mkdir -p "$TEMP_MONITOR_DIR"
 
 # Monitor /tmp for WhisperNode files before
-BEFORE_TEMP=$(ls /tmp/*whisper* /tmp/*audio* 2>/dev/null || true)
+BEFORE_TEMP=$(find /tmp -maxdepth 1 -name "*whisper*" -o -name "*audio*" 2>/dev/null || true)
 
 echo "Temp files before: ${BEFORE_TEMP:-none}"
 echo "Launch WhisperNode, record audio, then close app. Press Enter when done."
 read
 
 # Monitor /tmp for WhisperNode files after
-AFTER_TEMP=$(ls /tmp/*whisper* /tmp/*audio* 2>/dev/null || true)
+AFTER_TEMP=$(find /tmp -maxdepth 1 -name "*whisper*" -o -name "*audio*" 2>/dev/null || true)
 echo "Temp files after: ${AFTER_TEMP:-none}"
 
 # Check if files were cleaned up
