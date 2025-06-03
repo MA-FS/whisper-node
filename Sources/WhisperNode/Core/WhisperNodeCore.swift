@@ -78,7 +78,7 @@ public class WhisperNodeCore: ObservableObject {
         initialize()
     }
     
-    private func initialize() {
+    public func initialize() {
         Self.logger.info("WhisperNode Core initializing...")
         
         // Setup hotkey manager delegate
@@ -383,7 +383,7 @@ public class WhisperNodeCore: ObservableObject {
     /// Processes captured audio data by transcribing it with the Whisper engine and updating the UI indicator to reflect processing progress, success, or error states.
     ///
     /// Converts raw audio data to float samples, simulates progress updates on the processing indicator, and performs asynchronous transcription. On success, hides the indicator and logs the result; on failure, displays an error indicator briefly before hiding it. Performance warnings are logged if high resource usage is detected.
-    private func processAudioData(_ audioData: Data) async {
+    public func processAudioData(_ audioData: Data) async {
         guard let engine = whisperEngine else { return }
         
         // Convert Data to Float array for whisper processing
