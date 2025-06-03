@@ -190,8 +190,11 @@ public class PerformanceBenchmarkRunner {
         let startTime = CFAbsoluteTimeGetCurrent()
         
         // Simulate cold launch
-        let core = await MainActor.run { WhisperNodeCore.shared }
-        await MainActor.run { core.initialize() }
+        let core = await MainActor.run { 
+            let core = WhisperNodeCore.shared
+            core.initialize()
+            return core
+        }
         
         let endTime = CFAbsoluteTimeGetCurrent()
         let launchTime = endTime - startTime
@@ -222,8 +225,11 @@ public class PerformanceBenchmarkRunner {
         
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        let core = await MainActor.run { WhisperNodeCore.shared }
-        await MainActor.run { core.initialize() }
+        let core = await MainActor.run { 
+            let core = WhisperNodeCore.shared
+            core.initialize()
+            return core
+        }
         
         let transcriptionSuccess = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             Task {
@@ -521,28 +527,29 @@ public class PerformanceBenchmarkRunner {
         
         guard result == KERN_SUCCESS, let info = info else { return 0 }
         
-        let cpuLoadInfo = UnsafePointer<processor_cpu_load_info>(OpaquePointer(info))
-        
-        var totalUsage: Double = 0
-        for i in 0..<Int(numCpusU) {
-            let cpu = cpuLoadInfo[i]
-            // Break down the complex expression
-            let userTicks = Double(cpu.cpu_ticks.0)
-            let systemTicks = Double(cpu.cpu_ticks.1)
-            let niceTicks = Double(cpu.cpu_ticks.2)
-            let idleTicks = Double(cpu.cpu_ticks.3)
-            
-            let total = userTicks + systemTicks + niceTicks + idleTicks
-            let idle = idleTicks
-            
-            if total > 0 {
-                let usage = (total - idle) / total * 100.0
-                totalUsage += usage
+        let totalUsage = info.withMemoryRebound(to: processor_cpu_load_info.self, capacity: Int(numCpusU)) { cpuLoadInfo in
+            var totalUsage: Double = 0
+            for i in 0..<Int(numCpusU) {
+                let cpu = cpuLoadInfo[i]
+                // Break down the complex expression
+                let userTicks = Double(cpu.cpu_ticks.0)
+                let systemTicks = Double(cpu.cpu_ticks.1)
+                let niceTicks = Double(cpu.cpu_ticks.2)
+                let idleTicks = Double(cpu.cpu_ticks.3)
+                
+                let total = userTicks + systemTicks + niceTicks + idleTicks
+                let idle = idleTicks
+                
+                if total > 0 {
+                    let usage = (total - idle) / total * 100.0
+                    totalUsage += usage
+                }
             }
+            return totalUsage
         }
         
-        // Deallocate the memory
-        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: info), vm_size_t(infoCount))
+        // Properly deallocate processor info memory
+        info.deallocate()
         return totalUsage
     }
     

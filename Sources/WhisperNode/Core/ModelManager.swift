@@ -107,7 +107,7 @@ public struct ModelsMetadata: Codable, Sendable {
 
 /// Manages Whisper model downloads, storage, and lifecycle
 @MainActor
-public final class ModelManager: ObservableObject {
+public final class ModelManager: ObservableObject, @unchecked Sendable {
     public static let shared = ModelManager()
     
     // MARK: - Published Properties
@@ -139,8 +139,6 @@ public final class ModelManager: ObservableObject {
     private let errorManager = ErrorHandlingManager.shared
     private var modelsMetadata: ModelsMetadata = ModelsMetadata()
     private let metadataQueue = DispatchQueue(label: "com.whispernode.metadata", qos: .utility)
-    private let metadataLock = NSLock()
-    private var downloadLocks: [String: NSLock] = [:]
     
     // Base URLs for model downloads (Hugging Face)
     private let baseDownloadURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
@@ -244,6 +242,13 @@ public final class ModelManager: ObservableObject {
                 errorManager.handleModelDownloadFailure(errorDetails) {
                     await self.retryDownload(model)
                 }
+            }
+        } catch {
+            // Handle general download error
+            let errorDetails = error.localizedDescription
+            updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
+            errorManager.handleModelDownloadFailure(errorDetails) {
+                await self.retryDownload(model)
             }
         }
     }
@@ -393,9 +398,9 @@ public final class ModelManager: ObservableObject {
     }
     
     private func downloadWithProgress(_ model: ModelInfo) async -> DownloadResult {
-        // Use async-safe actor isolation instead of NSLock
+        // Use main actor isolation for thread-safe access to downloadTasks
         return await withCheckedContinuation { continuation in
-            Task {
+            Task { @MainActor in
                 // Check if download is already in progress using thread-safe lookup
                 if downloadTasks[model.name] != nil {
                     continuation.resume(returning: DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete."))
@@ -412,6 +417,10 @@ public final class ModelManager: ObservableObject {
                 let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
                 
                 do {
+                    // Create and track download task
+                    let downloadTask = urlSession.downloadTask(with: url)
+                    downloadTasks[model.name] = downloadTask
+                    
                     // Download to staging area first
                     let (tempURL, response) = try await urlSession.download(from: url)
                     
@@ -452,6 +461,9 @@ public final class ModelManager: ObservableObject {
                     )
                     await saveModelMetadata(metadata)
                     
+                    // Clean up download task tracking
+                    downloadTasks.removeValue(forKey: model.name)
+                    
                     continuation.resume(returning: DownloadResult(
                         success: true,
                         filePath: destinationURL.path,
@@ -461,6 +473,10 @@ public final class ModelManager: ObservableObject {
                 } catch {
                     // Clean up any staging files on error
                     try? fileManager.removeItem(at: stagingURL)
+                    
+                    // Clean up download task tracking
+                    downloadTasks.removeValue(forKey: model.name)
+                    
                     continuation.resume(returning: DownloadResult(success: false, error: error.localizedDescription))
                 }
             }
@@ -518,8 +534,7 @@ public final class ModelManager: ObservableObject {
     // MARK: - Metadata Management
     
     private func loadMetadata() {
-        metadataLock.lock()
-        defer { metadataLock.unlock() }
+        // @MainActor isolation provides thread safety
         
         guard fileManager.fileExists(atPath: metadataURL.path) else {
             modelsMetadata = ModelsMetadata()
@@ -546,95 +561,65 @@ public final class ModelManager: ObservableObject {
     }
     
     private func saveMetadata() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            metadataQueue.async {
-                self.metadataLock.lock()
-                defer { 
-                    self.metadataLock.unlock()
-                    continuation.resume()
-                }
-                
-                do {
-                    let encoder = JSONEncoder()
-                    encoder.dateEncodingStrategy = .iso8601
-                    encoder.outputFormatting = .prettyPrinted
-                    let data = try encoder.encode(self.modelsMetadata)
-                    try data.write(to: self.metadataURL, options: .atomic)
-                } catch {
-                    print("Warning: Failed to save metadata: \(error)")
-                }
-            }
+        // Use actor isolation for thread safety
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(modelsMetadata)
+            try data.write(to: metadataURL, options: .atomic)
+        } catch {
+            print("Warning: Failed to save metadata: \(error)")
         }
     }
     
     private func saveModelMetadata(_ metadata: ModelMetadata) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            metadataQueue.async {
-                self.metadataLock.lock()
-                self.modelsMetadata.addModel(metadata)
-                self.metadataLock.unlock()
-                continuation.resume()
-            }
-        }
+        // Use actor isolation for thread safety
+        modelsMetadata.addModel(metadata)
         await saveMetadata()
     }
     
     private func removeModelMetadata(_ name: String) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            metadataQueue.async {
-                self.metadataLock.lock()
-                self.modelsMetadata.removeModel(name)
-                self.metadataLock.unlock()
-                continuation.resume()
-            }
-        }
+        // Use actor isolation for thread safety
+        modelsMetadata.removeModel(name)
         await saveMetadata()
     }
     
     /// Rebuild metadata from disk if metadata.json is corrupted or missing
     private func rebuildMetadataFromDisk() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            metadataQueue.async {
-                self.metadataLock.lock()
-                defer { 
-                    self.metadataLock.unlock()
-                    continuation.resume()
-                }
+        // Use actor isolation for thread safety
+        var rebuiltMetadata = ModelsMetadata()
+        
+        do {
+            let modelFiles = try fileManager.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
+            
+            for fileURL in modelFiles where fileURL.pathExtension == "bin" {
+                let modelName = fileURL.deletingPathExtension().lastPathComponent
                 
-                var rebuiltMetadata = ModelsMetadata()
+                // Get file attributes
+                let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
+                let fileSize = UInt64(resourceValues.fileSize ?? 0)
+                let creationDate = resourceValues.creationDate ?? Date()
                 
-                do {
-                    let modelFiles = try self.fileManager.contentsOfDirectory(at: self.modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
-                    
-                    for fileURL in modelFiles where fileURL.pathExtension == "bin" {
-                        let modelName = fileURL.deletingPathExtension().lastPathComponent
-                        
-                        // Get file attributes
-                        let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
-                        let fileSize = UInt64(resourceValues.fileSize ?? 0)
-                        let creationDate = resourceValues.creationDate ?? Date()
-                        
-                        // Find matching model info for checksum and URL
-                        if let modelInfo = self.availableModels.first(where: { $0.name == modelName }) {
-                            let metadata = ModelMetadata(
-                                name: modelName,
-                                downloadedDate: creationDate,
-                                fileSize: fileSize,
-                                checksum: modelInfo.checksum,
-                                downloadURL: modelInfo.downloadURL
-                            )
-                            rebuiltMetadata.addModel(metadata)
-                        }
-                    }
-                    
-                    self.modelsMetadata = rebuiltMetadata
-                    print("Rebuilt metadata for \(rebuiltMetadata.models.count) models from disk")
-                    
-                } catch {
-                    print("Warning: Failed to rebuild metadata from disk: \(error)")
-                    self.modelsMetadata = ModelsMetadata()
+                // Find matching model info for checksum and URL
+                if let modelInfo = availableModels.first(where: { $0.name == modelName }) {
+                    let metadata = ModelMetadata(
+                        name: modelName,
+                        downloadedDate: creationDate,
+                        fileSize: fileSize,
+                        checksum: modelInfo.checksum,
+                        downloadURL: modelInfo.downloadURL
+                    )
+                    rebuiltMetadata.addModel(metadata)
                 }
             }
+            
+            modelsMetadata = rebuiltMetadata
+            print("Rebuilt metadata for \(rebuiltMetadata.models.count) models from disk")
+            
+        } catch {
+            print("Warning: Failed to rebuild metadata from disk: \(error)")
+            modelsMetadata = ModelsMetadata()
         }
     }
     
