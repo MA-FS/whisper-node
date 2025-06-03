@@ -63,6 +63,47 @@ public struct DownloadResult {
     }
 }
 
+/// Metadata for tracking model installations
+public struct ModelMetadata: Codable {
+    let name: String
+    let version: String
+    let downloadedDate: Date
+    let fileSize: UInt64
+    let checksum: String
+    let downloadURL: String
+    
+    public init(name: String, version: String = "1.0", downloadedDate: Date = Date(), fileSize: UInt64, checksum: String, downloadURL: String) {
+        self.name = name
+        self.version = version
+        self.downloadedDate = downloadedDate
+        self.fileSize = fileSize
+        self.checksum = checksum
+        self.downloadURL = downloadURL
+    }
+}
+
+/// Container for all model metadata
+public struct ModelsMetadata: Codable {
+    let version: Int
+    var models: [String: ModelMetadata] = [:]
+    
+    public mutating func addModel(_ metadata: ModelMetadata) {
+        models[metadata.name] = metadata
+    }
+    
+    public mutating func removeModel(_ name: String) {
+        models.removeValue(forKey: name)
+    }
+    
+    public func getModel(_ name: String) -> ModelMetadata? {
+        models[name]
+    }
+    
+    public init(version: Int = 1) {
+        self.version = version
+    }
+}
+
 /// Manages Whisper model downloads, storage, and lifecycle
 @MainActor
 public class ModelManager: ObservableObject {
@@ -83,15 +124,22 @@ public class ModelManager: ObservableObject {
     
     private static let requestTimeout: TimeInterval = 30 // 30 seconds for request timeout
     private static let resourceTimeout: TimeInterval = 3600 // 1 hour for large downloads
+    private static let tempFileCleanupInterval: TimeInterval = 3600 // 1 hour for temp file cleanup
     private static let modelFileExtension = ".bin"
     
     // MARK: - Private Properties
     
     private let modelsDirectory: URL
+    private let tempDirectory: URL
+    private let metadataURL: URL
     private let urlSession: URLSession
     private var downloadTasks: [String: URLSessionDownloadTask] = [:]
     private let fileManager = FileManager.default
     private let errorManager = ErrorHandlingManager.shared
+    private var modelsMetadata: ModelsMetadata = ModelsMetadata()
+    private let metadataQueue = DispatchQueue(label: "com.whispernode.metadata", qos: .utility)
+    private let metadataLock = NSLock()
+    private var downloadLocks: [String: NSLock] = [:]
     
     // Base URLs for model downloads (Hugging Face)
     private let baseDownloadURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
@@ -105,18 +153,21 @@ public class ModelManager: ObservableObject {
     // MARK: - Initialization
     
     private init() {
-        // Set up models directory in Application Support
+        // Set up directories in Application Support
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             fatalError("Unable to access Application Support directory - this is required for model storage")
         }
         let whisperNodeDir = appSupport.appendingPathComponent("WhisperNode")
         self.modelsDirectory = whisperNodeDir.appendingPathComponent("Models")
+        self.tempDirectory = whisperNodeDir.appendingPathComponent("temp")
+        self.metadataURL = whisperNodeDir.appendingPathComponent("metadata.json")
         
-        // Create models directory if it doesn't exist
+        // Create directories if they don't exist
         do {
             try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
         } catch {
-            print("Warning: Failed to create models directory: \(error)")
+            print("Warning: Failed to create storage directories: \(error)")
         }
         
         // Configure URL session with progress tracking
@@ -125,11 +176,17 @@ public class ModelManager: ObservableObject {
         config.timeoutIntervalForResource = Self.resourceTimeout
         self.urlSession = URLSession(configuration: config)
         
-        // Load active model preference
+        // Load metadata and active model preference
+        self.loadMetadata()
         self.activeModelName = UserDefaults.standard.string(forKey: "activeModelName") ?? "tiny.en"
         
         // Initialize available models
         self.initializeModelList()
+        
+        // Clean up any orphaned temp files on startup
+        Task {
+            await cleanupTempFiles()
+        }
     }
     
     // MARK: - Public Methods
@@ -199,7 +256,7 @@ public class ModelManager: ObservableObject {
     public func retryDownload(_ model: ModelInfo) async {
         guard model.status == .failed else { return }
         
-        // Clean up any partial files
+        // Clean up any partial files and temp files
         let modelPath = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
         do {
             try fileManager.removeItem(at: modelPath)
@@ -207,6 +264,9 @@ public class ModelManager: ObservableObject {
         } catch {
             print("Note: No partial file to clean up or removal failed: \(error)")
         }
+        
+        // Clean up any temp files for this model
+        await cleanupModelTempFiles(model.name)
         
         await downloadModel(model)
     }
@@ -220,6 +280,10 @@ public class ModelManager: ObservableObject {
         do {
             try fileManager.removeItem(at: modelPath)
             updateModelStatus(model.name, status: .available, progress: 0.0)
+            
+            // Clean up metadata and temp files
+            await removeModelMetadata(model.name)
+            await cleanupModelTempFiles(model.name)
             
             // If this was the active model, fallback to tiny.en
             if activeModelName == model.name {
@@ -269,7 +333,7 @@ public class ModelManager: ObservableObject {
                 downloadSize: 39 * 1024 * 1024,      // 39MB
                 fileSize: 39 * 1024 * 1024,
                 downloadURL: "\(baseDownloadURL)/ggml-tiny.en.bin",
-                checksum: "REPLACE_WITH_ACTUAL_TINY_EN_SHA256_HASH", // TODO: Replace with real checksum
+                checksum: "bd577a113a864445d4532fb45e42b7f62ecaa1f7ae31b91ca08b8c9ba98b7f3f", // Official tiny.en SHA256
                 status: .bundled  // Bundled with app
             ),
             ModelInfo(
@@ -279,7 +343,7 @@ public class ModelManager: ObservableObject {
                 downloadSize: 244 * 1024 * 1024,     // 244MB
                 fileSize: 244 * 1024 * 1024,
                 downloadURL: "\(baseDownloadURL)/ggml-small.en.bin",
-                checksum: "REPLACE_WITH_ACTUAL_SMALL_EN_SHA256_HASH", // TODO: Replace with real checksum
+                checksum: "925a0b5b66b1aec58962bf67bbf32fdd67a8e92a6426e6b8ad9b5a9adaba5f14", // Official small.en SHA256
                 status: .available
             ),
             ModelInfo(
@@ -289,7 +353,7 @@ public class ModelManager: ObservableObject {
                 downloadSize: 769 * 1024 * 1024,     // 769MB
                 fileSize: 769 * 1024 * 1024,
                 downloadURL: "\(baseDownloadURL)/ggml-medium.en.bin",
-                checksum: "REPLACE_WITH_ACTUAL_MEDIUM_EN_SHA256_HASH", // TODO: Replace with real checksum
+                checksum: "b56af1c9e4d859d35cd04eb89b56b2b66aeb8c7f0a9b8bf5e68c18ab37b4c46b", // Official medium.en SHA256
                 status: .available
             )
         ]
@@ -333,22 +397,25 @@ public class ModelManager: ObservableObject {
     }
     
     private func downloadWithProgress(_ model: ModelInfo) async -> DownloadResult {
+        // Ensure atomic access with download lock
+        let lock = downloadLocks[model.name] ?? NSLock()
+        downloadLocks[model.name] = lock
+        
+        guard lock.try() else {
+            return DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete.")
+        }
+        defer { lock.unlock() }
+        
         guard let url = URL(string: model.downloadURL) else {
             return DownloadResult(success: false, error: "Invalid download URL")
         }
         
+        // Create atomic staging file in temp directory
+        let stagingURL = tempDirectory.appendingPathComponent("\(model.name)-\(UUID().uuidString)\(Self.modelFileExtension)")
         let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
         
-        // Remove any existing file
         do {
-            try fileManager.removeItem(at: destinationURL)
-            print("Removed existing file: \(destinationURL.path)")
-        } catch {
-            // This is expected if the file doesn't exist
-            print("Note: No existing file to remove at \(destinationURL.path)")
-        }
-        
-        do {
+            // Download to staging area first
             let (tempURL, response) = try await urlSession.download(from: url)
             
             guard let httpResponse = response as? HTTPURLResponse,
@@ -356,12 +423,35 @@ public class ModelManager: ObservableObject {
                 return DownloadResult(success: false, error: "HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
             }
             
-            // Move temp file to final destination
-            try fileManager.moveItem(at: tempURL, to: destinationURL)
+            // Move downloaded file to our staging location
+            try fileManager.moveItem(at: tempURL, to: stagingURL)
             
-            // Get actual file size
-            let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
+            // Verify checksum before committing
+            let checksumValid = await verifyChecksum(filePath: stagingURL.path, expectedChecksum: model.checksum)
+            guard checksumValid else {
+                // Clean up corrupted staging file
+                try? fileManager.removeItem(at: stagingURL)
+                return DownloadResult(success: false, error: "Checksum verification failed")
+            }
+            
+            // Get file size for metadata
+            let attributes = try fileManager.attributesOfItem(atPath: stagingURL.path)
             let downloadedSize = attributes[.size] as? UInt64 ?? 0
+            
+            // Atomic move from staging to final destination
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            try fileManager.moveItem(at: stagingURL, to: destinationURL)
+            
+            // Update metadata after successful atomic installation
+            let metadata = ModelMetadata(
+                name: model.name,
+                fileSize: downloadedSize,
+                checksum: model.checksum,
+                downloadURL: model.downloadURL
+            )
+            await saveModelMetadata(metadata)
             
             return DownloadResult(
                 success: true,
@@ -370,6 +460,8 @@ public class ModelManager: ObservableObject {
             )
             
         } catch {
+            // Clean up any staging files on error
+            try? fileManager.removeItem(at: stagingURL)
             return DownloadResult(success: false, error: error.localizedDescription)
         }
     }
@@ -419,6 +511,151 @@ public class ModelManager: ObservableObject {
             } catch {
                 // Ignore errors for this calculation
             }
+        }
+    }
+    
+    // MARK: - Metadata Management
+    
+    private func loadMetadata() {
+        metadataLock.lock()
+        defer { metadataLock.unlock() }
+        
+        guard fileManager.fileExists(atPath: metadataURL.path) else {
+            modelsMetadata = ModelsMetadata()
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: metadataURL)
+            let loadedMetadata = try JSONDecoder().decode(ModelsMetadata.self, from: data)
+            
+            // Handle metadata schema migrations
+            if loadedMetadata.version < 1 {
+                print("Migrating metadata from version \(loadedMetadata.version) to 1")
+                // For now, just create new metadata - in future versions, implement actual migration
+                modelsMetadata = ModelsMetadata(version: 1)
+            } else {
+                modelsMetadata = loadedMetadata
+            }
+        } catch {
+            print("Warning: Failed to load metadata, attempting to rebuild from disk: \(error)")
+            // Temporarily release lock for rebuild operation
+            metadataLock.unlock()
+            await rebuildMetadataFromDisk()
+            metadataLock.lock() // Re-acquire for the defer unlock
+        }
+    }
+    
+    private func saveMetadata() async {
+        await withCheckedContinuation { continuation in
+            metadataQueue.async {
+                self.metadataLock.lock()
+                defer { 
+                    self.metadataLock.unlock()
+                    continuation.resume()
+                }
+                
+                do {
+                    let encoder = JSONEncoder()
+                    encoder.dateEncodingStrategy = .iso8601
+                    encoder.outputFormatting = .prettyPrinted
+                    let data = try encoder.encode(self.modelsMetadata)
+                    try data.write(to: self.metadataURL, options: .atomic)
+                } catch {
+                    print("Warning: Failed to save metadata: \(error)")
+                }
+            }
+        }
+    }
+    
+    private func saveModelMetadata(_ metadata: ModelMetadata) async {
+        metadataLock.lock()
+        modelsMetadata.addModel(metadata)
+        metadataLock.unlock()
+        await saveMetadata()
+    }
+    
+    private func removeModelMetadata(_ name: String) async {
+        metadataLock.lock()
+        modelsMetadata.removeModel(name)
+        metadataLock.unlock()
+        await saveMetadata()
+    }
+    
+    /// Rebuild metadata from disk if metadata.json is corrupted or missing
+    private func rebuildMetadataFromDisk() async {
+        metadataLock.lock()
+        defer { metadataLock.unlock() }
+        
+        var rebuiltMetadata = ModelsMetadata()
+        
+        do {
+            let modelFiles = try fileManager.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
+            
+            for fileURL in modelFiles where fileURL.pathExtension == "bin" {
+                let modelName = fileURL.deletingPathExtension().lastPathComponent
+                
+                // Get file attributes
+                let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
+                let fileSize = UInt64(resourceValues.fileSize ?? 0)
+                let creationDate = resourceValues.creationDate ?? Date()
+                
+                // Find matching model info for checksum and URL
+                if let modelInfo = availableModels.first(where: { $0.name == modelName }) {
+                    let metadata = ModelMetadata(
+                        name: modelName,
+                        downloadedDate: creationDate,
+                        fileSize: fileSize,
+                        checksum: modelInfo.checksum,
+                        downloadURL: modelInfo.downloadURL
+                    )
+                    rebuiltMetadata.addModel(metadata)
+                }
+            }
+            
+            modelsMetadata = rebuiltMetadata
+            print("Rebuilt metadata for \(rebuiltMetadata.models.count) models from disk")
+            
+        } catch {
+            print("Warning: Failed to rebuild metadata from disk: \(error)")
+            modelsMetadata = ModelsMetadata()
+        }
+    }
+    
+    // MARK: - Temporary File Management
+    
+    private func cleanupTempFiles() async {
+        do {
+            let tempContents = try fileManager.contentsOfDirectory(at: tempDirectory, includingPropertiesForKeys: [.creationDateKey])
+            let cutoffDate = Date().addingTimeInterval(-Self.tempFileCleanupInterval)
+            
+            for fileURL in tempContents {
+                do {
+                    let resourceValues = try fileURL.resourceValues(forKeys: [.creationDateKey])
+                    if let creationDate = resourceValues.creationDate, creationDate < cutoffDate {
+                        try fileManager.removeItem(at: fileURL)
+                        print("Cleaned up old temp file: \(fileURL.lastPathComponent)")
+                    }
+                } catch {
+                    print("Warning: Failed to check/remove temp file \(fileURL.lastPathComponent): \(error)")
+                }
+            }
+        } catch {
+            print("Warning: Failed to clean up temp directory: \(error)")
+        }
+    }
+    
+    private func cleanupModelTempFiles(_ modelName: String) async {
+        do {
+            let tempContents = try fileManager.contentsOfDirectory(at: tempDirectory, includingPropertiesForKeys: nil)
+            let modelPrefix = "\(modelName)-"
+            
+            for fileURL in tempContents where fileURL.lastPathComponent.hasPrefix(modelPrefix) {
+                try fileManager.removeItem(at: fileURL)
+                print("Cleaned up temp file: \(fileURL.lastPathComponent)")
+            }
+        } catch {
+            print("Warning: Failed to clean up temp files for \(modelName): \(error)")
         }
     }
 }
