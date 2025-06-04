@@ -1,6 +1,6 @@
 # Local DMG Creation Analysis for WhisperNode
 
-**Analysis Date**: December 2024  
+**Analysis Date**: June 2025  
 **Project**: WhisperNode - macOS Speech-to-Text Utility  
 **Objective**: Create functional macOS DMG installer for local testing  
 
@@ -262,7 +262,7 @@ The WhisperNode project now has a **fully functional and tested** local DMG crea
 **Status**: ✅ COMPLETE - Local DMG creation fully operational and verified
 **Testing**: ✅ PASSED - DMG installation and app functionality confirmed working
 **Next Priority**: Production signing and distribution setup
-**Estimated Effort**: 2-3 hours for production-ready distribution pipeline
+**Estimated Effort**: 2–3 hours for production-ready distribution pipeline
 
 ---
 *Analysis completed: All requirements for local DMG creation have been met and verified through comprehensive testing.*

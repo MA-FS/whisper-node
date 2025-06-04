@@ -25,7 +25,7 @@ A native macOS application for real-time speech-to-text transcription using Open
 #### Option 1: Download DMG (Recommended)
 1. Download the latest `WhisperNode-x.x.x.dmg` from releases
 2. Open the DMG file
-3. Drag WhisperNode.app to Applications folder
+3. Drag WhisperNode.app to the Applications folder
 4. Launch from Applications
 
 #### Option 2: Build from Source
@@ -94,7 +94,7 @@ whisper-node/
 
 ## License
 
-[License information to be added]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Status
 

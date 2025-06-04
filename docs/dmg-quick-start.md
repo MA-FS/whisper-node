@@ -141,4 +141,5 @@ The project is **ready for local development and testing**. You can:
 **Total time to working DMG**: ~20 seconds from clean build
 
 ---
-*Last updated: December 2024 - All systems operational*
+
+## Last updated: December 2024 - All systems operational

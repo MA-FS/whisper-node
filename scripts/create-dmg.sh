@@ -340,6 +340,8 @@ create_dmg() {
         fi
     else
         # Run without timeout
+        log_warning "gtimeout not found - DMG creation will proceed without timeout protection"
+        log_warning "Install with: brew install coreutils"
         if ! create-dmg "${create_dmg_args[@]}" "$FINAL_DMG_PATH" "$DMG_DIR"; then
             log_error "DMG creation failed"
             log_error "Check the create-dmg output above for details"

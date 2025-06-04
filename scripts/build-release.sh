@@ -104,7 +104,7 @@ create_app_bundle() {
     mkdir -p "$APP_PATH/Contents/Frameworks"
     
     # Find the built executable with safer find options
-    EXECUTABLE_PATH=$(find "$BUILD_DIR" -name "WhisperNode" -type f -perm +111 ! -path "*.dSYM*" | head -1)
+    EXECUTABLE_PATH=$(find "$BUILD_DIR" -name "WhisperNode" -type f -executable ! -path "*.dSYM*" | head -1)
     
     if [ -z "$EXECUTABLE_PATH" ]; then
         log_error "Built executable not found"
@@ -170,7 +170,7 @@ sign_app() {
 
     if [ -z "$SIGNING_IDENTITY" ]; then
         # Check if we have any valid signing identities
-        if security find-identity -v -p codesigning | grep -q "Developer ID Application\|Apple Development"; then
+        if security find-identity -v -p codesigning | grep -qE 'Developer ID Application|Apple Development'; then
             if [ "$CONFIGURATION" = "Release" ]; then
                 SIGNING_IDENTITY="Developer ID Application"
             else
@@ -190,6 +190,12 @@ sign_app() {
     else
         ENTITLEMENTS_FILE="$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode.entitlements"
         log_info "Using production entitlements for proper signing"
+    fi
+    
+    # Verify entitlements file exists
+    if [ ! -f "$ENTITLEMENTS_FILE" ]; then
+        log_error "Entitlements file not found: $ENTITLEMENTS_FILE"
+        exit 1
     fi
 
     # Sign any embedded frameworks first

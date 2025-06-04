@@ -15,8 +15,8 @@ The development entitlements file (`WhisperNode-dev.entitlements`) is automatica
 
 | Entitlement | Production | Development | Reason |
 |-------------|------------|-------------|---------|
-| `com.apple.application-identifier` | Required with Team ID | ❌ Removed | Not compatible with ad-hoc signing |
-| `com.apple.developer.team-identifier` | Required | ❌ Removed | Not compatible with ad-hoc signing |
+| `com.apple.application-identifier` | Required with Team ID | ❌ Removed | Incompatible with ad-hoc signing |
+| `com.apple.developer.team-identifier` | Required | ❌ Removed | Incompatible with ad-hoc signing |
 | `com.apple.security.app-sandbox` | `true` | ❌ Removed | Requires proper signing |
 | `com.apple.security.accessibility` | `true` | ❌ Removed | Requires proper signing |
 | `com.apple.security.cs.disable-library-validation` | `false` | ✅ `true` | Allows unsigned dylibs |
