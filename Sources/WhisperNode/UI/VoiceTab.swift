@@ -355,12 +355,16 @@ struct VoiceTab: View {
         .onAppear {
             checkPermissionAndSetupAudio()
             refreshAvailableDevices()
+            applyDeviceSelection()
             startLevelMeterTimer()
             startDeviceCheckTimer()
         }
         .onChange(of: settings.preferredInputDevice) { _ in
             // Validate device when selection changes
             validateSelectedDevice()
+            
+            // Apply the device selection to the audio engine
+            applyDeviceSelection()
         }
         .onDisappear {
             stopLevelMeterTimer()
@@ -468,6 +472,22 @@ struct VoiceTab: View {
         }
     }
     
+    private func applyDeviceSelection() {
+        // Apply the preferred device to the audio engine
+        do {
+            try audioEngine.setPreferredInputDevice(settings.preferredInputDevice)
+            
+            // Restart audio capture with new device
+            if permissionStatus == .granted {
+                stopLevelMeterTimer()
+                startLevelMeterTimer()
+            }
+        } catch {
+            audioErrorMessage = "Failed to apply microphone device selection: \(error.localizedDescription)"
+            showAudioError = true
+        }
+    }
+    
     private func startLevelMeterTimer() {
         guard permissionStatus == .granted else { return }
         
@@ -529,8 +549,8 @@ struct VoiceTab: View {
         testRecordingProgress = 0.0
         testRecordingAudioData = []
         
-        // Set up audio data capture callback for test recording
-        audioEngine.onAudioDataAvailable = { audioData in
+        // Set up raw audio data capture callback for test recording (captures all audio, not just voice-detected)
+        audioEngine.onRawAudioDataAvailable = { audioData in
             DispatchQueue.main.async {
                 guard isTestRecording else { return }
                 
@@ -565,8 +585,8 @@ struct VoiceTab: View {
         isTestRecording = false
         testRecordingProgress = 0.0
         
-        // Reset audio data capture callback
-        audioEngine.onAudioDataAvailable = nil
+        // Reset raw audio data capture callback
+        audioEngine.onRawAudioDataAvailable = nil
         
         // Provide feedback about the test recording
         if !testRecordingAudioData.isEmpty {

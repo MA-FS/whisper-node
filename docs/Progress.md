@@ -41,6 +41,12 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T23 | [Performance Testing & Validation](tasks/T23-performance-testing.md) | High | ✅ Done | 100% | Complete XCTest suite with CI integration verified |
 | T24 | [System Integration Testing](tasks/T24-integration-testing.md) | High | ✅ Done | 100% | Complete testing framework with 95% compatibility validation |
 | T25 | [Security & Privacy Audit](tasks/T25-security-audit.md) | High | ✅ Done | 100% | Complete audit infrastructure with automated tools |
+| T26 | [Icon & Logo Creation](tasks/T26-icon-logo-creation.md) | Medium | ⏳ WIP | 85% | Icon creation in progress, installer icons pending |
+| T27 | [Voice Tab UI Fixes and Audio Input Issues](tasks/T27-voice-tab-ui-fixes.md) | High | ⏳ WIP | 0% | Critical UI overlapping and audio input functionality issues |
+| T28 | [Models Tab Download Button Responsiveness](tasks/T28-models-tab-download-fixes.md) | High | ⏳ WIP | 0% | Download buttons non-responsive, models cannot be downloaded |
+| T29 | [Shortcuts Tab Hotkey Recording Fixes](tasks/T29-shortcuts-tab-hotkey-recording-fixes.md) | High | ⏳ WIP | 0% | Hotkey assignment non-responsive, current hotkeys not functional |
+| T30 | [About Tab UI Layout and Apple HIG Compliance](tasks/T30-about-tab-ui-layout-improvements.md) | Medium | ⏳ WIP | 0% | Cramped UI layout, poor spacing and padding |
+| T31 | [Preferences UI Consistency and Global Layout](tasks/T31-preferences-ui-consistency-improvements.md) | Medium | ⏳ WIP | 0% | Inconsistent UI patterns across all preference tabs |
 
 ## Task Categories Overview
 
@@ -53,25 +59,25 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ### Phase 3 - User Interface (T05, T08-T13)
 **Status**: 6/6 complete - All UI components verified complete
 
-### Phase 4 - Polish & Distribution (T14-T19, T21-T25)
-**Status**: 4/12 complete - T14-T17 complete, T19 partial, remaining tasks not started
+### Phase 4 - Polish & Distribution (T14-T19, T21-T31)
+**Status**: 4/18 complete - T14-T17 complete, T19 partial, T26 in progress, T27-T31 critical fixes needed
 
 ## Overall Progress Summary (VERIFIED)
 
-**Total Tasks**: 25  
-**Completed & Verified**: 20 (80%)  
-**Shelved**: 1 (4%)
+**Total Tasks**: 31
+**Completed & Verified**: 20 (65%)
+**Shelved**: 1 (3%)
 **In Testing**: 0 (0%)
-**Partially Implemented**: 1 (4%)
-**Work in Progress**: 3 (12%)
+**Partially Implemented**: 1 (3%)
+**Work in Progress**: 9 (29%)
 
 **Actual Core Functionality**: 17/17 core features complete (100%)
-**Distribution & Polish**: 6/8 tasks complete (75%)
+**Distribution & Polish**: 6/14 tasks complete (43%)
 
-**Phase 1 (Foundation)**: T01, T02, T20 ✅ - Complete foundation with signing infrastructure  
-**Phase 2 (Core Features)**: T03-T07 ✅ - Complete speech-to-text pipeline functional  
-**Phase 3 (User Interface)**: T05, T08-T13 ✅ - All interface components verified working  
-**Phase 4 (Polish & Distribution)**: T14-T25 mostly ⏳ - Awaiting implementation for production release  
+**Phase 1 (Foundation)**: T01, T02, T20 ✅ - Complete foundation with signing infrastructure
+**Phase 2 (Core Features)**: T03-T07 ✅ - Complete speech-to-text pipeline functional
+**Phase 3 (User Interface)**: T05, T08-T13 ✅ - All interface components verified working
+**Phase 4 (Polish & Distribution)**: T14-T31 mostly ⏳ - Critical UI fixes and polish needed for production
 
 ## Key Milestones
 
@@ -101,10 +107,14 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 4. ✅ **Dependency Resolution**: All library compatibility issues resolved
 5. ✅ **DMG Creation**: Complete local DMG creation pipeline tested and verified
 
-### Next Steps (After Local Success)
-1. **T19 - Accessibility Features** - Complete VoiceOver enhancements (40% → 100%)
-2. **T22 - CI/CD Pipeline** - Re-enable after local builds work consistently
-3. **Manual Security Testing** - Execute T25 audit scripts for final verification
+### Next Steps (Critical UI Fixes Required)
+1. **T27 - Voice Tab UI Fixes** - Fix overlapping UI and audio input issues (HIGH PRIORITY)
+2. **T28 - Models Tab Download Fixes** - Fix non-responsive download buttons (HIGH PRIORITY)
+3. **T29 - Shortcuts Tab Hotkey Fixes** - Fix hotkey recording and functionality (HIGH PRIORITY)
+4. **T30 - About Tab Layout** - Improve spacing and Apple HIG compliance (MEDIUM PRIORITY)
+5. **T31 - UI Consistency** - Establish consistent patterns across all tabs (MEDIUM PRIORITY)
+6. **T19 - Accessibility Features** - Complete VoiceOver enhancements (40% → 100%)
+7. **T22 - CI/CD Pipeline** - Re-enable after local builds work consistently
 
 ### Production Ready (MVP)
 1. **Local Alpha Testing** - Thorough testing of all features locally
@@ -113,5 +123,5 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 4. **Beta Release** - Automated releases via restored CI/CD
 
 ---
-*Last Updated: 2024-12-04 (LOCAL DMG CREATION COMPLETE - ALL CORE FUNCTIONALITY VERIFIED)*
-*Next Review: Weekly - Priority: Accessibility features, CI/CD re-enablement*
+*Last Updated: 2024-12-04 (CRITICAL UI FIXES IDENTIFIED - CORE FUNCTIONALITY NEEDS UI REPAIRS)*
+*Next Review: Daily - Priority: T27-T31 UI fixes for functional application*

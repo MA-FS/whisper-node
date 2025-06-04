@@ -111,6 +111,10 @@ public class AudioCaptureEngine: ObservableObject {
     /// - Parameter data: Raw audio data as Float samples converted to Data
     public var onAudioDataAvailable: ((Data) -> Void)?
     
+    /// Callback invoked for all raw audio data (regardless of voice detection)
+    /// - Parameter data: Raw audio data as Float samples converted to Data
+    public var onRawAudioDataAvailable: ((Data) -> Void)?
+    
     /// Callback invoked when voice activity status changes
     /// - Parameter detected: True if voice activity is detected, false otherwise
     public var onVoiceActivityChanged: ((Bool) -> Void)?
@@ -457,9 +461,12 @@ public class AudioCaptureEngine: ObservableObject {
         // Add to circular buffer
         circularBuffer.write(samples)
         
+        // Always notify with raw audio data for test recording purposes
+        let audioData = samplesToData(samples)
+        onRawAudioDataAvailable?(audioData)
+        
         // If voice is detected, notify with audio data
         if voiceDetected {
-            let audioData = samplesToData(samples)
             onAudioDataAvailable?(audioData)
         }
     }
