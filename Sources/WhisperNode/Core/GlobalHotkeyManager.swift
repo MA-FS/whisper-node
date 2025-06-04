@@ -418,7 +418,7 @@ public class GlobalHotkeyManager: ObservableObject {
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
-        Self.logger.info("Hotkey pressed down - keyCode: \(keyCode), flags: \(flags.rawValue), description: \(currentHotkey.description)")
+        Self.logger.info("Hotkey pressed down - keyCode: \(keyCode), flags: \(flags.rawValue), description: \(self.currentHotkey.description)")
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
