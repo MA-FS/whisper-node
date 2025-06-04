@@ -79,9 +79,10 @@ build_app() {
     
     cd "$PROJECT_DIR"
     
-    # Use Swift Package Manager to build
+    # Use Swift Package Manager to build (convert to lowercase for swift build)
+    SWIFT_CONFIG=$(echo "$CONFIGURATION" | tr '[:upper:]' '[:lower:]')
     swift build \
-        --configuration "$CONFIGURATION" \
+        --configuration "$SWIFT_CONFIG" \
         --arch arm64 \
         --build-path "$BUILD_DIR"
     
@@ -120,20 +121,50 @@ create_app_bundle() {
     if [ -d "$PROJECT_DIR/Resources" ]; then
         cp -R "$PROJECT_DIR/Resources/"* "$APP_PATH/Contents/Resources/" 2>/dev/null || true
     fi
-    
+
+    # Copy Sparkle framework if it exists
+    SPARKLE_FRAMEWORK_PATH=""
+    if [ -d "$BUILD_DIR/arm64-apple-macosx/release/Sparkle.framework" ]; then
+        SPARKLE_FRAMEWORK_PATH="$BUILD_DIR/arm64-apple-macosx/release/Sparkle.framework"
+    elif [ -d "$BUILD_DIR/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" ]; then
+        SPARKLE_FRAMEWORK_PATH="$BUILD_DIR/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+    fi
+
+    if [ -n "$SPARKLE_FRAMEWORK_PATH" ]; then
+        cp -R "$SPARKLE_FRAMEWORK_PATH" "$APP_PATH/Contents/Frameworks/"
+        log_info "Copied Sparkle framework to app bundle"
+    else
+        log_warning "Sparkle framework not found in build directory"
+        log_warning "App will build but auto-update functionality will not be available"
+        log_warning "To resolve: ensure Sparkle is properly configured in your Swift Package dependencies"
+        
+        # Check if this is a critical framework for this configuration
+        if [ "$CONFIGURATION" = "Release" ] && [ "${REQUIRE_SPARKLE:-false}" = "true" ]; then
+            log_error "CRITICAL: Sparkle framework is required for Release builds but was not found"
+            log_error "Set REQUIRE_SPARKLE=false to allow builds without Sparkle, or fix the framework path"
+            exit 1
+        fi
+    fi
+
     # Copy Rust library if it exists
-    if [ -f "$PROJECT_DIR/whisper-rust/target/release/libwhisper_rust.dylib" ]; then
-        cp "$PROJECT_DIR/whisper-rust/target/release/libwhisper_rust.dylib" "$APP_PATH/Contents/Frameworks/"
+    if [ -f "$PROJECT_DIR/whisper-rust/target/aarch64-apple-darwin/release/libwhisper_rust.dylib" ]; then
+        cp "$PROJECT_DIR/whisper-rust/target/aarch64-apple-darwin/release/libwhisper_rust.dylib" "$APP_PATH/Contents/Frameworks/"
         
         # Update dylib install name
         install_name_tool -id "@executable_path/../Frameworks/libwhisper_rust.dylib" \
             "$APP_PATH/Contents/Frameworks/libwhisper_rust.dylib"
         
-        # Update executable to reference the dylib
-        install_name_tool -change \
-            "@rpath/libwhisper_rust.dylib" \
-            "@executable_path/../Frameworks/libwhisper_rust.dylib" \
-            "$APP_PATH/Contents/MacOS/WhisperNode"
+        # Update executable to reference the dylib (detect the actual path dynamically)
+        RUST_LIB_PATH=$(otool -L "$APP_PATH/Contents/MacOS/WhisperNode" | grep libwhisper_rust.dylib | awk '{print $1}' | head -1)
+        if [ -n "$RUST_LIB_PATH" ]; then
+            log_info "Updating library reference from: $RUST_LIB_PATH"
+            install_name_tool -change \
+                "$RUST_LIB_PATH" \
+                "@executable_path/../Frameworks/libwhisper_rust.dylib" \
+                "$APP_PATH/Contents/MacOS/WhisperNode"
+        else
+            log_warning "Could not find libwhisper_rust.dylib reference in executable"
+        fi
     fi
     
     log_info "App bundle created"
@@ -145,34 +176,79 @@ sign_app() {
     
     # Get the signing identity from environment or use default
     SIGNING_IDENTITY="${WHISPERNODE_SIGNING_IDENTITY:-}"
-    
+
     if [ -z "$SIGNING_IDENTITY" ]; then
-        if [ "$CONFIGURATION" = "Release" ]; then
-            SIGNING_IDENTITY="Developer ID Application"
+        # Check if we have any valid signing identities
+        if security find-identity -v -p codesigning | grep -qE 'Developer ID Application|Apple Development'; then
+            if [ "$CONFIGURATION" = "Release" ]; then
+                SIGNING_IDENTITY="Developer ID Application"
+            else
+                SIGNING_IDENTITY="Apple Development"
+            fi
         else
-            SIGNING_IDENTITY="Apple Development"
+            # Use ad-hoc signing for local development
+            log_warning "No valid signing identity found, using ad-hoc signing"
+            SIGNING_IDENTITY="-"
         fi
     fi
     
+    # Choose appropriate entitlements file
+    if [ "$SIGNING_IDENTITY" = "-" ]; then
+        ENTITLEMENTS_FILE="$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode-dev.entitlements"
+        log_info "Using development entitlements for ad-hoc signing"
+        log_warning "SECURITY WARNING: Development entitlements disable critical security features"
+        log_warning "These should NEVER be used in production builds"
+    else
+        ENTITLEMENTS_FILE="$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode.entitlements"
+        log_info "Using production entitlements for proper signing"
+        
+        # Validate we're not accidentally using dev entitlements with production signing
+        if [[ "$ENTITLEMENTS_FILE" == *"-dev.entitlements" ]]; then
+            log_error "SECURITY ERROR: Development entitlements cannot be used with production signing"
+            log_error "This would create a security vulnerability in the distributed app"
+            exit 1
+        fi
+    fi
+    
+    # Verify entitlements file exists
+    if [ ! -f "$ENTITLEMENTS_FILE" ]; then
+        log_error "Entitlements file not found: $ENTITLEMENTS_FILE"
+        exit 1
+    fi
+
     # Sign any embedded frameworks first
     if [ -d "$APP_PATH/Contents/Frameworks" ]; then
         find "$APP_PATH/Contents/Frameworks" \( -name "*.dylib" -o -name "*.framework" \) -print0 | while IFS= read -r -d '' framework; do
             log_info "Signing framework: $(basename "$framework")"
-            codesign --force --deep --sign "$SIGNING_IDENTITY" \
-                --entitlements "$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode.entitlements" \
-                --options runtime \
-                --timestamp \
-                "$framework"
+            if [ "$SIGNING_IDENTITY" = "-" ]; then
+                # Ad-hoc signing
+                codesign --force --sign "$SIGNING_IDENTITY" "$framework"
+            else
+                # Full signing with entitlements
+                codesign --force --deep --sign "$SIGNING_IDENTITY" \
+                    --entitlements "$ENTITLEMENTS_FILE" \
+                    --options runtime \
+                    --timestamp \
+                    "$framework"
+            fi
         done
     fi
-    
+
     # Sign the main app
     log_info "Signing main app with identity: $SIGNING_IDENTITY"
-    codesign --force --deep --sign "$SIGNING_IDENTITY" \
-        --entitlements "$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode.entitlements" \
-        --options runtime \
-        --timestamp \
-        "$APP_PATH"
+    if [ "$SIGNING_IDENTITY" = "-" ]; then
+        # Ad-hoc signing with development entitlements
+        codesign --force --sign "$SIGNING_IDENTITY" \
+            --entitlements "$ENTITLEMENTS_FILE" \
+            "$APP_PATH"
+    else
+        # Full signing with runtime options
+        codesign --force --deep --sign "$SIGNING_IDENTITY" \
+            --entitlements "$ENTITLEMENTS_FILE" \
+            --options runtime \
+            --timestamp \
+            "$APP_PATH"
+    fi
     
     if [ $? -eq 0 ]; then
         log_info "App signed successfully"

@@ -189,20 +189,30 @@ impl WhisperManager {
             params.set_print_realtime(false);
             params.set_print_timestamps(false);
             
+            // Create state for inference
+            let mut state = context.create_state()
+                .map_err(|e| format!("Failed to create state: {}", e))?;
+
             // Run inference
-            context.full(params, audio_data)
+            state.full(params, audio_data)
                 .map_err(|e| format!("Transcription failed: {}", e))?;
-            
+
             // Extract text results
-            let num_segments = context.full_n_segments()
+            let num_segments = state.full_n_segments()
                 .map_err(|e| format!("Failed to get segment count: {}", e))?;
-            
+
             let mut full_text = String::new();
             for i in 0..num_segments {
-                if let Ok(segment_text) = context.full_get_segment_text(i) {
-                    full_text.push_str(&segment_text);
-                    if i < num_segments - 1 {
-                        full_text.push(' ');
+                match state.full_get_segment_text(i) {
+                    Ok(segment_text) => {
+                        full_text.push_str(&segment_text);
+                        if i < num_segments - 1 {
+                            full_text.push(' ');
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get segment {} text: {}", i, e);
+                        continue;
                     }
                 }
             }

@@ -36,7 +36,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T18 | [Haptic Feedback Integration](tasks/T18-haptic-feedback.md) | Low | ✅ Done | 100% | Complete haptic system with preferences UI verified |
 | T19 | [Accessibility Features Implementation](tasks/T19-accessibility-features.md) | Medium | 🚧 Partial | 40% | Basic accessibility, needs VoiceOver enhancement |
 | T20 | [App Bundle & Code Signing](tasks/T20-app-bundle-signing.md) | High | ✅ Done | 100% | Signing scripts + notarization workflow complete |
-| T21 | [DMG Installer Creation](tasks/T21-dmg-installer.md) | Medium | ✅ Done | 100% | Complete distribution infrastructure |
+| T21 | [DMG Installer Creation](tasks/T21-dmg-installer.md) | Medium | ✅ Done | 100% | Complete DMG pipeline with comprehensive testing verified |
 | T22 | [CI/CD Pipeline Setup](tasks/T22-cicd-pipeline.md) | Medium | 🚧 Shelved | 95% | Pipeline complete but disabled due to build failures |
 | T23 | [Performance Testing & Validation](tasks/T23-performance-testing.md) | High | ✅ Done | 100% | Complete XCTest suite with CI integration verified |
 | T24 | [System Integration Testing](tasks/T24-integration-testing.md) | High | ✅ Done | 100% | Complete testing framework with 95% compatibility validation |
@@ -94,11 +94,12 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 
 **Focus**: Local development and core functionality completion before automation.
 
-### Immediate Priority (Core App Working Locally)
-1. **Resolve Rust FFI Issues**: Fix whisper.cpp integration and compilation errors
-2. **Local Build Verification**: Ensure all components build and link correctly
-3. **Core Feature Testing**: Verify audio capture, transcription, and text insertion work
-4. **Dependency Resolution**: Fix any remaining library compatibility issues
+### Immediate Priority (Core App Working Locally) ✅ COMPLETE
+1. ✅ **Resolve Rust FFI Issues**: Fixed whisper.cpp integration and compilation errors
+2. ✅ **Local Build Verification**: All components build and link correctly
+3. ✅ **Core Feature Testing**: Audio capture, transcription, and text insertion verified working
+4. ✅ **Dependency Resolution**: All library compatibility issues resolved
+5. ✅ **DMG Creation**: Complete local DMG creation pipeline tested and verified
 
 ### Next Steps (After Local Success)
 1. **T19 - Accessibility Features** - Complete VoiceOver enhancements (40% → 100%)
@@ -112,5 +113,5 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 4. **Beta Release** - Automated releases via restored CI/CD
 
 ---
-*Last Updated: 2025-06-03 (CI/CD SHELVED - FOCUS ON LOCAL DEVELOPMENT)*  
-*Next Review: Weekly - Priority: Local builds, Rust FFI, core functionality*
+*Last Updated: 2024-12-04 (LOCAL DMG CREATION COMPLETE - ALL CORE FUNCTIONALITY VERIFIED)*
+*Next Review: Weekly - Priority: Accessibility features, CI/CD re-enablement*
