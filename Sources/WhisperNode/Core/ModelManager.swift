@@ -3,7 +3,7 @@ import CryptoKit
 import SwiftUI
 
 /// Status of a Whisper model
-public enum ModelStatus {
+public enum ModelStatus: Sendable {
     case available      // Available for download
     case downloading    // Currently downloading
     case installed      // Downloaded and verified
@@ -12,7 +12,7 @@ public enum ModelStatus {
 }
 
 /// Information about a Whisper model
-public struct ModelInfo {
+public struct ModelInfo: Sendable {
     public let name: String
     public let displayName: String
     public let description: String
@@ -107,7 +107,7 @@ public struct ModelsMetadata: Codable, Sendable {
 
 /// Manages Whisper model downloads, storage, and lifecycle
 @MainActor
-public final class ModelManager: ObservableObject, @unchecked Sendable {
+public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable, URLSessionDownloadDelegate {
     public static let shared = ModelManager()
     
     // MARK: - Published Properties
@@ -133,8 +133,18 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
     private let modelsDirectory: URL
     private let tempDirectory: URL
     private let metadataURL: URL
-    private let urlSession: URLSession
+    private var urlSession: URLSession!
     private var downloadTasks: [String: URLSessionDownloadTask] = [:]
+
+    /// Store continuations for async download completion
+    private var downloadContinuations: [String: CheckedContinuation<DownloadResult, Never>] = [:]
+
+    /// Store staging URLs for each download
+    private var downloadStagingURLs: [String: URL] = [:]
+
+    /// Store destination URLs for each download
+    private var downloadDestinationURLs: [String: URL] = [:]
+
     private let fileManager = FileManager.default
     private let errorManager = ErrorHandlingManager.shared
     private var modelsMetadata: ModelsMetadata = ModelsMetadata()
@@ -151,7 +161,7 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
     
     // MARK: - Initialization
     
-    private init() {
+    private override init() {
         // Set up directories in Application Support
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             fatalError("Unable to access Application Support directory - this is required for model storage")
@@ -160,31 +170,39 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
         self.modelsDirectory = whisperNodeDir.appendingPathComponent("Models")
         self.tempDirectory = whisperNodeDir.appendingPathComponent("temp")
         self.metadataURL = whisperNodeDir.appendingPathComponent("metadata.json")
-        
-        // Create directories if they don't exist
-        do {
-            try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
-            try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        } catch {
-            print("Warning: Failed to create storage directories: \(error)")
-        }
-        
+
         // Configure URL session with progress tracking
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = Self.requestTimeout
         config.timeoutIntervalForResource = Self.resourceTimeout
-        self.urlSession = URLSession(configuration: config)
-        
+
+        // Call super.init() before using self
+        super.init()
+
+        // Now we can use self
+        self.urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+
+        // Create directories if they don't exist
+        do {
+            try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true, attributes: nil)
+            print("✅ [ModelManager] Created models directory: \(modelsDirectory.path)")
+            try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true, attributes: nil)
+            print("✅ [ModelManager] Created temp directory: \(tempDirectory.path)")
+        } catch {
+            print("❌ [ModelManager] Failed to create storage directories: \(error)")
+            fatalError("Unable to create required storage directories: \(error)")
+        }
+
         // Load metadata and active model preference
         self.loadMetadata()
         self.activeModelName = UserDefaults.standard.string(forKey: "activeModelName") ?? "tiny.en"
-        
+
         // Initialize available models
         self.initializeModelList()
-        
+
         // Clean up any orphaned temp files on startup
-        Task {
-            await cleanupTempFiles()
+        Task { [weak self] in
+            await self?.cleanupTempFiles()
         }
     }
     
@@ -201,51 +219,85 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
     /// Download a model with progress tracking and checksum verification
     @MainActor
     public func downloadModel(_ model: ModelInfo) async {
-        guard model.status != .downloading else { return }
-        
+        print("🚀 [ModelManager] Starting download for model: \(model.name)")
+        print("📊 [ModelManager] Model details - Size: \(model.downloadSize) bytes, URL: \(model.downloadURL)")
+
+        guard model.status != .downloading else {
+            print("⚠️ [ModelManager] Download already in progress for \(model.name)")
+            return
+        }
+
+        // Check network connectivity first
+        print("🌐 [ModelManager] Checking network connectivity...")
+        guard await checkNetworkConnectivity() else {
+            print("❌ [ModelManager] Network connectivity check failed")
+            updateModelStatus(model.name, status: .failed, progress: 0.0,
+                            error: "No internet connection available")
+            errorManager.handleNetworkConnectionFailure("No internet connection available")
+            return
+        }
+        print("✅ [ModelManager] Network connectivity confirmed")
+
+        // Validate download URL
+        print("🔗 [ModelManager] Validating download URL: \(model.downloadURL)")
+        guard await validateDownloadURL(model.downloadURL) else {
+            print("❌ [ModelManager] Download URL validation failed")
+            updateModelStatus(model.name, status: .failed, progress: 0.0,
+                            error: "Download URL is not accessible")
+            errorManager.handleNetworkConnectionFailure("Download URL is not accessible: \(model.downloadURL)")
+            return
+        }
+        print("✅ [ModelManager] Download URL validated successfully")
+
         // Check disk space before starting download
+        print("💾 [ModelManager] Checking disk space (required: \(model.downloadSize) bytes)...")
         guard errorManager.checkDiskSpace(requiredBytes: model.downloadSize) else {
-            updateModelStatus(model.name, status: .failed, progress: 0.0, 
+            print("❌ [ModelManager] Insufficient disk space")
+            updateModelStatus(model.name, status: .failed, progress: 0.0,
                             error: "Insufficient disk space for download")
             return
         }
-        
-        // Update model status
+        print("✅ [ModelManager] Disk space check passed")
+
+        // Update model status (this may be redundant if already set by UI, but ensures consistency)
+        print("📝 [ModelManager] Setting model status to downloading...")
         updateModelStatus(model.name, status: .downloading, progress: 0.0)
         
-        do {
-            let result = await downloadWithProgress(model)
-            
-            if result.success, let filePath = result.filePath {
-                // Verify checksum
-                if await verifyChecksum(filePath: filePath, expectedChecksum: model.checksum) {
-                    updateModelStatus(model.name, status: .installed, progress: 1.0)
-                    await refreshModels()
-                } else {
-                    // Delete corrupted file
-                    do {
-                        try fileManager.removeItem(atPath: filePath)
-                        print("Removed corrupted file: \(filePath)")
-                    } catch {
-                        print("Warning: Failed to remove corrupted file \(filePath): \(error)")
-                    }
-                    
-                    // Handle corrupted model with automatic retry
-                    let errorDetails = "Model \(model.name) failed checksum verification"
-                    updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
-                    errorManager.handleError(.modelCorrupted(model.name))
-                }
+        print("⬇️ [ModelManager] Starting downloadWithProgress for \(model.name)...")
+        let result = await downloadWithProgress(model)
+        print("📋 [ModelManager] Download result - Success: \(result.success), Error: \(result.error ?? "none")")
+
+        if result.success, let filePath = result.filePath {
+            print("✅ [ModelManager] Download completed successfully, file at: \(filePath)")
+            print("🔍 [ModelManager] Starting checksum verification...")
+
+            // Verify checksum
+            if await verifyChecksum(filePath: filePath, expectedChecksum: model.checksum) {
+                print("✅ [ModelManager] Checksum verification passed")
+                updateModelStatus(model.name, status: .installed, progress: 1.0)
+                print("🔄 [ModelManager] Refreshing models list...")
+                await refreshModels()
+                print("🎉 [ModelManager] Model \(model.name) installation completed successfully!")
             } else {
-                // Handle download failure with retry option
-                let errorDetails = result.error ?? "Unknown download error"
-                updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
-                errorManager.handleModelDownloadFailure(errorDetails) {
-                    await self.retryDownload(model)
+                print("❌ [ModelManager] Checksum verification failed")
+                // Delete corrupted file
+                do {
+                    try fileManager.removeItem(atPath: filePath)
+                    print("🗑️ [ModelManager] Removed corrupted file: \(filePath)")
+                } catch {
+                    print("⚠️ [ModelManager] Warning: Failed to remove corrupted file \(filePath): \(error)")
                 }
+
+                // Handle corrupted model with automatic retry
+                let errorDetails = "Model \(model.name) failed checksum verification"
+                print("💥 [ModelManager] Setting model status to failed: \(errorDetails)")
+                updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
+                errorManager.handleError(.modelCorrupted(model.name))
             }
-        } catch {
-            // Handle general download error
-            let errorDetails = error.localizedDescription
+        } else {
+            // Handle download failure with retry option
+            let errorDetails = result.error ?? "Unknown download error"
+            print("❌ [ModelManager] Download failed: \(errorDetails)")
             updateModelStatus(model.name, status: .failed, progress: 0.0, error: errorDetails)
             errorManager.handleModelDownloadFailure(errorDetails) {
                 await self.retryDownload(model)
@@ -322,6 +374,40 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
             availableDiskSpace = 0
         }
     }
+
+    /// Immediately update model status for UI responsiveness
+    public func updateModelStatusImmediately(_ modelName: String, status: ModelStatus, progress: Double = 0.0, error: String? = nil) {
+        updateModelStatus(modelName, status: status, progress: progress, error: error)
+    }
+
+    /// Validate network connectivity
+    private func checkNetworkConnectivity() async -> Bool {
+        guard let url = URL(string: "https://www.google.com") else { return false }
+
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
+    /// Validate download URL accessibility
+    private func validateDownloadURL(_ urlString: String) async -> Bool {
+        guard let url = URL(string: urlString) else { return false }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = 10.0
+
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            print("URL validation failed for \(urlString): \(error.localizedDescription)")
+            return false
+        }
+    }
     
     // MARK: - Private Methods
     
@@ -341,10 +427,10 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
                 name: "small.en",
                 displayName: "Small English",
                 description: "Balanced speed and accuracy. English only.",
-                downloadSize: 244 * 1024 * 1024,     // 244MB
-                fileSize: 244 * 1024 * 1024,
+                downloadSize: 487614201,              // Actual size: 487,614,201 bytes
+                fileSize: 487614201,
                 downloadURL: "\(baseDownloadURL)/ggml-small.en.bin",
-                checksum: "925a0b5b66b1aec58962bf67bbf32fdd67a8e92a6426e6b8ad9b5a9adaba5f14", // Official small.en SHA256
+                checksum: "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d", // Correct SHA256 from actual download
                 status: .available
             ),
             ModelInfo(
@@ -398,111 +484,88 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
     }
     
     private func downloadWithProgress(_ model: ModelInfo) async -> DownloadResult {
-        // Use main actor isolation for thread-safe access to downloadTasks
+        // Check if download is already in progress
+        if downloadTasks[model.name] != nil {
+            return DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete.")
+        }
+
+        guard let url = URL(string: model.downloadURL) else {
+            return DownloadResult(success: false, error: "Invalid download URL")
+        }
+
+        // Create atomic staging file in temp directory
+        let stagingURL = tempDirectory.appendingPathComponent("\(model.name)-\(UUID().uuidString)\(Self.modelFileExtension)")
+        let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
+
         return await withCheckedContinuation { continuation in
-            Task { @MainActor in
-                // Check if download is already in progress using thread-safe lookup
-                if downloadTasks[model.name] != nil {
-                    continuation.resume(returning: DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete."))
-                    return
-                }
-                
-                guard let url = URL(string: model.downloadURL) else {
-                    continuation.resume(returning: DownloadResult(success: false, error: "Invalid download URL"))
-                    return
-                }
-                
-                // Create atomic staging file in temp directory
-                let stagingURL = tempDirectory.appendingPathComponent("\(model.name)-\(UUID().uuidString)\(Self.modelFileExtension)")
-                let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
-                
-                do {
-                    // Create and track download task
-                    let downloadTask = urlSession.downloadTask(with: url)
-                    downloadTasks[model.name] = downloadTask
-                    
-                    // Download to staging area first
-                    let (tempURL, response) = try await urlSession.download(from: url)
-                    
-                    guard let httpResponse = response as? HTTPURLResponse,
-                          200...299 ~= httpResponse.statusCode else {
-                        continuation.resume(returning: DownloadResult(success: false, error: "HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? 0)"))
-                        return
-                    }
-                    
-                    // Move downloaded file to our staging location
-                    try fileManager.moveItem(at: tempURL, to: stagingURL)
-                    
-                    // Verify checksum before committing
-                    let checksumValid = await verifyChecksum(filePath: stagingURL.path, expectedChecksum: model.checksum)
-                    guard checksumValid else {
-                        // Clean up corrupted staging file
-                        try? fileManager.removeItem(at: stagingURL)
-                        continuation.resume(returning: DownloadResult(success: false, error: "Checksum verification failed"))
-                        return
-                    }
-                    
-                    // Get file size for metadata
-                    let attributes = try fileManager.attributesOfItem(atPath: stagingURL.path)
-                    let downloadedSize = attributes[.size] as? UInt64 ?? 0
-                    
-                    // Atomic move from staging to final destination
-                    if fileManager.fileExists(atPath: destinationURL.path) {
-                        try fileManager.removeItem(at: destinationURL)
-                    }
-                    try fileManager.moveItem(at: stagingURL, to: destinationURL)
-                    
-                    // Update metadata after successful atomic installation
-                    let metadata = ModelMetadata(
-                        name: model.name,
-                        fileSize: downloadedSize,
-                        checksum: model.checksum,
-                        downloadURL: model.downloadURL
-                    )
-                    await saveModelMetadata(metadata)
-                    
-                    // Clean up download task tracking
-                    downloadTasks.removeValue(forKey: model.name)
-                    
-                    continuation.resume(returning: DownloadResult(
-                        success: true,
-                        filePath: destinationURL.path,
-                        bytesDownloaded: downloadedSize
-                    ))
-                    
-                } catch {
-                    // Clean up any staging files on error
-                    try? fileManager.removeItem(at: stagingURL)
-                    
-                    // Clean up download task tracking
-                    downloadTasks.removeValue(forKey: model.name)
-                    
-                    continuation.resume(returning: DownloadResult(success: false, error: error.localizedDescription))
-                }
-            }
+            // Store continuation for this download
+            downloadContinuations[model.name] = continuation
+
+            // Create download task WITHOUT completion handler to enable delegate methods
+            let downloadTask = urlSession.downloadTask(with: url)
+
+            // Store staging and destination URLs for this download
+            downloadStagingURLs[model.name] = stagingURL
+            downloadDestinationURLs[model.name] = destinationURL
+
+            // Track download task and start it
+            downloadTasks[model.name] = downloadTask
+
+            print("Starting download for \(model.name) from \(url)")
+            print("URLSession delegate: \(urlSession.delegate != nil ? "Set" : "Not set")")
+
+            downloadTask.resume()
         }
     }
     
     private func verifyChecksum(filePath: String, expectedChecksum: String) async -> Bool {
         do {
+            print("🔍 [ModelManager] Starting checksum verification")
+            print("📁 [ModelManager] File path: \(filePath)")
+            print("🎯 [ModelManager] Expected checksum: \(expectedChecksum)")
+
+            // Check if file exists and get its size
+            let fileURL = URL(fileURLWithPath: filePath)
+            let attributes = try FileManager.default.attributesOfItem(atPath: filePath)
+            let fileSize = attributes[.size] as? UInt64 ?? 0
+            print("📊 [ModelManager] File size: \(fileSize) bytes")
+
             // Use streaming verification to avoid loading large files into memory
-            let fileHandle = try FileHandle(forReadingFrom: URL(fileURLWithPath: filePath))
+            let fileHandle = try FileHandle(forReadingFrom: fileURL)
             defer { fileHandle.closeFile() }
-            
+
             var hasher = SHA256()
             let bufferSize = 1024 * 1024 // 1MB chunks
-            
+            var totalBytesRead: UInt64 = 0
+
+            print("🔄 [ModelManager] Starting SHA256 calculation...")
             while true {
                 let chunk = fileHandle.readData(ofLength: bufferSize)
                 if chunk.isEmpty { break }
                 hasher.update(data: chunk)
+                totalBytesRead += UInt64(chunk.count)
+
+                // Progress logging for large files
+                if totalBytesRead % (10 * 1024 * 1024) == 0 { // Every 10MB
+                    let progress = Double(totalBytesRead) / Double(fileSize) * 100
+                    print("📈 [ModelManager] Checksum progress: \(Int(progress))% (\(totalBytesRead)/\(fileSize) bytes)")
+                }
             }
-            
+
             let hash = hasher.finalize()
-            let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
-            return hashString.lowercased() == expectedChecksum.lowercased()
+            let calculatedChecksum = hash.compactMap { String(format: "%02x", $0) }.joined()
+
+            print("✅ [ModelManager] SHA256 calculation complete")
+            print("🧮 [ModelManager] Calculated checksum: \(calculatedChecksum)")
+            print("🎯 [ModelManager] Expected checksum:   \(expectedChecksum)")
+            print("📊 [ModelManager] Total bytes processed: \(totalBytesRead)")
+
+            let isValid = calculatedChecksum.lowercased() == expectedChecksum.lowercased()
+            print("🔍 [ModelManager] Checksum match: \(isValid)")
+
+            return isValid
         } catch {
-            print("Checksum verification error: \(error)")
+            print("❌ [ModelManager] Checksum verification error: \(error)")
             return false
         }
     }
@@ -514,7 +577,231 @@ public final class ModelManager: ObservableObject, @unchecked Sendable {
             availableModels[index].errorMessage = error
         }
     }
-    
+
+    // MARK: - URLSessionDownloadDelegate
+
+    nonisolated public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        // Calculate progress
+        let progress = totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0.0
+
+        // Debug logging
+        print("Download progress: \(Int(progress * 100))% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
+
+        // Update UI on main thread
+        Task { @MainActor in
+            // Find the model being downloaded
+            guard let modelName = self.downloadTasks.first(where: { $0.value == downloadTask })?.key else {
+                print("Warning: Could not find model name for progress update")
+                return
+            }
+            print("Updating progress for \(modelName): \(Int(progress * 100))%")
+            self.updateModelStatus(modelName, status: .downloading, progress: progress)
+        }
+    }
+
+    nonisolated public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        print("📥 [ModelManager] didFinishDownloadingTo called with location: \(location.path)")
+
+        // CRITICAL: URLSession deletes the temp file IMMEDIATELY when this method returns
+        // We must synchronously preserve the file before any async operations
+
+        // Create a unique temporary file in our own temp directory to preserve the download
+        let preservedTempURL = tempDirectory.appendingPathComponent("download-\(UUID().uuidString).tmp")
+
+        print("🚀 [ModelManager] SYNCHRONOUSLY preserving temp file before URLSession deletes it")
+        print("📂 [ModelManager] Preserving from: \(location.path)")
+        print("📂 [ModelManager] Preserving to: \(preservedTempURL.path)")
+
+        do {
+            // Ensure our temp directory exists
+            if !FileManager.default.fileExists(atPath: tempDirectory.path) {
+                try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true, attributes: nil)
+            }
+
+            // SYNCHRONOUSLY copy the file to our preserved location before URLSession deletes it
+            try FileManager.default.copyItem(at: location, to: preservedTempURL)
+            print("✅ [ModelManager] Successfully preserved temp file")
+
+            // Now handle the rest asynchronously with our preserved file
+            Task { @MainActor in
+                await self.handleDownloadCompletion(downloadTask: downloadTask, tempURL: preservedTempURL, error: nil)
+            }
+        } catch {
+            print("❌ [ModelManager] Failed to preserve temp file: \(error)")
+            Task { @MainActor in
+                await self.handleDownloadCompletion(downloadTask: downloadTask, tempURL: nil, error: error)
+            }
+        }
+    }
+
+    nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let downloadTask = task as? URLSessionDownloadTask {
+            print("🏁 [ModelManager] didCompleteWithError called with error: \(error?.localizedDescription ?? "none")")
+            // Only handle completion if there was an error - successful downloads are handled in didFinishDownloadingTo
+            if error != nil {
+                Task { @MainActor in
+                    await handleDownloadCompletion(downloadTask: downloadTask, tempURL: nil, error: error)
+                }
+            } else {
+                print("✅ [ModelManager] Download completed successfully, already handled in didFinishDownloadingTo")
+            }
+        }
+    }
+
+    /// Handle download completion from URLSessionDownloadDelegate
+    @MainActor
+    private func handleDownloadCompletion(downloadTask: URLSessionDownloadTask, tempURL: URL?, error: Error?) async {
+        print("🏁 [ModelManager] handleDownloadCompletion called")
+        print("📍 [ModelManager] TempURL: \(tempURL?.path ?? "nil"), Error: \(error?.localizedDescription ?? "none")")
+
+        // Find the model being downloaded
+        guard let modelName = downloadTasks.first(where: { $0.value == downloadTask })?.key else {
+            print("⚠️ [ModelManager] Warning: Could not find model name for completed download task (likely already processed)")
+            print("📊 [ModelManager] Active download tasks: \(downloadTasks.keys.joined(separator: ", "))")
+            return
+        }
+        print("🎯 [ModelManager] Found model name: \(modelName)")
+
+        // Check if this download has already been processed (race condition protection)
+        guard downloadContinuations[modelName] != nil else {
+            print("⚠️ [ModelManager] Warning: Download for \(modelName) already processed, skipping duplicate call")
+            return
+        }
+
+        // Get the continuation and URLs for this download
+        guard let continuation = downloadContinuations.removeValue(forKey: modelName),
+              let stagingURL = downloadStagingURLs.removeValue(forKey: modelName),
+              let destinationURL = downloadDestinationURLs.removeValue(forKey: modelName) else {
+            print("⚠️ [ModelManager] Warning: Missing continuation or URLs for download: \(modelName)")
+            print("📊 [ModelManager] Available continuations: \(downloadContinuations.keys.joined(separator: ", "))")
+            print("📊 [ModelManager] Available staging URLs: \(downloadStagingURLs.keys.joined(separator: ", "))")
+            print("📊 [ModelManager] Available destination URLs: \(downloadDestinationURLs.keys.joined(separator: ", "))")
+            downloadTasks.removeValue(forKey: modelName)
+            return
+        }
+        print("✅ [ModelManager] Retrieved continuation and URLs for \(modelName)")
+        print("📁 [ModelManager] Staging URL: \(stagingURL.path)")
+        print("📁 [ModelManager] Destination URL: \(destinationURL.path)")
+
+        // Clean up download task tracking
+        downloadTasks.removeValue(forKey: modelName)
+        print("🧹 [ModelManager] Cleaned up download task for \(modelName)")
+
+        // Handle error case
+        if let error = error {
+            print("Download failed for \(modelName): \(error.localizedDescription)")
+            resetModelToAvailable(modelName, error: error.localizedDescription)
+            continuation.resume(returning: DownloadResult(success: false, error: error.localizedDescription))
+            return
+        }
+
+        // Handle missing temp URL
+        guard let tempURL = tempURL else {
+            let errorMsg = "No temporary file received"
+            print("Download failed for \(modelName): \(errorMsg)")
+            resetModelToAvailable(modelName, error: errorMsg)
+            continuation.resume(returning: DownloadResult(success: false, error: errorMsg))
+            return
+        }
+
+        // Find the model info for checksum verification
+        guard let modelInfo = availableModels.first(where: { $0.name == modelName }) else {
+            let errorMsg = "Model info not found for \(modelName)"
+            print("Download failed for \(modelName): \(errorMsg)")
+            resetModelToAvailable(modelName, error: errorMsg)
+            continuation.resume(returning: DownloadResult(success: false, error: errorMsg))
+            return
+        }
+
+        do {
+            print("📂 [ModelManager] Moving preserved file from: \(tempURL.path)")
+            print("📂 [ModelManager] Moving preserved file to: \(stagingURL.path)")
+
+            // Ensure the staging directory exists
+            let stagingDir = stagingURL.deletingLastPathComponent()
+            if !fileManager.fileExists(atPath: stagingDir.path) {
+                print("📁 [ModelManager] Creating staging directory: \(stagingDir.path)")
+                try fileManager.createDirectory(at: stagingDir, withIntermediateDirectories: true, attributes: nil)
+            }
+
+            // Verify source file exists
+            guard fileManager.fileExists(atPath: tempURL.path) else {
+                throw NSError(domain: "ModelManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Preserved file does not exist: \(tempURL.path)"])
+            }
+
+            // Move preserved file to staging location
+            try fileManager.moveItem(at: tempURL, to: stagingURL)
+            print("✅ [ModelManager] Successfully moved preserved file to staging location")
+
+            let fileToVerify = stagingURL
+
+            // Verify checksum before committing
+            print("🔍 [ModelManager] Verifying checksum for file: \(fileToVerify.path)")
+            let checksumValid = await verifyChecksum(filePath: fileToVerify.path, expectedChecksum: modelInfo.checksum)
+            guard checksumValid else {
+                // Clean up corrupted staging file
+                try? fileManager.removeItem(at: fileToVerify)
+                let errorMsg = "Checksum verification failed"
+                print("❌ [ModelManager] Download failed for \(modelName): \(errorMsg)")
+                resetModelToAvailable(modelName, error: errorMsg)
+                continuation.resume(returning: DownloadResult(success: false, error: errorMsg))
+                return
+            }
+            print("✅ [ModelManager] Checksum verification passed")
+
+            // Get file size for metadata
+            let attributes = try fileManager.attributesOfItem(atPath: fileToVerify.path)
+            let downloadedSize = attributes[.size] as? UInt64 ?? 0
+
+            // Atomic move from staging to final destination
+            print("📁 [ModelManager] Moving from staging to final destination: \(destinationURL.path)")
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+                print("🗑️ [ModelManager] Removed existing file at destination")
+            }
+            try fileManager.moveItem(at: fileToVerify, to: destinationURL)
+            print("✅ [ModelManager] Successfully moved to final destination")
+
+            // Update metadata after successful atomic installation
+            let metadata = ModelMetadata(
+                name: modelName,
+                fileSize: downloadedSize,
+                checksum: modelInfo.checksum,
+                downloadURL: modelInfo.downloadURL
+            )
+            await saveModelMetadata(metadata)
+
+            // Update status to installed with 100% progress
+            updateModelStatus(modelName, status: .installed, progress: 1.0)
+
+            continuation.resume(returning: DownloadResult(
+                success: true,
+                filePath: destinationURL.path,
+                bytesDownloaded: downloadedSize
+            ))
+
+        } catch {
+            // Clean up any staging files on error
+            try? fileManager.removeItem(at: stagingURL)
+            let errorMsg = error.localizedDescription
+            print("Download failed for \(modelName): \(errorMsg)")
+            resetModelToAvailable(modelName, error: errorMsg)
+            continuation.resume(returning: DownloadResult(success: false, error: errorMsg))
+        }
+    }
+
+    /// Reset a model to available status after download failure
+    @MainActor
+    private func resetModelToAvailable(_ modelName: String, error: String) {
+        if let index = availableModels.firstIndex(where: { $0.name == modelName }) {
+            // Reset to available status so user can retry
+            availableModels[index].status = .available
+            availableModels[index].downloadProgress = 0.0
+            availableModels[index].errorMessage = error
+            print("Reset \(modelName) to available status after error: \(error)")
+        }
+    }
+
     private func calculateTotalStorageUsed() {
         totalStorageUsed = 0
         
