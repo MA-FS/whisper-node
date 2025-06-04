@@ -123,7 +123,17 @@ public class AudioCaptureEngine: ObservableObject {
     public var onVoiceActivityChanged: ((Bool) -> Void)?
     
     private var recordingFormat: AVAudioFormat? {
-        return AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)
+        // Use the input node's native format for better compatibility
+        let inputFormat = audioEngine.inputNode.inputFormat(forBus: 0)
+        print("AudioCaptureEngine: Input node native format: \(inputFormat)")
+
+        // If the input format is valid, use it; otherwise fall back to 16kHz mono
+        if inputFormat.sampleRate > 0 && inputFormat.channelCount > 0 {
+            return inputFormat
+        } else {
+            print("AudioCaptureEngine: Input format invalid, using fallback 16kHz mono")
+            return AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)
+        }
     }
     
     /// Initialize the audio capture engine
@@ -197,45 +207,96 @@ public class AudioCaptureEngine: ObservableObject {
     }
     
     /// Start audio capture with voice activity detection
-    /// 
+    ///
     /// Initializes the audio engine and begins capturing audio from the default input device.
     /// The engine will process audio in real-time, detecting voice activity and providing
     /// callbacks when voice is detected.
-    /// 
+    ///
     /// - Throws: `CaptureError.permissionDenied` if microphone access is denied
     /// - Throws: `CaptureError.engineNotRunning` if the audio engine fails to start
     public func startCapture() async throws {
-        guard checkPermissionStatus() == .granted else {
+        print("AudioCaptureEngine: Starting audio capture...")
+
+        let permissionStatus = checkPermissionStatus()
+        print("AudioCaptureEngine: Permission status: \(permissionStatus)")
+
+        guard permissionStatus == .granted else {
+            print("AudioCaptureEngine: Permission denied, cannot start capture")
             updateCaptureState(.error(.permissionDenied))
             throw CaptureError.permissionDenied
         }
-        
+
+        // Check if already running
+        if captureState == .recording {
+            print("AudioCaptureEngine: Already recording, skipping start")
+            return
+        }
+
+        // Log available audio devices for debugging
+        logAvailableAudioDevices()
+
         updateCaptureState(.starting)
-        
+
         do {
+            print("AudioCaptureEngine: Setting up audio engine...")
+
+            // Check if input node is available
+            let inputNode = audioEngine.inputNode
+            print("AudioCaptureEngine: Input node: \(inputNode)")
+            print("AudioCaptureEngine: Input node format: \(inputNode.inputFormat(forBus: 0))")
+
             try setupAudioEngine()
+
+            print("AudioCaptureEngine: Starting audio engine...")
             try audioEngine.start()
-            updateCaptureState(.recording)
+
+            // Verify the engine is actually running
+            if audioEngine.isRunning {
+                print("AudioCaptureEngine: Audio engine confirmed running")
+                updateCaptureState(.recording)
+            } else {
+                print("AudioCaptureEngine: Audio engine failed to start - not running")
+                updateCaptureState(.error(.engineNotRunning))
+                throw CaptureError.engineNotRunning
+            }
+
+            print("AudioCaptureEngine: Audio capture started successfully")
         } catch {
+            print("AudioCaptureEngine: Failed to start audio capture: \(error)")
+            print("AudioCaptureEngine: Error details: \(error.localizedDescription)")
             updateCaptureState(.error(.engineNotRunning))
             throw CaptureError.engineNotRunning
         }
     }
     
     /// Stop audio capture and clean up resources
-    /// 
+    ///
     /// Safely stops the audio engine and resets all state variables.
     /// This method is safe to call multiple times.
     public func stopCapture() {
         Task { @MainActor in
+            print("AudioCaptureEngine: Stopping audio capture...")
             captureState = .stopping
-            
+
+            // Stop the audio engine
             audioEngine.stop()
+
+            // Remove the input tap
             audioEngine.inputNode.removeTap(onBus: 0)
-            
+
+            // Ensure all connections are disconnected to prevent any residual audio routing
+            let mainMixerNode = audioEngine.mainMixerNode
+            let outputNode = audioEngine.outputNode
+            audioEngine.disconnectNodeInput(mainMixerNode)
+            audioEngine.disconnectNodeInput(outputNode)
+
+            print("AudioCaptureEngine: All audio connections disconnected")
+
             captureState = .idle
             inputLevel = 0.0
             isVoiceDetected = false
+
+            print("AudioCaptureEngine: Audio capture stopped")
         }
     }
     
@@ -426,51 +487,143 @@ public class AudioCaptureEngine: ObservableObject {
             }
         }
     }
+
+    private func logAvailableAudioDevices() {
+        print("AudioCaptureEngine: === Audio Device Information ===")
+
+        #if os(macOS)
+        // Log available audio devices on macOS
+        var deviceID: AudioDeviceID = 0
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+
+        if status == noErr {
+            print("AudioCaptureEngine: Default input device ID: \(deviceID)")
+
+            // Get device name
+            address.mSelector = kAudioDevicePropertyDeviceNameCFString
+            var deviceName: CFString?
+            dataSize = UInt32(MemoryLayout<CFString>.size)
+
+            let nameStatus = AudioObjectGetPropertyData(
+                deviceID,
+                &address,
+                0,
+                nil,
+                &dataSize,
+                &deviceName
+            )
+
+            if nameStatus == noErr, let name = deviceName {
+                print("AudioCaptureEngine: Default input device name: \(name)")
+            }
+        } else {
+            print("AudioCaptureEngine: Failed to get default input device: \(status)")
+        }
+        #endif
+
+        print("AudioCaptureEngine: === End Audio Device Information ===")
+    }
     
     private func setupAudioEngine() throws {
         guard let format = recordingFormat else {
+            print("AudioCaptureEngine: Recording format not supported")
             throw CaptureError.formatNotSupported
         }
-        
+
+        print("AudioCaptureEngine: Setting up audio engine with format: \(format)")
+
         let inputNode = audioEngine.inputNode
-        
+        let mainMixerNode = audioEngine.mainMixerNode
+        let outputNode = audioEngine.outputNode
+
+        // CRITICAL: Prevent audio feedback by ensuring no input-to-output routing
+        print("AudioCaptureEngine: Configuring input-only operation to prevent feedback...")
+
+        // 1. Remove any existing connections that could cause feedback
+        audioEngine.disconnectNodeInput(mainMixerNode)
+        audioEngine.disconnectNodeOutput(inputNode)
+        audioEngine.disconnectNodeInput(outputNode)
+
+        // 2. Remove any existing tap first
+        inputNode.removeTap(onBus: 0)
+
+        // 3. Ensure output node has no input (prevents any audio from playing)
+        // This is crucial to prevent feedback loops
+        print("AudioCaptureEngine: Ensuring output node is disconnected to prevent feedback")
+
+        // 4. Install tap for input capture only (no output routing)
+        print("AudioCaptureEngine: Installing audio tap with buffer size 1024")
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             guard let self = self else { return }
-            
-            Task { @MainActor in
-                await self.processAudioBuffer(buffer)
-            }
+
+            // Process audio buffer directly without MainActor to avoid delays
+            self.processAudioBufferSync(buffer)
         }
-        
+
+        print("AudioCaptureEngine: Preparing audio engine...")
         audioEngine.prepare()
+        print("AudioCaptureEngine: Audio engine setup complete - input-only configuration")
     }
     
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) async {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        
+    private func processAudioBufferSync(_ buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else {
+            print("AudioCaptureEngine: No channel data in buffer")
+            return
+        }
+
         let frameCount = Int(buffer.frameLength)
         let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-        
+
+        // Only log the first few buffers to avoid spam
+        if Int.random(in: 1...50) == 1 { // Log ~2% of the time
+            print("AudioCaptureEngine: Processing buffer with \(frameCount) samples")
+        }
+
         // Calculate input level (RMS)
         let rms = calculateRMS(samples)
         let dbLevel = 20 * log10(max(rms, 1e-10))
-        
-        updateInputLevel(dbLevel)
-        
+
+        // Update UI properties on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.updateInputLevel(dbLevel)
+        }
+
         // Voice activity detection
         let voiceDetected = vadDetector.detectVoiceActivity(samples)
-        updateVoiceActivity(voiceDetected)
-        
+        DispatchQueue.main.async { [weak self] in
+            self?.updateVoiceActivity(voiceDetected)
+        }
+
         // Add to circular buffer
         circularBuffer.write(samples)
-        
+
         // Always notify with raw audio data for test recording purposes
         let audioData = samplesToData(samples)
         onRawAudioDataAvailable?(audioData)
-        
+
         // If voice is detected, notify with audio data
         if voiceDetected {
             onAudioDataAvailable?(audioData)
+        }
+
+        // Debug logging (can be removed in production)
+        // Log occasionally for debugging
+        if Int.random(in: 1...100) == 1 { // Log ~1% of the time
+            print("AudioCaptureEngine: Current level: \(String(format: "%.1f", dbLevel)) dB, voice: \(voiceDetected)")
         }
     }
     

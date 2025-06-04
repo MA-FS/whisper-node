@@ -175,12 +175,20 @@ struct VoiceTab: View {
                                     )
                                     .frame(height: 24)
                                     .disabled(permissionStatus != .granted)
-                                    
-                                    Text("\(Int(audioEngine.inputLevel)) dB")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .frame(width: 50, alignment: .trailing)
-                                        .foregroundColor(audioEngine.isVoiceDetected ? .green : .primary)
+
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("\(Int(audioEngine.inputLevel)) dB")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .frame(width: 50, alignment: .trailing)
+                                            .foregroundColor(audioEngine.isVoiceDetected ? .green : .primary)
+
+                                        // Audio engine status indicator
+                                        Text(audioEngineStatusText)
+                                            .font(.caption2)
+                                            .foregroundColor(audioEngineStatusColor)
+                                            .frame(width: 50, alignment: .trailing)
+                                    }
                                 }
                                 .padding(.bottom, 4)
                             }
@@ -232,7 +240,7 @@ struct VoiceTab: View {
                             HStack(spacing: 12) {
                                 Button(action: {
                                     if isTestRecording {
-                                        stopTestRecording()
+                                        stopTestRecording(showResults: true)
                                     } else {
                                         startTestRecording()
                                     }
@@ -353,11 +361,16 @@ struct VoiceTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.windowBackgroundColor))
         .onAppear {
-            checkPermissionAndSetupAudio()
-            refreshAvailableDevices()
-            applyDeviceSelection()
-            startLevelMeterTimer()
-            startDeviceCheckTimer()
+            Task {
+                await checkPermissionAndSetupAudio()
+                refreshAvailableDevices()
+                applyDeviceSelection()
+                // Only start level meter after permission is confirmed
+                if permissionStatus == .granted {
+                    startLevelMeterTimer()
+                }
+                startDeviceCheckTimer()
+            }
         }
         .onChange(of: settings.preferredInputDevice) { _ in
             // Validate device when selection changes
@@ -369,7 +382,10 @@ struct VoiceTab: View {
         .onDisappear {
             stopLevelMeterTimer()
             stopDeviceCheckTimer()
-            stopTestRecording()
+            // Only stop test recording if one is actually in progress
+            if isTestRecording {
+                stopTestRecording(showResults: false) // Don't show results during tab navigation
+            }
             testRecordingTimer?.invalidate()
             testRecordingTimer = nil
         }
@@ -386,8 +402,12 @@ struct VoiceTab: View {
                 Button("OK", role: .cancel) { }
             } else {
                 Button("Retry") {
-                    checkPermissionAndSetupAudio()
-                    startLevelMeterTimer()
+                    Task {
+                        await checkPermissionAndSetupAudio()
+                        if permissionStatus == .granted {
+                            startLevelMeterTimer()
+                        }
+                    }
                 }
                 Button("OK", role: .cancel) { }
             }
@@ -430,22 +450,48 @@ struct VoiceTab: View {
             return "Permission not determined"
         }
     }
-    
+
+    private var audioEngineStatusText: String {
+        switch audioEngine.captureState {
+        case .idle: return "Idle"
+        case .starting: return "Starting"
+        case .recording: return "Active"
+        case .stopping: return "Stopping"
+        case .error: return "Error"
+        }
+    }
+
+    private var audioEngineStatusColor: Color {
+        switch audioEngine.captureState {
+        case .idle: return .secondary
+        case .starting: return .orange
+        case .recording: return .green
+        case .stopping: return .orange
+        case .error: return .red
+        }
+    }
+
     // MARK: - Private Methods
     
-    private func checkPermissionAndSetupAudio() {
+    private func checkPermissionAndSetupAudio() async {
         permissionStatus = audioEngine.checkPermissionStatus()
-        
+
         if permissionStatus == .undetermined {
-            Task {
-                let granted = await audioEngine.requestPermission()
-                await MainActor.run {
-                    permissionStatus = granted ? .granted : .denied
-                    if !granted {
-                        showPermissionAlert = true
-                    }
+            let granted = await audioEngine.requestPermission()
+            await MainActor.run {
+                permissionStatus = granted ? .granted : .denied
+                if !granted {
+                    showPermissionAlert = true
+                } else {
+                    // Permission granted - immediately start level meter
+                    print("VoiceTab: Permission granted, starting level meter immediately")
+                    startLevelMeterTimer()
                 }
             }
+        } else if permissionStatus == .granted {
+            // Permission already granted - ensure level meter is running
+            print("VoiceTab: Permission already granted, ensuring level meter is running")
+            startLevelMeterTimer()
         }
     }
     
@@ -489,32 +535,53 @@ struct VoiceTab: View {
     }
     
     private func startLevelMeterTimer() {
-        guard permissionStatus == .granted else { return }
-        
+        guard permissionStatus == .granted else {
+            print("VoiceTab: Cannot start level meter - permission not granted: \(permissionStatus)")
+            return
+        }
+
         // Ensure any existing timer is invalidated first
         levelMeterTimer?.invalidate()
-        
+
+        print("VoiceTab: Starting audio capture for level monitoring...")
+
         // Start audio capture for level monitoring
         Task {
             do {
                 try await audioEngine.startCapture()
                 await MainActor.run {
-                    // Start timer for UI updates (30fps for better performance)  
+                    print("VoiceTab: Audio capture started successfully, starting UI update timer")
+
+                    // Start timer for UI updates (30fps for better performance)
                     levelMeterTimer = Timer.scheduledTimer(withTimeInterval: Self.levelMeterUpdateInterval, repeats: true) { _ in
-                        // Level updates are handled by @Published properties in audioEngine.
-                        // This timer ensures continuous monitoring and UI responsiveness.
+                        // Force UI updates by accessing the published properties
+                        // This ensures the UI stays responsive and reflects current audio levels
+                        Task { @MainActor in
+                            // Trigger UI update by accessing the published properties
+                            let currentLevel = audioEngine.inputLevel
+                            let isVoiceActive = audioEngine.isVoiceDetected
+                            let captureState = audioEngine.captureState
+
+                            // Debug logging (can be removed in production)
+                            if Int.random(in: 1...90) == 1 { // Log every ~3 seconds at 30fps
+                                print("VoiceTab: Audio level: \(String(format: "%.1f", currentLevel)) dB, Voice: \(isVoiceActive), State: \(captureState)")
+                            }
+                        }
                     }
                 }
             } catch {
                 await MainActor.run {
+                    print("VoiceTab: Failed to start audio capture: \(error)")
+
                     // Handle error state in UI
                     audioErrorMessage = "Failed to start audio capture: \(error.localizedDescription)"
                     showAudioError = true
-                    
+
                     // Check if this is a permission issue vs other error
                     let currentPermission = audioEngine.checkPermissionStatus()
                     if currentPermission != .granted {
                         permissionStatus = currentPermission
+                        print("VoiceTab: Permission issue detected: \(currentPermission)")
                     }
                 }
                 return
@@ -523,6 +590,7 @@ struct VoiceTab: View {
     }
     
     private func stopLevelMeterTimer() {
+        print("VoiceTab: Stopping level meter timer and audio capture")
         levelMeterTimer?.invalidate()
         levelMeterTimer = nil
         audioEngine.stopCapture()
@@ -543,77 +611,141 @@ struct VoiceTab: View {
     }
     
     private func startTestRecording() {
-        guard permissionStatus == .granted else { return }
-        
+        guard permissionStatus == .granted else {
+            print("VoiceTab: Cannot start test recording - permission not granted")
+            return
+        }
+
+        print("VoiceTab: Starting test recording...")
         isTestRecording = true
         testRecordingProgress = 0.0
         testRecordingAudioData = []
-        
+
+        // Ensure audio capture is running for test recording
+        if audioEngine.captureState != .recording {
+            print("VoiceTab: Audio engine not recording, attempting to start...")
+            Task {
+                do {
+                    try await audioEngine.startCapture()
+                    print("VoiceTab: Audio capture started for test recording")
+                } catch {
+                    await MainActor.run {
+                        print("VoiceTab: Failed to start audio capture for test recording: \(error)")
+                        audioErrorMessage = "Failed to start audio capture for test recording: \(error.localizedDescription)"
+                        showAudioError = true
+                        stopTestRecording(showResults: false)
+                    }
+                    return
+                }
+            }
+        }
+
         // Set up raw audio data capture callback for test recording (captures all audio, not just voice-detected)
         audioEngine.onRawAudioDataAvailable = { audioData in
             DispatchQueue.main.async {
                 guard isTestRecording else { return }
-                
+
                 // Convert Data back to Float array for processing
                 let floatArray = audioData.withUnsafeBytes { bytes in
                     Array(bytes.bindMemory(to: Float.self))
                 }
                 testRecordingAudioData.append(contentsOf: floatArray)
+
+                // Log progress occasionally
+                if testRecordingAudioData.count % 8000 == 0 { // Every ~0.5 seconds at 16kHz
+                    let duration = Double(testRecordingAudioData.count) / 16000.0
+                    print("VoiceTab: Test recording captured \(String(format: "%.1f", duration))s of audio")
+                }
             }
         }
-        
+
         let testDuration = Self.testRecordingDuration
         let updateInterval = Self.progressUpdateInterval
         let totalSteps = testDuration / updateInterval
-        
+
         var currentStep = 0.0
-        
+
         testRecordingTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { timer in
             currentStep += 1.0
             testRecordingProgress = currentStep / totalSteps
-            
+
             if currentStep >= totalSteps {
                 timer.invalidate()
-                stopTestRecording()
+                stopTestRecording(showResults: true)
             }
         }
     }
     
-    private func stopTestRecording() {
+    private func stopTestRecording(showResults: Bool = true) {
+        print("VoiceTab: Stopping test recording (showResults: \(showResults))...")
         testRecordingTimer?.invalidate()
         testRecordingTimer = nil
         isTestRecording = false
         testRecordingProgress = 0.0
-        
+
         // Reset raw audio data capture callback
         audioEngine.onRawAudioDataAvailable = nil
-        
-        // Provide feedback about the test recording
+
+        // If not showing results (e.g., during tab navigation), just clean up and return
+        guard showResults else {
+            print("VoiceTab: Test recording cleanup completed without showing results")
+            testRecordingAudioData = []
+            return
+        }
+
+        // Provide detailed feedback about the test recording
         if !testRecordingAudioData.isEmpty {
             let sampleCount = testRecordingAudioData.count
             let durationRecorded = Double(sampleCount) / 16000.0 // 16kHz sample rate
-            
+
             // Calculate average level during recording
             let rms = sqrt(testRecordingAudioData.map { $0 * $0 }.reduce(0, +) / Float(sampleCount))
             let dbLevel = 20 * log10(max(rms, 1e-10))
-            
-            print("Test recording complete: \(String(format: "%.1f", durationRecorded))s, average level: \(String(format: "%.1f", dbLevel)) dB")
-            
-            // Show success feedback in UI if needed
-            if dbLevel > -60 {
-                // Good recording detected
-                audioErrorMessage = "Test recording successful! Average level: \(String(format: "%.1f", dbLevel)) dB"
+
+            // Calculate peak level
+            let peak = testRecordingAudioData.max() ?? 0.0
+            let peakDb = 20 * log10(max(peak, 1e-10))
+
+            print("VoiceTab: Test recording complete - Duration: \(String(format: "%.1f", durationRecorded))s, Avg: \(String(format: "%.1f", dbLevel)) dB, Peak: \(String(format: "%.1f", peakDb)) dB")
+
+            // Determine quality and provide helpful feedback
+            let qualityMessage: String
+            if dbLevel > -20 {
+                qualityMessage = "Excellent signal level!"
+            } else if dbLevel > -40 {
+                qualityMessage = "Good signal level."
+            } else if dbLevel > -60 {
+                qualityMessage = "Low signal level - consider moving closer to the microphone."
             } else {
-                // Weak or no signal detected
-                audioErrorMessage = "Test recording complete, but signal is very weak. Check microphone connection."
+                qualityMessage = "Very low signal level - check microphone connection and volume."
             }
+
+            audioErrorMessage = """
+            Test recording successful!
+
+            Duration: \(String(format: "%.1f", durationRecorded)) seconds
+            Average level: \(String(format: "%.1f", dbLevel)) dB
+            Peak level: \(String(format: "%.1f", peakDb)) dB
+
+            \(qualityMessage)
+            """
             showAudioError = true
         } else {
-            // No audio data captured
-            audioErrorMessage = "No audio captured during test. Please check microphone permissions and connection."
+            print("VoiceTab: Test recording failed - no audio data captured")
+            audioErrorMessage = """
+            Test recording failed - no audio data captured.
+
+            Possible causes:
+            • Microphone permission not granted
+            • Microphone not connected or selected
+            • Audio input device not working
+            • System audio settings issue
+
+            Please check your microphone settings and try again.
+            """
             showAudioError = true
         }
-        
+
         testRecordingAudioData = []
     }
     
