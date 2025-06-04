@@ -237,6 +237,23 @@ public class MenuBarManager: ObservableObject {
 /// SwiftUI view for the menu bar dropdown content
 struct MenuBarDropdownView: View {
     @EnvironmentObject var menuBarManager: MenuBarManager
+    @StateObject private var settingsManager = SettingsManager.shared
+    @StateObject private var audioEngine = AudioCaptureEngine.shared
+    
+    private var currentMicrophoneName: String {
+        // Get available devices and find the current one
+        let availableDevices = audioEngine.getAvailableInputDevices()
+        
+        if let deviceID = settingsManager.preferredInputDevice {
+            // Find the device name by ID
+            if let device = availableDevices.first(where: { $0.deviceID == deviceID }) {
+                return device.name
+            }
+        }
+        
+        // Fallback to "Default System Device" if no specific device is selected or found
+        return "Default System Device"
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -258,7 +275,7 @@ struct MenuBarDropdownView: View {
             
             // Status information
             VStack(alignment: .leading, spacing: 6) {
-                StatusRow(icon: "speaker.wave.2.fill", label: "Microphone", value: "Built-in")
+                StatusRow(icon: "speaker.wave.2.fill", label: "Microphone", value: currentMicrophoneName)
                 StatusRow(icon: "brain.head.profile", label: "Model", value: "Whisper Small")
                 StatusRow(icon: "keyboard", label: "Shortcut", value: "⌃⌥ (Hold)")
             }
