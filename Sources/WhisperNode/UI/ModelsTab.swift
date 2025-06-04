@@ -127,6 +127,12 @@ struct ModelsTab: View {
                                             diskSpaceError = "Insufficient disk space to download \(model.displayName). Need \(formatBytes(model.downloadSize)), but only \(formatBytes(modelManager.availableDiskSpace)) available."
                                             showLowDiskSpaceAlert = true
                                         } else {
+                                            // Provide immediate UI feedback
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                modelManager.updateModelStatusImmediately(model.name, status: .downloading, progress: 0.0)
+                                            }
+
+                                            // Start download
                                             Task {
                                                 await modelManager.downloadModel(model)
                                             }
@@ -243,6 +249,8 @@ struct ModelRowView: View {
                 switch model.status {
                 case .available:
                     Button("Download") {
+                        // Provide haptic feedback for button press
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
                         onDownload()
                     }
                     .buttonStyle(.borderedProminent)

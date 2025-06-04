@@ -295,6 +295,12 @@ public class ErrorHandlingManager: ObservableObject {
         degradationState["hotkey"] = false
         handleError(.hotkeyConflict(conflictDetails))
     }
+
+    /// Handle network connectivity failures with appropriate user feedback
+    public func handleNetworkConnectionFailure(_ details: String) {
+        degradationState["modelDownload"] = false
+        handleError(.networkConnectionFailed, userContext: details)
+    }
     
     // MARK: - Recovery Methods
     
