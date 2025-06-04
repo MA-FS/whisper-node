@@ -12,6 +12,8 @@ struct VoiceTab: View {
     @State private var permissionStatus: AudioCaptureEngine.PermissionStatus = .undetermined
     @State private var isTestRecording = false
     @State private var testRecordingProgress: Double = 0.0
+    @State private var testRecordingTimer: Timer?
+    @State private var testRecordingAudioData: [Float] = []
     @State private var showPermissionAlert = false
     @State private var showAudioError = false
     @State private var audioErrorMessage = ""
@@ -26,7 +28,7 @@ struct VoiceTab: View {
     private static let levelMeterUpdateInterval: TimeInterval = 1.0/30.0 // 30fps for better performance
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 24) {
             // Header
             HStack {
                 Image(systemName: "mic.fill")
@@ -34,7 +36,7 @@ struct VoiceTab: View {
                     .foregroundColor(.blue)
                     .accessibilityLabel("Voice settings icon")
                 
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Voice Settings")
                         .font(.title2)
                         .fontWeight(.bold)
@@ -43,19 +45,19 @@ struct VoiceTab: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .padding(.bottom, 10)
+            .padding(.bottom, 16)
             
             Divider()
             
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 24) {
                     // Microphone Permission Status
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Microphone Permission")
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         
-                        HStack {
+                        HStack(spacing: 12) {
                             Image(systemName: permissionIcon)
                                 .foregroundColor(permissionColor)
                                 .font(.system(size: 16, weight: .medium))
@@ -74,187 +76,207 @@ struct VoiceTab: View {
                                 .controlSize(.small)
                             }
                         }
-                        .padding(12)
+                        .padding(16)
                         .background(Color(.controlBackgroundColor))
                         .cornerRadius(8)
                     }
                     
                     // Microphone Device Selection
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Microphone Device")
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         
-                        Picker("Select microphone", selection: $settings.preferredInputDevice) {
-                            Text("Default System Device")
-                                .tag(nil as UInt32?)
-                            
-                            ForEach(availableDevices, id: \.deviceID) { device in
-                                Text(device.name)
-                                    .tag(device.deviceID as UInt32?)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Picker("Select microphone", selection: $settings.preferredInputDevice) {
+                                Text("Default System Device")
+                                    .tag(nil as UInt32?)
+                                
+                                ForEach(availableDevices, id: \.deviceID) { device in
+                                    Text(device.name)
+                                        .tag(device.deviceID as UInt32?)
+                                }
                             }
+                            .pickerStyle(.menu)
+                            .disabled(permissionStatus != .granted)
+                            .accessibilityLabel("Microphone device selection")
+                            .accessibilityHint("Choose which microphone to use for voice input. Select 'Default System Device' to use your system's default microphone.")
+                            
+                            Text("Select the microphone device to use for voice input")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .pickerStyle(.menu)
-                        .disabled(permissionStatus != .granted)
-                        .accessibilityLabel("Microphone device selection")
-                        .accessibilityHint("Choose which microphone to use for voice input. Select 'Default System Device' to use your system's default microphone.")
-                        
-                        Text("Select the microphone device to use for voice input")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                     
                     // Audio Format Information
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Audio Format")
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Sample Rate:")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Text("16 kHz")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: 8) {
+                                        Text("Sample Rate:")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("16 kHz")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    
+                                    HStack(spacing: 8) {
+                                        Text("Channels:")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("Mono")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    
+                                    HStack(spacing: 8) {
+                                        Text("Bit Depth:")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("32-bit Float")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
                                 }
                                 
-                                HStack {
-                                    Text("Channels:")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Text("Mono")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                
-                                HStack {
-                                    Text("Bit Depth:")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Text("32-bit Float")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
+                                Spacer()
                             }
+                            .padding(16)
+                            .background(Color(.controlBackgroundColor))
+                            .cornerRadius(8)
                             
-                            Spacer()
+                            Text("Optimized audio format for speech recognition")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .padding(12)
-                        .background(Color(.controlBackgroundColor))
-                        .cornerRadius(8)
-                        
-                        Text("Optimized audio format for speech recognition")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                     
                     // Input Level Meter
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Input Level")
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         
-                        VStack(spacing: 8) {
-                            HStack {
-                                // Level meter
-                                InputLevelMeter(
-                                    level: audioEngine.inputLevel,
-                                    vadThreshold: settings.vadThreshold,
-                                    isVoiceDetected: audioEngine.isVoiceDetected
-                                )
-                                .frame(height: 20)
-                                .disabled(permissionStatus != .granted)
-                                
-                                Text("\(Int(audioEngine.inputLevel)) dB")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .frame(width: 50, alignment: .trailing)
-                                    .foregroundColor(audioEngine.isVoiceDetected ? .green : .primary)
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Level meter section
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 12) {
+                                    // Level meter
+                                    InputLevelMeter(
+                                        level: audioEngine.inputLevel,
+                                        vadThreshold: settings.vadThreshold,
+                                        isVoiceDetected: audioEngine.isVoiceDetected
+                                    )
+                                    .frame(height: 24)
+                                    .disabled(permissionStatus != .granted)
+                                    
+                                    Text("\(Int(audioEngine.inputLevel)) dB")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .frame(width: 50, alignment: .trailing)
+                                        .foregroundColor(audioEngine.isVoiceDetected ? .green : .primary)
+                                }
+                                .padding(.bottom, 4)
                             }
                             
-                            HStack {
-                                Text("VAD Threshold:")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Slider(value: $settings.vadThreshold, in: -80...0, step: 1.0) {
-                                    Text("VAD Threshold")
-                                } minimumValueLabel: {
-                                    Text("-80")
-                                        .font(.caption2)
+                            // VAD threshold section  
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Text("VAD Threshold:")
+                                        .font(.caption)
                                         .foregroundColor(.secondary)
-                                } maximumValueLabel: {
-                                    Text("0")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
+                                        .frame(width: 100, alignment: .leading)
+                                    
+                                    Slider(value: $settings.vadThreshold, in: -80...0, step: 1.0) {
+                                        Text("VAD Threshold")
+                                    } minimumValueLabel: {
+                                        Text("-80")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    } maximumValueLabel: {
+                                        Text("0")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .disabled(permissionStatus != .granted)
+                                    
+                                    Text("\(Int(settings.vadThreshold)) dB")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .frame(width: 40, alignment: .trailing)
                                 }
-                                .disabled(permissionStatus != .granted)
-                                
-                                Text("\(Int(settings.vadThreshold)) dB")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .frame(width: 40, alignment: .trailing)
                             }
+                            
+                            Text("Adjust threshold for voice activity detection. Lower values are more sensitive.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        
-                        Text("Adjust threshold for voice activity detection. Lower values are more sensitive.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        .padding(16)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(8)
                     }
                     
                     // Test Recording
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Test Recording")
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         
-                        HStack {
-                            Button(action: {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    if isTestRecording {
+                                        stopTestRecording()
+                                    } else {
+                                        startTestRecording()
+                                    }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: isTestRecording ? "stop.circle.fill" : "play.circle.fill")
+                                            .font(.system(size: 16))
+                                        Text(isTestRecording ? "Stop Test" : "Start Test")
+                                            .fontWeight(.medium)
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(permissionStatus != .granted)
+                                .accessibilityLabel(isTestRecording ? "Stop test recording" : "Start test recording")
+                                .accessibilityHint("Test your microphone setup with a short recording")
+                                
                                 if isTestRecording {
-                                    stopTestRecording()
-                                } else {
-                                    startTestRecording()
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: isTestRecording ? "stop.circle.fill" : "play.circle.fill")
-                                        .font(.system(size: 16))
-                                    Text(isTestRecording ? "Stop Test" : "Start Test")
-                                        .fontWeight(.medium)
+                                    ProgressView(value: testRecordingProgress)
+                                        .progressViewStyle(LinearProgressViewStyle())
+                                        .frame(maxWidth: .infinity)
+                                        .animation(reduceMotion ? .none : .easeInOut(duration: 0.1), value: testRecordingProgress)
                                 }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(permissionStatus != .granted)
-                            .accessibilityLabel(isTestRecording ? "Stop test recording" : "Start test recording")
-                            .accessibilityHint("Test your microphone setup with a short recording")
                             
-                            if isTestRecording {
-                                ProgressView(value: testRecordingProgress)
-                                    .progressViewStyle(LinearProgressViewStyle())
-                                    .frame(maxWidth: .infinity)
-                                    .animation(reduceMotion ? .none : .easeInOut(duration: 0.1), value: testRecordingProgress)
-                            }
+                            Text("Record a short test to verify your microphone setup")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        
-                        Text("Record a short test to verify your microphone setup")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        .padding(16)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(8)
                     }
                     
                     // Haptic Feedback
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Haptic Feedback")
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                         
-                        VStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 16) {
                             // Enable/Disable Toggle
                             HStack {
                                 Toggle(isOn: $hapticManager.isEnabled) {
-                                    VStack(alignment: .leading, spacing: 2) {
+                                    VStack(alignment: .leading, spacing: 4) {
                                         Text("Enable Haptic Feedback")
                                             .font(.subheadline)
                                             .fontWeight(.medium)
@@ -270,11 +292,12 @@ struct VoiceTab: View {
                             
                             if hapticManager.isEnabled {
                                 // Intensity Slider
-                                VStack(spacing: 4) {
-                                    HStack {
+                                VStack(spacing: 8) {
+                                    HStack(spacing: 8) {
                                         Text("Intensity:")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
+                                            .frame(width: 60, alignment: .leading)
                                         
                                         Slider(value: $hapticManager.intensity, in: 0.1...1.0, step: 0.1) {
                                             Text("Haptic Intensity")
@@ -312,21 +335,21 @@ struct VoiceTab: View {
                                 .padding(.leading, 20)
                                 .transition(.opacity.combined(with: .slide))
                             }
+                            
+                            Text("Haptic feedback is available on MacBooks with Force Touch trackpads (2015 and later models)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .padding(12)
+                        .padding(16)
                         .background(Color(.controlBackgroundColor))
                         .cornerRadius(8)
-                        
-                        Text("Haptic feedback is available on MacBooks with Force Touch trackpads (2015 and later models)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                 }
             }
             
             Spacer()
         }
-        .padding(20)
+        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.windowBackgroundColor))
         .onAppear {
@@ -343,6 +366,8 @@ struct VoiceTab: View {
             stopLevelMeterTimer()
             stopDeviceCheckTimer()
             stopTestRecording()
+            testRecordingTimer?.invalidate()
+            testRecordingTimer = nil
         }
         .alert("Microphone Permission Required", isPresented: $showPermissionAlert) {
             Button("Open System Preferences") {
@@ -352,12 +377,16 @@ struct VoiceTab: View {
         } message: {
             Text("Whisper Node needs microphone access to capture voice input. Please grant permission in System Preferences.")
         }
-        .alert("Audio Error", isPresented: $showAudioError) {
-            Button("Retry") {
-                checkPermissionAndSetupAudio()
-                startLevelMeterTimer()
+        .alert("Audio Information", isPresented: $showAudioError) {
+            if audioErrorMessage.contains("successful") {
+                Button("OK", role: .cancel) { }
+            } else {
+                Button("Retry") {
+                    checkPermissionAndSetupAudio()
+                    startLevelMeterTimer()
+                }
+                Button("OK", role: .cancel) { }
             }
-            Button("OK", role: .cancel) { }
         } message: {
             Text(audioErrorMessage)
         }
@@ -449,21 +478,27 @@ struct VoiceTab: View {
         Task {
             do {
                 try await audioEngine.startCapture()
+                await MainActor.run {
+                    // Start timer for UI updates (30fps for better performance)  
+                    levelMeterTimer = Timer.scheduledTimer(withTimeInterval: Self.levelMeterUpdateInterval, repeats: true) { _ in
+                        // Level updates are handled by @Published properties in audioEngine.
+                        // This timer ensures continuous monitoring and UI responsiveness.
+                    }
+                }
             } catch {
                 await MainActor.run {
                     // Handle error state in UI
                     audioErrorMessage = "Failed to start audio capture: \(error.localizedDescription)"
                     showAudioError = true
-                    permissionStatus = .denied
+                    
+                    // Check if this is a permission issue vs other error
+                    let currentPermission = audioEngine.checkPermissionStatus()
+                    if currentPermission != .granted {
+                        permissionStatus = currentPermission
+                    }
                 }
                 return
             }
-        }
-        
-        // Start timer for UI updates (30fps for better performance)  
-        levelMeterTimer = Timer.scheduledTimer(withTimeInterval: Self.levelMeterUpdateInterval, repeats: true) { _ in
-            // Level updates are handled by @Published properties in audioEngine.
-            // This timer ensures continuous monitoring.
         }
     }
     
@@ -492,6 +527,20 @@ struct VoiceTab: View {
         
         isTestRecording = true
         testRecordingProgress = 0.0
+        testRecordingAudioData = []
+        
+        // Set up audio data capture callback for test recording
+        audioEngine.onAudioDataAvailable = { audioData in
+            DispatchQueue.main.async {
+                guard isTestRecording else { return }
+                
+                // Convert Data back to Float array for processing
+                let floatArray = audioData.withUnsafeBytes { bytes in
+                    Array(bytes.bindMemory(to: Float.self))
+                }
+                testRecordingAudioData.append(contentsOf: floatArray)
+            }
+        }
         
         let testDuration = Self.testRecordingDuration
         let updateInterval = Self.progressUpdateInterval
@@ -499,7 +548,7 @@ struct VoiceTab: View {
         
         var currentStep = 0.0
         
-        Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { timer in
+        testRecordingTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { timer in
             currentStep += 1.0
             testRecordingProgress = currentStep / totalSteps
             
@@ -511,8 +560,41 @@ struct VoiceTab: View {
     }
     
     private func stopTestRecording() {
+        testRecordingTimer?.invalidate()
+        testRecordingTimer = nil
         isTestRecording = false
         testRecordingProgress = 0.0
+        
+        // Reset audio data capture callback
+        audioEngine.onAudioDataAvailable = nil
+        
+        // Provide feedback about the test recording
+        if !testRecordingAudioData.isEmpty {
+            let sampleCount = testRecordingAudioData.count
+            let durationRecorded = Double(sampleCount) / 16000.0 // 16kHz sample rate
+            
+            // Calculate average level during recording
+            let rms = sqrt(testRecordingAudioData.map { $0 * $0 }.reduce(0, +) / Float(sampleCount))
+            let dbLevel = 20 * log10(max(rms, 1e-10))
+            
+            print("Test recording complete: \(String(format: "%.1f", durationRecorded))s, average level: \(String(format: "%.1f", dbLevel)) dB")
+            
+            // Show success feedback in UI if needed
+            if dbLevel > -60 {
+                // Good recording detected
+                audioErrorMessage = "Test recording successful! Average level: \(String(format: "%.1f", dbLevel)) dB"
+            } else {
+                // Weak or no signal detected
+                audioErrorMessage = "Test recording complete, but signal is very weak. Check microphone connection."
+            }
+            showAudioError = true
+        } else {
+            // No audio data captured
+            audioErrorMessage = "No audio captured during test. Please check microphone permissions and connection."
+            showAudioError = true
+        }
+        
+        testRecordingAudioData = []
     }
     
     private func openSystemPreferences() {
