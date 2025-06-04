@@ -99,7 +99,7 @@ chmod +x build-dmg.sh
 ```
 
 #### Build fails with Rust errors
-Rust is optional. The app will build without it but with limited Whisper functionality.
+Rust is optional. The app will build without it, but with limited Whisper functionality.
 
 ### Getting Help
 

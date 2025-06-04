@@ -17,6 +17,7 @@ struct VoiceTab: View {
     @State private var showPermissionAlert = false
     @State private var showAudioError = false
     @State private var audioErrorMessage = ""
+    @State private var isAudioMessageSuccess = false
     
     // Timer for level meter updates
     @State private var levelMeterTimer: Timer?
@@ -398,7 +399,7 @@ struct VoiceTab: View {
             Text("Whisper Node needs microphone access to capture voice input. Please grant permission in System Preferences.")
         }
         .alert("Audio Information", isPresented: $showAudioError) {
-            if audioErrorMessage.contains("successful") {
+            if isAudioMessageSuccess {
                 Button("OK", role: .cancel) { }
             } else {
                 Button("Retry") {
@@ -514,6 +515,7 @@ struct VoiceTab: View {
             
             // Show user-friendly message about device change
             audioErrorMessage = "Selected microphone device is no longer available. Switched to default device."
+            isAudioMessageSuccess = false
             showAudioError = true
         }
     }
@@ -530,6 +532,7 @@ struct VoiceTab: View {
             }
         } catch {
             audioErrorMessage = "Failed to apply microphone device selection: \(error.localizedDescription)"
+            isAudioMessageSuccess = false
             showAudioError = true
         }
     }
@@ -575,6 +578,7 @@ struct VoiceTab: View {
 
                     // Handle error state in UI
                     audioErrorMessage = "Failed to start audio capture: \(error.localizedDescription)"
+                    isAudioMessageSuccess = false
                     showAudioError = true
 
                     // Check if this is a permission issue vs other error
@@ -632,6 +636,7 @@ struct VoiceTab: View {
                     await MainActor.run {
                         print("VoiceTab: Failed to start audio capture for test recording: \(error)")
                         audioErrorMessage = "Failed to start audio capture for test recording: \(error.localizedDescription)"
+                        isAudioMessageSuccess = false
                         showAudioError = true
                         stopTestRecording(showResults: false)
                     }
@@ -695,40 +700,20 @@ struct VoiceTab: View {
 
         // Provide detailed feedback about the test recording
         if !testRecordingAudioData.isEmpty {
-            let sampleCount = testRecordingAudioData.count
-            let durationRecorded = Double(sampleCount) / 16000.0 // 16kHz sample rate
+            let analysisResult = analyzeAudioData(testRecordingAudioData)
 
-            // Calculate average level during recording
-            let rms = sqrt(testRecordingAudioData.map { $0 * $0 }.reduce(0, +) / Float(sampleCount))
-            let dbLevel = 20 * log10(max(rms, 1e-10))
-
-            // Calculate peak level
-            let peak = testRecordingAudioData.max() ?? 0.0
-            let peakDb = 20 * log10(max(peak, 1e-10))
-
-            print("VoiceTab: Test recording complete - Duration: \(String(format: "%.1f", durationRecorded))s, Avg: \(String(format: "%.1f", dbLevel)) dB, Peak: \(String(format: "%.1f", peakDb)) dB")
-
-            // Determine quality and provide helpful feedback
-            let qualityMessage: String
-            if dbLevel > -20 {
-                qualityMessage = "Excellent signal level!"
-            } else if dbLevel > -40 {
-                qualityMessage = "Good signal level."
-            } else if dbLevel > -60 {
-                qualityMessage = "Low signal level - consider moving closer to the microphone."
-            } else {
-                qualityMessage = "Very low signal level - check microphone connection and volume."
-            }
+            print("VoiceTab: Test recording complete - Duration: \(String(format: "%.1f", analysisResult.duration))s, Avg: \(String(format: "%.1f", analysisResult.rms)) dB, Peak: \(String(format: "%.1f", analysisResult.peak)) dB")
 
             audioErrorMessage = """
             Test recording successful!
 
-            Duration: \(String(format: "%.1f", durationRecorded)) seconds
-            Average level: \(String(format: "%.1f", dbLevel)) dB
-            Peak level: \(String(format: "%.1f", peakDb)) dB
+            Duration: \(String(format: "%.1f", analysisResult.duration)) seconds
+            Average level: \(String(format: "%.1f", analysisResult.rms)) dB
+            Peak level: \(String(format: "%.1f", analysisResult.peak)) dB
 
-            \(qualityMessage)
+            \(analysisResult.qualityMessage)
             """
+            isAudioMessageSuccess = true
             showAudioError = true
         } else {
             print("VoiceTab: Test recording failed - no audio data captured")
@@ -743,6 +728,7 @@ struct VoiceTab: View {
 
             Please check your microphone settings and try again.
             """
+            isAudioMessageSuccess = false
             showAudioError = true
         }
 
@@ -753,6 +739,49 @@ struct VoiceTab: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Audio analysis result structure
+    private struct AudioAnalysisResult {
+        let duration: Double
+        let rms: Float
+        let peak: Float
+        let qualityMessage: String
+    }
+
+    /// Analyze audio data and provide quality assessment
+    /// - Parameter samples: Array of audio samples to analyze
+    /// - Returns: AudioAnalysisResult containing duration, levels, and quality message
+    private func analyzeAudioData(_ samples: [Float]) -> AudioAnalysisResult {
+        let sampleCount = samples.count
+        let durationRecorded = Double(sampleCount) / 16000.0 // 16kHz sample rate
+
+        // Calculate average level during recording (RMS)
+        let rms = sqrt(samples.map { $0 * $0 }.reduce(0, +) / Float(sampleCount))
+        let dbLevel = 20 * log10(max(rms, 1e-10))
+
+        // Calculate peak level
+        let peak = samples.max() ?? 0.0
+        let peakDb = 20 * log10(max(peak, 1e-10))
+
+        // Determine quality and provide helpful feedback
+        let qualityMessage: String
+        if dbLevel > -20 {
+            qualityMessage = "Excellent signal level!"
+        } else if dbLevel > -40 {
+            qualityMessage = "Good signal level."
+        } else if dbLevel > -60 {
+            qualityMessage = "Low signal level - consider moving closer to the microphone."
+        } else {
+            qualityMessage = "Very low signal level - check microphone connection and volume."
+        }
+
+        return AudioAnalysisResult(
+            duration: durationRecorded,
+            rms: dbLevel,
+            peak: peakDb,
+            qualityMessage: qualityMessage
+        )
     }
 }
 

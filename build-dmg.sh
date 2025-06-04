@@ -20,6 +20,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 CONFIGURATION="${1:-Debug}"
+
+# Validate configuration argument
+if [[ "$CONFIGURATION" != "Debug" && "$CONFIGURATION" != "Release" ]]; then
+    echo -e "\033[0;31m[ERROR]\033[0m Invalid configuration: $CONFIGURATION. Use Debug or Release."
+    exit 1
+fi
+
 BUILD_DIR="$PROJECT_DIR/build"
 APP_PATH="$BUILD_DIR/WhisperNode.app"
 
