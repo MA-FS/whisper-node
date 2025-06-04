@@ -299,7 +299,7 @@ public class ErrorHandlingManager: ObservableObject {
     /// Handle network connectivity failures with appropriate user feedback
     public func handleNetworkConnectionFailure(_ details: String) {
         degradationState["modelDownload"] = false
-        handleError(.networkConnectionFailed)
+        handleError(.networkConnectionFailed, userContext: details)
     }
     
     // MARK: - Recovery Methods

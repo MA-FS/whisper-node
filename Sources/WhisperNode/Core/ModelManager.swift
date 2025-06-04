@@ -107,7 +107,7 @@ public struct ModelsMetadata: Codable, Sendable {
 
 /// Manages Whisper model downloads, storage, and lifecycle
 @MainActor
-public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable, URLSessionDownloadDelegate {
+public final class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     public static let shared = ModelManager()
     
     // MARK: - Published Properties
@@ -134,16 +134,16 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
     private let tempDirectory: URL
     private let metadataURL: URL
     private var urlSession: URLSession!
-    private var downloadTasks: [String: URLSessionDownloadTask] = [:]
+    /// Download state management
+    private struct DownloadState {
+        let task: URLSessionDownloadTask
+        let continuation: CheckedContinuation<DownloadResult, Never>
+        let stagingURL: URL
+        let destinationURL: URL
+    }
 
-    /// Store continuations for async download completion
-    private var downloadContinuations: [String: CheckedContinuation<DownloadResult, Never>] = [:]
-
-    /// Store staging URLs for each download
-    private var downloadStagingURLs: [String: URL] = [:]
-
-    /// Store destination URLs for each download
-    private var downloadDestinationURLs: [String: URL] = [:]
+    /// Track active downloads with consolidated state
+    private var activeDownloads: [String: DownloadState] = [:]
 
     private let fileManager = FileManager.default
     private let errorManager = ErrorHandlingManager.shared
@@ -164,7 +164,33 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
     private override init() {
         // Set up directories in Application Support
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            fatalError("Unable to access Application Support directory - this is required for model storage")
+            // Fallback to temporary directory if Application Support is not accessible
+            print("⚠️ [ModelManager] Unable to access Application Support directory, using temporary directory as fallback")
+            let tempDir = FileManager.default.temporaryDirectory
+            let whisperNodeDir = tempDir.appendingPathComponent("WhisperNode")
+            self.modelsDirectory = whisperNodeDir.appendingPathComponent("Models")
+            self.tempDirectory = whisperNodeDir.appendingPathComponent("temp")
+            self.metadataURL = whisperNodeDir.appendingPathComponent("metadata.json")
+
+            // Continue with initialization using temporary directory
+            super.init()
+            self.urlSession = URLSession(configuration: URLSessionConfiguration.default, delegate: self, delegateQueue: nil)
+
+            // Try to create directories in temp location
+            do {
+                try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true, attributes: nil)
+                try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true, attributes: nil)
+                print("✅ [ModelManager] Created fallback directories in temporary location")
+            } catch {
+                print("❌ [ModelManager] Failed to create fallback directories: \(error)")
+                // Initialize with minimal functionality
+            }
+
+            // Initialize with degraded functionality
+            self.loadMetadata()
+            self.activeModelName = UserDefaults.standard.string(forKey: "activeModelName") ?? "tiny.en"
+            self.initializeModelList()
+            return
         }
         let whisperNodeDir = appSupport.appendingPathComponent("WhisperNode")
         self.modelsDirectory = whisperNodeDir.appendingPathComponent("Models")
@@ -190,7 +216,11 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
             print("✅ [ModelManager] Created temp directory: \(tempDirectory.path)")
         } catch {
             print("❌ [ModelManager] Failed to create storage directories: \(error)")
-            fatalError("Unable to create required storage directories: \(error)")
+            // Handle directory creation failure gracefully
+            ErrorHandlingManager.shared.handleError(.systemResourcesExhausted,
+                userContext: "Unable to create required storage directories: \(error.localizedDescription)")
+            // Continue with degraded functionality - models will be read-only
+            print("⚠️ [ModelManager] Continuing with read-only mode due to directory creation failure")
         }
 
         // Load metadata and active model preference
@@ -382,12 +412,26 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
 
     /// Validate network connectivity
     private func checkNetworkConnectivity() async -> Bool {
-        guard let url = URL(string: "https://www.google.com") else { return false }
+        // Check connectivity to the actual download server
+        guard let url = URL(string: baseDownloadURL) else { return false }
 
         do {
-            let (_, response) = try await URLSession.shared.data(from: url)
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = 5.0
+
+            let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200
         } catch {
+            // Fallback to checking a reliable CDN endpoint
+            if let cdnURL = URL(string: "https://cdn.jsdelivr.net/") {
+                do {
+                    let (_, response) = try await URLSession.shared.data(from: cdnURL)
+                    return (response as? HTTPURLResponse)?.statusCode == 200
+                } catch {
+                    return false
+                }
+            }
             return false
         }
     }
@@ -485,7 +529,7 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
     
     private func downloadWithProgress(_ model: ModelInfo) async -> DownloadResult {
         // Check if download is already in progress
-        if downloadTasks[model.name] != nil {
+        if activeDownloads[model.name] != nil {
             return DownloadResult(success: false, error: "Download already in progress for \(model.name). Please wait for current download to complete.")
         }
 
@@ -498,18 +542,17 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
         let destinationURL = modelsDirectory.appendingPathComponent("\(model.name)\(Self.modelFileExtension)")
 
         return await withCheckedContinuation { continuation in
-            // Store continuation for this download
-            downloadContinuations[model.name] = continuation
-
             // Create download task WITHOUT completion handler to enable delegate methods
             let downloadTask = urlSession.downloadTask(with: url)
 
-            // Store staging and destination URLs for this download
-            downloadStagingURLs[model.name] = stagingURL
-            downloadDestinationURLs[model.name] = destinationURL
-
-            // Track download task and start it
-            downloadTasks[model.name] = downloadTask
+            // Store consolidated download state
+            let downloadState = DownloadState(
+                task: downloadTask,
+                continuation: continuation,
+                stagingURL: stagingURL,
+                destinationURL: destinationURL
+            )
+            activeDownloads[model.name] = downloadState
 
             print("Starting download for \(model.name) from \(url)")
             print("URLSession delegate: \(urlSession.delegate != nil ? "Set" : "Not set")")
@@ -590,7 +633,7 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
         // Update UI on main thread
         Task { @MainActor in
             // Find the model being downloaded
-            guard let modelName = self.downloadTasks.first(where: { $0.value == downloadTask })?.key else {
+            guard let modelName = self.activeDownloads.first(where: { $0.value.task == downloadTask })?.key else {
                 print("Warning: Could not find model name for progress update")
                 return
             }
@@ -655,37 +698,28 @@ public final class ModelManager: NSObject, ObservableObject, @unchecked Sendable
         print("📍 [ModelManager] TempURL: \(tempURL?.path ?? "nil"), Error: \(error?.localizedDescription ?? "none")")
 
         // Find the model being downloaded
-        guard let modelName = downloadTasks.first(where: { $0.value == downloadTask })?.key else {
+        guard let modelName = activeDownloads.first(where: { $0.value.task == downloadTask })?.key else {
             print("⚠️ [ModelManager] Warning: Could not find model name for completed download task (likely already processed)")
-            print("📊 [ModelManager] Active download tasks: \(downloadTasks.keys.joined(separator: ", "))")
+            print("📊 [ModelManager] Active downloads: \(activeDownloads.keys.joined(separator: ", "))")
             return
         }
         print("🎯 [ModelManager] Found model name: \(modelName)")
 
         // Check if this download has already been processed (race condition protection)
-        guard downloadContinuations[modelName] != nil else {
+        guard let downloadState = activeDownloads.removeValue(forKey: modelName) else {
             print("⚠️ [ModelManager] Warning: Download for \(modelName) already processed, skipping duplicate call")
             return
         }
 
-        // Get the continuation and URLs for this download
-        guard let continuation = downloadContinuations.removeValue(forKey: modelName),
-              let stagingURL = downloadStagingURLs.removeValue(forKey: modelName),
-              let destinationURL = downloadDestinationURLs.removeValue(forKey: modelName) else {
-            print("⚠️ [ModelManager] Warning: Missing continuation or URLs for download: \(modelName)")
-            print("📊 [ModelManager] Available continuations: \(downloadContinuations.keys.joined(separator: ", "))")
-            print("📊 [ModelManager] Available staging URLs: \(downloadStagingURLs.keys.joined(separator: ", "))")
-            print("📊 [ModelManager] Available destination URLs: \(downloadDestinationURLs.keys.joined(separator: ", "))")
-            downloadTasks.removeValue(forKey: modelName)
-            return
-        }
-        print("✅ [ModelManager] Retrieved continuation and URLs for \(modelName)")
+        // Extract download state components
+        let continuation = downloadState.continuation
+        let stagingURL = downloadState.stagingURL
+        let destinationURL = downloadState.destinationURL
+
+        print("✅ [ModelManager] Retrieved download state for \(modelName)")
         print("📁 [ModelManager] Staging URL: \(stagingURL.path)")
         print("📁 [ModelManager] Destination URL: \(destinationURL.path)")
-
-        // Clean up download task tracking
-        downloadTasks.removeValue(forKey: modelName)
-        print("🧹 [ModelManager] Cleaned up download task for \(modelName)")
+        print("🧹 [ModelManager] Cleaned up download state for \(modelName)")
 
         // Handle error case
         if let error = error {
