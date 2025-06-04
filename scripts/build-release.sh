@@ -104,7 +104,7 @@ create_app_bundle() {
     mkdir -p "$APP_PATH/Contents/Frameworks"
     
     # Find the built executable with safer find options
-    EXECUTABLE_PATH=$(find "$BUILD_DIR" -name "WhisperNode" -type f -executable ! -path "*.dSYM*" | head -1)
+    EXECUTABLE_PATH=$(find "$BUILD_DIR" -name "WhisperNode" -type f -perm +111 ! -path "*.dSYM*" | head -1)
     
     if [ -z "$EXECUTABLE_PATH" ]; then
         log_error "Built executable not found"
@@ -117,7 +117,13 @@ create_app_bundle() {
     # Copy Info.plist
     cp "$PROJECT_DIR/Sources/WhisperNode/Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
     
-    # Copy any resources (if they exist)
+    # Copy AppIcon.icns to Resources
+    if [ -f "$PROJECT_DIR/Sources/WhisperNode/Resources/AppIcon.icns" ]; then
+        cp "$PROJECT_DIR/Sources/WhisperNode/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+        log_info "Copied AppIcon.icns to app bundle"
+    fi
+    
+    # Copy any additional resources (if they exist)
     if [ -d "$PROJECT_DIR/Resources" ]; then
         cp -R "$PROJECT_DIR/Resources/"* "$APP_PATH/Contents/Resources/" 2>/dev/null || true
     fi

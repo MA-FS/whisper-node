@@ -38,7 +38,10 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources/Info.plist"),
-                .copy("Resources/WhisperNode.entitlements")
+                .copy("Resources/WhisperNode.entitlements"),
+                .copy("Resources/WhisperNode-dev.entitlements"),
+                .copy("Resources/AppIcon.icns"),
+                .copy("Resources/whispernode-logo.png")
             ],
             swiftSettings: [
                 .define("SWIFT_PACKAGE"),
