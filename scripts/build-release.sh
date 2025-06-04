@@ -135,6 +135,15 @@ create_app_bundle() {
         log_info "Copied Sparkle framework to app bundle"
     else
         log_warning "Sparkle framework not found in build directory"
+        log_warning "App will build but auto-update functionality will not be available"
+        log_warning "To resolve: ensure Sparkle is properly configured in your Swift Package dependencies"
+        
+        # Check if this is a critical framework for this configuration
+        if [ "$CONFIGURATION" = "Release" ] && [ "${REQUIRE_SPARKLE:-false}" = "true" ]; then
+            log_error "CRITICAL: Sparkle framework is required for Release builds but was not found"
+            log_error "Set REQUIRE_SPARKLE=false to allow builds without Sparkle, or fix the framework path"
+            exit 1
+        fi
     fi
 
     # Copy Rust library if it exists
@@ -187,9 +196,18 @@ sign_app() {
     if [ "$SIGNING_IDENTITY" = "-" ]; then
         ENTITLEMENTS_FILE="$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode-dev.entitlements"
         log_info "Using development entitlements for ad-hoc signing"
+        log_warning "SECURITY WARNING: Development entitlements disable critical security features"
+        log_warning "These should NEVER be used in production builds"
     else
         ENTITLEMENTS_FILE="$PROJECT_DIR/Sources/WhisperNode/Resources/WhisperNode.entitlements"
         log_info "Using production entitlements for proper signing"
+        
+        # Validate we're not accidentally using dev entitlements with production signing
+        if [[ "$ENTITLEMENTS_FILE" == *"-dev.entitlements" ]]; then
+            log_error "SECURITY ERROR: Development entitlements cannot be used with production signing"
+            log_error "This would create a security vulnerability in the distributed app"
+            exit 1
+        fi
     fi
     
     # Verify entitlements file exists

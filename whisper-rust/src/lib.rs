@@ -203,10 +203,16 @@ impl WhisperManager {
 
             let mut full_text = String::new();
             for i in 0..num_segments {
-                if let Ok(segment_text) = state.full_get_segment_text(i) {
-                    full_text.push_str(&segment_text);
-                    if i < num_segments - 1 {
-                        full_text.push(' ');
+                match state.full_get_segment_text(i) {
+                    Ok(segment_text) => {
+                        full_text.push_str(&segment_text);
+                        if i < num_segments - 1 {
+                            full_text.push(' ');
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get segment {} text: {}", i, e);
+                        continue;
                     }
                 }
             }

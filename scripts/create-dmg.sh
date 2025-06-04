@@ -36,7 +36,7 @@ APP_ICON_X=200           # X position of app icon
 APP_ICON_Y=190           # Y position of app icon
 APPLICATIONS_LINK_X=600  # X position of Applications folder shortcut
 APPLICATIONS_LINK_Y=185  # Y position of Applications folder shortcut
-DMG_TIMEOUT=300          # Timeout for DMG creation (5 minutes)
+DMG_TIMEOUT="${DMG_TIMEOUT:-300}"  # Timeout for DMG creation (default: 5 minutes, configurable via env var)
 
 # Cleanup function for error handling
 TEMP_FILES=()
