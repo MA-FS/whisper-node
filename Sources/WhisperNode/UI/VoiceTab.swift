@@ -4,7 +4,7 @@ import CoreAudio
 
 struct VoiceTab: View {
     @StateObject private var settings = SettingsManager.shared
-    @StateObject private var audioEngine = AudioCaptureEngine()
+    @StateObject private var audioEngine = AudioCaptureEngine.shared
     @StateObject private var hapticManager = HapticManager.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     

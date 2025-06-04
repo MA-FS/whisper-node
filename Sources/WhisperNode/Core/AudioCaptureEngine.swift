@@ -41,6 +41,9 @@ import CoreAudio
 @MainActor
 public class AudioCaptureEngine: ObservableObject {
     
+    /// Shared singleton instance
+    public static let shared = AudioCaptureEngine()
+    
     /// Errors that can occur during audio capture operations
     public enum CaptureError: Error, LocalizedError, Equatable {
         /// Audio engine failed to start or is not currently running
@@ -127,7 +130,7 @@ public class AudioCaptureEngine: ObservableObject {
     /// - Parameters:
     ///   - bufferDuration: Duration of the circular buffer in seconds (default: 1.0 second)
     ///   - vadThreshold: Voice activity detection threshold in decibels (default: -40.0 dB)
-    public init(bufferDuration: TimeInterval = 1.0, vadThreshold: Float = -40.0) {
+    private init(bufferDuration: TimeInterval = 1.0, vadThreshold: Float = -40.0) {
         let sampleRate = 16000.0 // 16kHz mono
         let capacity = Int(sampleRate * bufferDuration)
         self.circularBuffer = CircularAudioBuffer(capacity: capacity)

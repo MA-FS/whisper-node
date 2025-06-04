@@ -238,7 +238,7 @@ public class MenuBarManager: ObservableObject {
 struct MenuBarDropdownView: View {
     @EnvironmentObject var menuBarManager: MenuBarManager
     @StateObject private var settingsManager = SettingsManager.shared
-    @StateObject private var audioEngine = AudioCaptureEngine()
+    @StateObject private var audioEngine = AudioCaptureEngine.shared
     
     private var currentMicrophoneName: String {
         // Get available devices and find the current one

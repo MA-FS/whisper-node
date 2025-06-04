@@ -47,7 +47,7 @@ public class WhisperNodeCore: ObservableObject {
     
     // Core managers
     @Published public private(set) var hotkeyManager = GlobalHotkeyManager()
-    @Published public private(set) var audioEngine = AudioCaptureEngine()
+    @Published public private(set) var audioEngine = AudioCaptureEngine.shared
     @Published public private(set) var menuBarManager = MenuBarManager()
     @Published public private(set) var indicatorManager = RecordingIndicatorWindowManager()
     @Published public private(set) var performanceMonitor = PerformanceMonitor.shared
