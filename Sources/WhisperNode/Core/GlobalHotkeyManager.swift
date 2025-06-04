@@ -377,20 +377,49 @@ public class GlobalHotkeyManager: ObservableObject {
     private func matchesCurrentHotkey(_ event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
-        
-        return keyCode == Int64(currentHotkey.keyCode) &&
-               flags.contains(currentHotkey.modifierFlags)
+
+        // Check if key code matches
+        guard keyCode == Int64(currentHotkey.keyCode) else { return false }
+
+        // Clean the event flags to remove system flags
+        let cleanEventFlags = cleanModifierFlags(flags)
+        let cleanHotkeyFlags = cleanModifierFlags(currentHotkey.modifierFlags)
+
+        // For exact matching, all required modifiers must be present and no extra ones
+        return cleanEventFlags == cleanHotkeyFlags
+    }
+
+    private func cleanModifierFlags(_ flags: CGEventFlags) -> CGEventFlags {
+        // Keep only the essential modifier flags, remove system/internal flags
+        var cleanFlags = CGEventFlags()
+
+        if flags.contains(.maskCommand) {
+            cleanFlags.insert(.maskCommand)
+        }
+        if flags.contains(.maskAlternate) {
+            cleanFlags.insert(.maskAlternate)
+        }
+        if flags.contains(.maskShift) {
+            cleanFlags.insert(.maskShift)
+        }
+        if flags.contains(.maskControl) {
+            cleanFlags.insert(.maskControl)
+        }
+
+        return cleanFlags
     }
     
     private func handleKeyDown(_ event: CGEvent) {
         let currentTime = CFAbsoluteTimeGetCurrent()
-        
+
         // Thread-safe check and update
         guard keyDownTime == nil else { return } // Already pressed
         keyDownTime = currentTime
-        
-        Self.logger.debug("Hotkey pressed down")
-        
+
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+        Self.logger.info("Hotkey pressed down - keyCode: \(keyCode), flags: \(flags.rawValue), description: \(currentHotkey.description)")
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = true
@@ -441,13 +470,15 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     private func generateAlternatives(for configuration: HotkeyConfiguration) -> [HotkeyConfiguration] {
-        // Generate safe alternatives
+        // Generate safe alternatives including Control+Option combinations
         let alternatives: [HotkeyConfiguration] = [
-            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskAlternate, .maskShift], description: "Option+Shift+Space"),
-            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskControl, .maskShift], description: "Control+Shift+Space"),
-            HotkeyConfiguration(keyCode: 3, modifierFlags: [.maskCommand, .maskShift], description: "Cmd+Shift+F")
+            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥Space"),
+            HotkeyConfiguration(keyCode: 9, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥V"),
+            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskAlternate, .maskShift], description: "⌥⇧Space"),
+            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskControl, .maskShift], description: "⌃⇧Space"),
+            HotkeyConfiguration(keyCode: 3, modifierFlags: [.maskCommand, .maskShift], description: "⌘⇧F")
         ]
-        
+
         return alternatives.filter { $0.keyCode != configuration.keyCode || $0.modifierFlags != configuration.modifierFlags }
     }
 }
@@ -471,8 +502,8 @@ public struct HotkeyConfiguration: Equatable {
     
     public static let defaultConfiguration = HotkeyConfiguration(
         keyCode: 49, // Space bar
-        modifierFlags: .maskAlternate, // Option key
-        description: "Option+Space"
+        modifierFlags: [.maskControl, .maskAlternate], // Control+Option keys
+        description: "⌃⌥Space"
     )
 }
 
