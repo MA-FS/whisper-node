@@ -154,12 +154,13 @@ class SettingsManager: ObservableObject {
         self.vadThreshold = defaults.object(forKey: UserDefaultsKeys.vadThreshold) as? Float ?? -40.0
         self.enableTestRecording = defaults.bool(forKey: UserDefaultsKeys.enableTestRecording)
         
-        // Load hotkey settings with defaults (Option+Space)
+        // Load hotkey settings with defaults (Control+Option+Space)
         let storedKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
         self.hotkeyKeyCode = storedKeyCode == 0 ? 49 : storedKeyCode // Default to Space key
-        
+
         let storedModifierFlags = UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags))
-        self.hotkeyModifierFlags = storedModifierFlags == 0 ? CGEventFlags.maskAlternate.rawValue : storedModifierFlags // Default to Option key
+        let defaultModifierFlags = CGEventFlags([.maskControl, .maskAlternate]).rawValue // Default to Control+Option
+        self.hotkeyModifierFlags = storedModifierFlags == 0 ? defaultModifierFlags : storedModifierFlags
         
         // Load model settings
         self.activeModelName = defaults.string(forKey: UserDefaultsKeys.activeModelName) ?? "tiny.en"

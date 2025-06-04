@@ -45,7 +45,7 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 | T26 | [Icon & Logo Creation](tasks/T26-icon-logo-creation.md) | Medium | ⏳ WIP | 85% | Icon creation in progress, installer icons pending |
 | T27 | [Voice Tab UI Fixes and Audio Input Issues](tasks/T27-voice-tab-ui-fixes.md) | High | ✅ Done | 100% | All audio capture and UI/UX issues resolved, professional user experience achieved |
 | T28 | [Models Tab Download Button Responsiveness](tasks/T28-models-tab-download-fixes.md) | High | ✅ Done | 100% | Download button responsiveness and progress tracking fixed, build verified |
-| T29 | [Shortcuts Tab Hotkey Recording Fixes](tasks/T29-shortcuts-tab-hotkey-recording-fixes.md) | High | ⏳ WIP | 0% | Hotkey assignment non-responsive, current hotkeys not functional |
+| T29 | [Shortcuts Tab Hotkey Recording Fixes](tasks/T29-shortcuts-tab-hotkey-recording-fixes.md) | High | ✅ Done | 100% | Hotkey recording fully functional with Control+Option support |
 | T30 | [About Tab UI Layout and Apple HIG Compliance](tasks/T30-about-tab-ui-layout-improvements.md) | Medium | ⏳ WIP | 0% | Cramped UI layout, poor spacing and padding |
 | T31 | [Preferences UI Consistency and Global Layout](tasks/T31-preferences-ui-consistency-improvements.md) | Medium | ⏳ WIP | 0% | Inconsistent UI patterns across all preference tabs |
 
@@ -61,16 +61,16 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 **Status**: 6/6 complete - All UI components verified complete
 
 ### Phase 4 - Polish & Distribution (T14-T19, T21-T31)
-**Status**: 9/18 complete - T14-T18, T20-T21, T23-T25, T27 complete; T19 partial, T26 in progress, T28-T31 critical fixes needed
+**Status**: 10/18 complete - T14-T18, T20-T21, T23-T25, T27-T29 complete; T19 partial, T26 in progress, T30-T31 critical fixes needed
 
 ## Overall Progress Summary (VERIFIED)
 
 **Total Tasks**: 31
-**Completed & Verified**: 27 (87%)
+**Completed & Verified**: 28 (90%)
 **Shelved**: 1 (3%)
 **In Testing**: 0 (0%)
 **Partially Implemented**: 1 (3%)
-**Work in Progress**: 2 (7%)
+**Work in Progress**: 1 (3%)
 
 **Actual Core Functionality**: 17/17 core features complete (100%)
 **Distribution & Polish**: 9/14 tasks complete (64%)
@@ -104,9 +104,9 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 ### Immediate Priority (Critical UI Fixes Required)
 1. ✅ **T27 - Voice Tab UI Fixes** - COMPLETED: All audio capture and UI/UX issues resolved
 2. ✅ **T28 - Models Tab Download Fixes** - COMPLETED: Download button responsiveness and progress tracking fixed
-3. **T29 - Shortcuts Tab Hotkey Fixes** - Fix hotkey recording and functionality (HIGH PRIORITY)
-4. **T30 - About Tab Layout** - Improve spacing and Apple HIG compliance (MEDIUM PRIORITY)
-5. **T31 - UI Consistency** - Establish consistent patterns across all tabs (MEDIUM PRIORITY)
+3. ✅ **T29 - Shortcuts Tab Hotkey Fixes** - COMPLETED: Hotkey recording fully functional with Control+Option support
+4. **T30 - About Tab Layout** - Improve spacing and Apple HIG compliance (HIGH PRIORITY)
+5. **T31 - UI Consistency** - Establish consistent patterns across all tabs (HIGH PRIORITY)
 
 ### Remaining Tasks for MVP
 1. **T19 - Accessibility Features** - Complete VoiceOver enhancements (40% → 100%)
@@ -120,5 +120,5 @@ Blazingly fast, resource-light macOS utility for on-device speech-to-text with k
 4. **Beta Release** - Automated releases via restored CI/CD
 
 ---
-*Last Updated: 2024-12-04 (T28 COMPLETED - MODELS TAB DOWNLOAD FIXES VERIFIED)*
-*Next Review: Daily - Priority: T29 Shortcuts Tab hotkey recording fixes*
+*Last Updated: 2024-12-04 (T29 COMPLETED - SHORTCUTS TAB HOTKEY RECORDING FIXES VERIFIED)*
+*Next Review: Daily - Priority: T30 About Tab layout improvements*

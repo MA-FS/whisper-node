@@ -10,6 +10,7 @@ struct HotkeyRecorderView: View {
     @State private var recordedKeyCode: UInt16?
     @State private var recordedModifiers: CGEventFlags = []
     @State private var keyEventMonitor: Any?
+    @State private var globalKeyEventMonitor: Any?
     @State private var recordingStartTime: Date?
     @State private var autoSaveWorkItem: DispatchWorkItem?
     
@@ -121,17 +122,22 @@ struct HotkeyRecorderView: View {
         recordedKeyCode = nil
         recordedModifiers = []
         recordingStartTime = Date()
-        
-        // Start monitoring key events
+
+        // Start monitoring key events - use both local and global monitors for better capture
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
-            handleKeyEvent(event)
+            self.handleKeyEvent(event)
             return nil // Consume the event
         }
-        
+
+        // Also add global monitor as fallback (requires accessibility permissions)
+        globalKeyEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            self.handleKeyEvent(event)
+        }
+
         // Set timeout for recording
         DispatchQueue.main.asyncAfter(deadline: .now() + recordingTimeout) {
-            if isRecording {
-                stopRecording()
+            if self.isRecording {
+                self.stopRecording()
             }
         }
     }
@@ -141,14 +147,21 @@ struct HotkeyRecorderView: View {
         recordedKeyCode = nil
         recordedModifiers = []
         recordingStartTime = nil
-        
+
         // Cancel any pending auto-save
         autoSaveWorkItem?.cancel()
         autoSaveWorkItem = nil
-        
+
+        // Remove local event monitor
         if let monitor = keyEventMonitor {
             NSEvent.removeMonitor(monitor)
             keyEventMonitor = nil
+        }
+
+        // Remove global event monitor
+        if let globalMonitor = globalKeyEventMonitor {
+            NSEvent.removeMonitor(globalMonitor)
+            globalKeyEventMonitor = nil
         }
     }
     
@@ -166,34 +179,63 @@ struct HotkeyRecorderView: View {
     }
     
     private func handleKeyEvent(_ event: NSEvent) {
+        guard isRecording else { return }
+
         switch event.type {
         case .flagsChanged:
-            // Update modifier flags
-            recordedModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
-            
+            // Update modifier flags - clean them to only include essential modifiers
+            let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+            recordedModifiers = cleanModifierFlags(rawModifiers)
+
         case .keyDown:
             // Record the key code
             recordedKeyCode = UInt16(event.keyCode)
-            
+
+            // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
+            let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+            recordedModifiers = cleanModifierFlags(rawModifiers)
+
             // If we have both key and modifiers, we can save
             if !recordedModifiers.isEmpty {
                 // Cancel any previous auto-save work item
                 autoSaveWorkItem?.cancel()
-                
+
                 // Auto-save after a delay to allow user to see the combination
                 let capturedKeyCode = UInt16(event.keyCode)
+                let capturedModifiers = recordedModifiers
                 let workItem = DispatchWorkItem {
                     guard self.isRecording,
-                          self.recordedKeyCode == capturedKeyCode else { return }
+                          self.recordedKeyCode == capturedKeyCode,
+                          self.recordedModifiers == capturedModifiers else { return }
                     self.saveRecordedHotkey()
                 }
                 autoSaveWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
             }
-            
+
         default:
             break
         }
+    }
+
+    private func cleanModifierFlags(_ flags: CGEventFlags) -> CGEventFlags {
+        // Keep only the essential modifier flags, remove system/internal flags
+        var cleanFlags = CGEventFlags()
+
+        if flags.contains(.maskCommand) {
+            cleanFlags.insert(.maskCommand)
+        }
+        if flags.contains(.maskAlternate) {
+            cleanFlags.insert(.maskAlternate)
+        }
+        if flags.contains(.maskShift) {
+            cleanFlags.insert(.maskShift)
+        }
+        if flags.contains(.maskControl) {
+            cleanFlags.insert(.maskControl)
+        }
+
+        return cleanFlags
     }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
@@ -339,18 +381,18 @@ struct HotkeyRecorderView_Previews: PreviewProvider {
             HotkeyRecorderView(
                 currentHotkey: HotkeyConfiguration(
                     keyCode: 49,
-                    modifierFlags: .maskAlternate,
-                    description: "⌥Space"
+                    modifierFlags: [.maskControl, .maskAlternate],
+                    description: "⌃⌥Space"
                 ),
                 isRecording: .constant(false),
                 onHotkeyChange: { _ in }
             )
-            
+
             HotkeyRecorderView(
                 currentHotkey: HotkeyConfiguration(
                     keyCode: 49,
-                    modifierFlags: .maskAlternate,
-                    description: "⌥Space"
+                    modifierFlags: [.maskControl, .maskAlternate],
+                    description: "⌃⌥Space"
                 ),
                 isRecording: .constant(true),
                 onHotkeyChange: { _ in }

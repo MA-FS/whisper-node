@@ -166,8 +166,8 @@ struct ShortcutTab: View {
     private func resetToDefault() {
         let defaultHotkey = HotkeyConfiguration(
             keyCode: 49, // Space
-            modifierFlags: .maskAlternate, // Option
-            description: "Option+Space"
+            modifierFlags: [.maskControl, .maskAlternate], // Control+Option
+            description: "⌃⌥Space"
         )
         hotkeyManager.updateHotkey(defaultHotkey)
     }
