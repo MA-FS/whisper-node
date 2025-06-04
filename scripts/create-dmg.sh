@@ -320,18 +320,28 @@ create_dmg() {
         log_info "No volume icon - using default"
     fi
     
-    # Create DMG with proper timeout handling (fixes Critical Issue #C2)
+    # Create DMG with timeout handling (use gtimeout if available, otherwise skip timeout)
     local timeout_exit_code=0
-    log_info "Starting DMG creation (timeout: ${DMG_TIMEOUT}s)..."
-    
-    if ! timeout "$DMG_TIMEOUT" create-dmg "${create_dmg_args[@]}" "$FINAL_DMG_PATH" "$DMG_DIR"; then
-        timeout_exit_code=$?
-        if [ $timeout_exit_code -eq 124 ]; then
-            log_error "DMG creation timed out after $DMG_TIMEOUT seconds"
-            log_error "Try reducing app size or increasing timeout with DMG_TIMEOUT environment variable"
-            exit 1
-        elif [ $timeout_exit_code -ne 0 ]; then
-            log_error "DMG creation failed with exit code $timeout_exit_code"
+    log_info "Starting DMG creation..."
+
+    # Check if timeout command is available (gtimeout on macOS via brew)
+    if command -v gtimeout &> /dev/null; then
+        if ! gtimeout "$DMG_TIMEOUT" create-dmg "${create_dmg_args[@]}" "$FINAL_DMG_PATH" "$DMG_DIR"; then
+            timeout_exit_code=$?
+            if [ $timeout_exit_code -eq 124 ]; then
+                log_error "DMG creation timed out after $DMG_TIMEOUT seconds"
+                log_error "Try reducing app size or increasing timeout with DMG_TIMEOUT environment variable"
+                exit 1
+            elif [ $timeout_exit_code -ne 0 ]; then
+                log_error "DMG creation failed with exit code $timeout_exit_code"
+                log_error "Check the create-dmg output above for details"
+                exit 1
+            fi
+        fi
+    else
+        # Run without timeout
+        if ! create-dmg "${create_dmg_args[@]}" "$FINAL_DMG_PATH" "$DMG_DIR"; then
+            log_error "DMG creation failed"
             log_error "Check the create-dmg output above for details"
             exit 1
         fi
@@ -351,43 +361,63 @@ sign_dmg() {
     fi
     
     # Get the signing identity
-    local signing_identity="${WHISPERNODE_SIGNING_IDENTITY:-Developer ID Application}"
-    
-    # Check if signing identity exists
-    if ! security find-identity -v -p codesigning | grep -q "$signing_identity"; then
+    local signing_identity="${WHISPERNODE_SIGNING_IDENTITY:-}"
+
+    if [ -z "$signing_identity" ]; then
+        # Check if we have any valid signing identities
+        if security find-identity -v -p codesigning | grep -q "Developer ID Application\|Apple Development"; then
+            signing_identity="Developer ID Application"
+        else
+            # Use ad-hoc signing for local development
+            log_warning "No valid signing identity found, using ad-hoc signing for DMG"
+            signing_identity="-"
+        fi
+    fi
+
+    # Validate signing identity if not ad-hoc
+    if [ "$signing_identity" != "-" ] && ! security find-identity -v -p codesigning | grep -q "$signing_identity"; then
         log_warning "Signing identity '$signing_identity' not found"
         log_warning "Available identities:"
         security find-identity -v -p codesigning | head -10
-        log_error "Configure signing identity or set WHISPERNODE_SIGNING_IDENTITY environment variable"
-        log_error "Example: export WHISPERNODE_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAM123)'"
-        exit 1
+        log_warning "Falling back to ad-hoc signing"
+        signing_identity="-"
     fi
     
     log_info "Signing DMG with identity: $signing_identity"
     
     # Sign the DMG with detailed error handling
-    if ! codesign --force --sign "$signing_identity" \
-        --options runtime \
-        --timestamp \
-        "$FINAL_DMG_PATH"; then
-        local sign_exit_code=$?
-        log_error "DMG signing failed with exit code $sign_exit_code"
-        
-        # Provide specific guidance for common signing failures
-        case $sign_exit_code in
-            1)
-                log_error "Common causes: Invalid signing identity, expired certificate, or keychain access"
-                log_error "Try: security unlock-keychain ~/Library/Keychains/login.keychain-db"
-                ;;
-            2)
-                log_error "File not found or access denied"
-                log_error "Check that the DMG file exists and is accessible"
-                ;;
-            *)
-                log_error "Unknown signing error. Check codesign documentation"
-                ;;
-        esac
-        exit 1
+    if [ "$signing_identity" = "-" ]; then
+        # Ad-hoc signing
+        if ! codesign --force --sign "$signing_identity" "$FINAL_DMG_PATH"; then
+            local sign_exit_code=$?
+            log_error "DMG ad-hoc signing failed with exit code $sign_exit_code"
+            exit 1
+        fi
+    else
+        # Full signing with runtime options
+        if ! codesign --force --sign "$signing_identity" \
+            --options runtime \
+            --timestamp \
+            "$FINAL_DMG_PATH"; then
+            local sign_exit_code=$?
+            log_error "DMG signing failed with exit code $sign_exit_code"
+
+            # Provide specific guidance for common signing failures
+            case $sign_exit_code in
+                1)
+                    log_error "Common causes: Invalid signing identity, expired certificate, or keychain access"
+                    log_error "Try: security unlock-keychain ~/Library/Keychains/login.keychain-db"
+                    ;;
+                2)
+                    log_error "File not found or access denied"
+                    log_error "Check that the DMG file exists and is accessible"
+                    ;;
+                *)
+                    log_error "Unknown signing error. Check codesign documentation"
+                    ;;
+            esac
+            exit 1
+        fi
     fi
     
     log_info "DMG signed successfully"
