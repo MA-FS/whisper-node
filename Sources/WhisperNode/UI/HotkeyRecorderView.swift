@@ -185,21 +185,23 @@ struct HotkeyRecorderView: View {
 
         print("🔍 HotkeyRecorderView: Starting recording, accessibility permissions: \(hasAccessibilityPermissions)")
 
-        // Start monitoring key events - use both local and global monitors for better capture
-        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
-            print("🔑 Local event: type=\(event.type), keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)")
-            self.handleKeyEvent(event)
-            return nil // Consume the event
-        }
-
-        // Also add global monitor if we have permissions
+        // Start monitoring key events - prioritize global monitor for modifier-only combinations
         if hasAccessibilityPermissions {
+            // Use global monitor for reliable modifier-only capture
             globalKeyEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
                 print("🌐 Global event: type=\(event.type), keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)")
                 self.handleKeyEvent(event)
             }
+            print("✅ Using global event monitor for reliable modifier capture")
         } else {
-            print("⚠️ No accessibility permissions - global hotkey capture will not work")
+            print("⚠️ No accessibility permissions - modifier-only combinations may not work reliably")
+        }
+        
+        // Always add local monitor as backup
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            print("🔑 Local event: type=\(event.type), keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)")
+            self.handleKeyEvent(event)
+            return nil // Consume the event
         }
 
         // Set timeout for recording
@@ -234,12 +236,18 @@ struct HotkeyRecorderView: View {
     }
     
     private func saveRecordedHotkey() {
-        guard let keyCode = recordedKeyCode, isValidHotkey else { return }
+        guard let keyCode = recordedKeyCode, isValidHotkey else { 
+            print("❌ Save failed: keyCode=\(recordedKeyCode ?? 999), isValid=\(isValidHotkey)")
+            return 
+        }
+        
+        let description = formatHotkeyDescription(keyCode: keyCode, modifiers: recordedModifiers)
+        print("✅ Saving hotkey: keyCode=\(keyCode), modifiers=\(recordedModifiers.rawValue), description=\(description)")
         
         let newHotkey = HotkeyConfiguration(
             keyCode: keyCode,
             modifierFlags: recordedModifiers,
-            description: formatHotkeyDescription(keyCode: keyCode, modifiers: recordedModifiers)
+            description: description
         )
         
         stopRecording()
@@ -254,13 +262,21 @@ struct HotkeyRecorderView: View {
             // Update modifier flags - clean them to only include essential modifiers
             let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
             let cleanedModifiers = cleanModifierFlags(rawModifiers)
-            recordedModifiers = cleanedModifiers
-
+            
             print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
             print("   Control: \(cleanedModifiers.contains(.maskControl))")
             print("   Option: \(cleanedModifiers.contains(.maskAlternate))")
             print("   Shift: \(cleanedModifiers.contains(.maskShift))")
             print("   Command: \(cleanedModifiers.contains(.maskCommand))")
+
+            // If modifiers changed from a previous valid combination, reset to allow new combination
+            if recordedKeyCode == 0 && cleanedModifiers != recordedModifiers {
+                print("   🔄 Modifier combination changed, resetting for new input")
+                recordedKeyCode = nil
+                autoSaveWorkItem?.cancel()
+            }
+            
+            recordedModifiers = cleanedModifiers
 
             // Check if we have a valid modifier-only combination (like Control+Option)
             if !cleanedModifiers.isEmpty && recordedKeyCode == nil {
@@ -284,22 +300,28 @@ struct HotkeyRecorderView: View {
                         print("   ✨ Control+Option combination detected - preferred hotkey!")
                     }
 
+                    // Immediately set keyCode=0 to update UI
+                    recordedKeyCode = 0
+                    print("   🎨 UI updated to show modifier combination")
+
                     // Cancel any previous auto-save work item
                     autoSaveWorkItem?.cancel()
 
-                    // Auto-save after a delay to allow user to see the combination
+                    // Create more robust auto-save with stable state check
                     let capturedModifiers = cleanedModifiers
                     let workItem = DispatchWorkItem {
                         guard self.isRecording,
-                              self.recordedModifiers == capturedModifiers else { return }
+                              self.recordedKeyCode == 0,
+                              !capturedModifiers.isEmpty else { 
+                            print("   ❌ Auto-save skipped: recording=\(self.isRecording), keyCode=\(self.recordedKeyCode ?? 999), modifiers=\(capturedModifiers.rawValue)")
+                            return 
+                        }
                         print("💾 Auto-saving modifier-only hotkey: \(self.formatModifierOnlyDescription(modifiers: capturedModifiers))")
-                        // Set a special key code for modifier-only combinations
-                        self.recordedKeyCode = 0 // Special value for modifier-only
                         self.saveRecordedHotkey()
                     }
                     autoSaveWorkItem = workItem
                     // Shorter delay for Control+Option since it's preferred
-                    let delay = isControlOption ? 1.5 : 2.0
+                    let delay = isControlOption ? 1.0 : 1.5
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
                 }
             }
