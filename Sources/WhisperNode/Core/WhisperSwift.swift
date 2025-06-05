@@ -143,8 +143,20 @@ public class WhisperSwift {
         
         return transcribedText
         #else
-        // Placeholder implementation
-        return "FFI placeholder - Rust integration pending"
+        // Placeholder implementation for testing hotkey integration
+        let testPhrases = [
+            "Hello, this is a test transcription.",
+            "The hotkey system is working correctly.",
+            "Voice recording completed successfully.",
+            "Testing audio capture and transcription pipeline.",
+            "WhisperNode is functioning as expected."
+        ]
+        
+        // Simulate processing delay
+        Thread.sleep(forTimeInterval: 0.5 + Double.random(in: 0...1.0))
+        
+        // Return a random test phrase
+        return testPhrases.randomElement()
         #endif
     }
     

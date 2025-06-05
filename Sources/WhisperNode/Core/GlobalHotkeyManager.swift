@@ -221,22 +221,25 @@ public class GlobalHotkeyManager: ObservableObject {
             Self.logger.warning("Already listening for hotkeys")
             return
         }
-        
+
+        Self.logger.info("Starting global hotkey listening for: \(self.currentHotkey.description)")
+
         // Check accessibility permissions
         guard checkAccessibilityPermissions() else {
-            Self.logger.error("Accessibility permissions not granted")
+            Self.logger.error("Accessibility permissions not granted - cannot start hotkey listening")
             delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
             return
         }
         
         // Create event tap
         guard let tap = createEventTap() else {
-            Self.logger.error("Failed to create event tap")
+            Self.logger.error("Failed to create event tap - this may indicate insufficient permissions or system restrictions")
             delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
             return
         }
-        
+
         eventTap = tap
+        Self.logger.info("Event tap created successfully")
         
         // Create run loop source
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -324,11 +327,55 @@ public class GlobalHotkeyManager: ObservableObject {
     private func checkAccessibilityPermissions() -> Bool {
         let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
         let options = [trusted: true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        let hasPermissions = AXIsProcessTrustedWithOptions(options)
+
+        Self.logger.info("Accessibility permissions check: \(hasPermissions ? "granted" : "denied")")
+
+        if !hasPermissions {
+            Self.logger.warning("Accessibility permissions required for global hotkey functionality")
+            // Show user-friendly permission guidance
+            DispatchQueue.main.async { [weak self] in
+                self?.showAccessibilityPermissionGuidance()
+            }
+        }
+
+        return hasPermissions
+    }
+
+    private func showAccessibilityPermissionGuidance() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permissions Required"
+        alert.informativeText = """
+        WhisperNode needs accessibility permissions to capture global hotkeys.
+
+        To enable:
+        1. Open System Preferences
+        2. Go to Security & Privacy
+        3. Click the Privacy tab
+        4. Select Accessibility from the list
+        5. Click the lock to make changes
+        6. Add WhisperNode to the list and check the box
+
+        After granting permissions, please restart WhisperNode.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            // Open System Preferences to Accessibility section
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
     
     private func createEventTap() -> CFMachPort? {
-        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        // Create event mask for key events including modifier changes
+        let eventMask = (1 << CGEventType.keyDown.rawValue) |
+                       (1 << CGEventType.keyUp.rawValue) |
+                       (1 << CGEventType.flagsChanged.rawValue)
         
         let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -356,20 +403,34 @@ public class GlobalHotkeyManager: ObservableObject {
             return Unmanaged.passRetained(event)
         }
         
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+
+        // Add comprehensive logging for debugging
+        Self.logger.debug("Event received: keyCode=\(keyCode), flags=\(flags.rawValue)")
+        Self.logger.debug("Current hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(self.currentHotkey.modifierFlags.rawValue)")
+
         // Check if this matches our hotkey
-        guard matchesCurrentHotkey(event) else {
+        let matches = matchesCurrentHotkey(event)
+        Self.logger.debug("Event matches hotkey: \(matches)")
+
+        guard matches else {
             return Unmanaged.passRetained(event)
         }
-        
+
+        Self.logger.info("🎯 Hotkey event matched! Processing...")
+
         switch type {
         case .keyDown:
             handleKeyDown(event)
         case .keyUp:
             handleKeyUp(event)
+        case .flagsChanged:
+            handleFlagsChanged(event)
         default:
             break
         }
-        
+
         // Consume the event if it matches our hotkey
         return nil
     }
@@ -378,15 +439,32 @@ public class GlobalHotkeyManager: ObservableObject {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Check if key code matches
-        guard keyCode == Int64(currentHotkey.keyCode) else { return false }
-
         // Clean the event flags to remove system flags
         let cleanEventFlags = cleanModifierFlags(flags)
-        let cleanHotkeyFlags = cleanModifierFlags(currentHotkey.modifierFlags)
+        let cleanHotkeyFlags = cleanModifierFlags(self.currentHotkey.modifierFlags)
+
+        Self.logger.debug("🔍 Checking hotkey match:")
+        Self.logger.debug("   Event: keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
+        Self.logger.debug("   Hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(cleanHotkeyFlags.rawValue)")
+
+        // Handle modifier-only combinations (keyCode = 0)
+        if self.currentHotkey.keyCode == 0 {
+            Self.logger.debug("   Checking modifier-only combination")
+            // For modifier-only hotkeys, we only match flagsChanged events with exact modifiers
+            // and no additional key press
+            return cleanEventFlags == cleanHotkeyFlags && cleanEventFlags.rawValue != 0
+        }
+
+        // Check if key code matches for regular key combinations
+        guard keyCode == Int64(self.currentHotkey.keyCode) else { 
+            Self.logger.debug("   ❌ Key code mismatch: \(keyCode) != \(self.currentHotkey.keyCode)")
+            return false 
+        }
 
         // For exact matching, all required modifiers must be present and no extra ones
-        return cleanEventFlags == cleanHotkeyFlags
+        let matches = cleanEventFlags == cleanHotkeyFlags
+        Self.logger.debug("   \(matches ? "✅" : "❌") Modifier flags match: \(matches)")
+        return matches
     }
 
     private func cleanModifierFlags(_ flags: CGEventFlags) -> CGEventFlags {
@@ -429,23 +507,93 @@ public class GlobalHotkeyManager: ObservableObject {
     
     private func handleKeyUp(_ event: CGEvent) {
         guard let downTime = keyDownTime else { return }
-        
+
         let upTime = CFAbsoluteTimeGetCurrent()
         let holdDuration = upTime - downTime
-        
+
         // Reset state
         keyDownTime = nil
-        
+
         Self.logger.debug("Hotkey released after \(holdDuration)s")
-        
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = false
-            
+
             if holdDuration >= self.minimumHoldDuration {
                 self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
             } else {
                 self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+            }
+        }
+    }
+
+    private func handleFlagsChanged(_ event: CGEvent) {
+        // For modifier-only combinations, we need to detect when the exact modifier combination is pressed
+        // This is primarily for hotkeys like Control+Option without any other key
+
+        let flags = event.flags
+        let cleanFlags = cleanModifierFlags(flags)
+
+        Self.logger.debug("🏳️ Flags changed: raw=\(flags.rawValue), clean=\(cleanFlags.rawValue)")
+        Self.logger.debug("   Control: \(cleanFlags.contains(.maskControl))")
+        Self.logger.debug("   Option: \(cleanFlags.contains(.maskAlternate))")
+        Self.logger.debug("   Shift: \(cleanFlags.contains(.maskShift))")
+        Self.logger.debug("   Command: \(cleanFlags.contains(.maskCommand))")
+
+        // Check if this is a modifier-only hotkey (keyCode = 0)
+        guard currentHotkey.keyCode == 0 else { 
+            Self.logger.debug("   Not a modifier-only hotkey, ignoring flags change")
+            return 
+        }
+
+        let cleanHotkeyFlags = cleanModifierFlags(self.currentHotkey.modifierFlags)
+        Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
+
+        // Check if the current flags match our modifier-only hotkey
+        if cleanFlags == cleanHotkeyFlags && cleanFlags.rawValue != 0 {
+            // Modifiers pressed - start recording
+            if keyDownTime == nil {
+                let currentTime = CFAbsoluteTimeGetCurrent()
+                keyDownTime = currentTime
+
+                Self.logger.info("🎯 Modifier-only hotkey pressed: \(self.currentHotkey.description)")
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.isRecording = true
+                    self.delegate?.hotkeyManager(self, didStartRecording: true)
+                }
+            }
+        } else if cleanFlags.rawValue == 0 && keyDownTime != nil {
+            // All modifiers released - stop recording
+            let downTime = keyDownTime!
+            let upTime = CFAbsoluteTimeGetCurrent()
+            let holdDuration = upTime - downTime
+
+            keyDownTime = nil
+
+            Self.logger.info("🎯 Modifier-only hotkey released after \(holdDuration)s")
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isRecording = false
+
+                if holdDuration >= self.minimumHoldDuration {
+                    self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
+                } else {
+                    self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+                }
+            }
+        } else if cleanFlags != cleanHotkeyFlags && keyDownTime != nil {
+            // Modifier combination changed while recording - cancel
+            Self.logger.debug("   Modifier combination changed during recording, cancelling")
+            keyDownTime = nil
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isRecording = false
+                self.delegate?.hotkeyManager(self, didCancelRecording: .interrupted)
             }
         }
     }

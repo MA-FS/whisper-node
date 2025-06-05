@@ -156,11 +156,20 @@ class SettingsManager: ObservableObject {
         
         // Load hotkey settings with defaults (Control+Option+Space)
         let storedKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
-        self.hotkeyKeyCode = storedKeyCode == 0 ? 49 : storedKeyCode // Default to Space key
+        let defaultKeyCode: UInt16 = 49 // Space key
+        self.hotkeyKeyCode = storedKeyCode == 0 ? defaultKeyCode : storedKeyCode
 
         let storedModifierFlags = UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags))
         let defaultModifierFlags = CGEventFlags([.maskControl, .maskAlternate]).rawValue // Default to Control+Option
         self.hotkeyModifierFlags = storedModifierFlags == 0 ? defaultModifierFlags : storedModifierFlags
+
+        // Save defaults to UserDefaults if they weren't already set
+        if storedKeyCode == 0 {
+            defaults.set(defaultKeyCode, forKey: UserDefaultsKeys.hotkeyKeyCode)
+        }
+        if storedModifierFlags == 0 {
+            defaults.set(defaultModifierFlags, forKey: UserDefaultsKeys.hotkeyModifierFlags)
+        }
         
         // Load model settings
         self.activeModelName = defaults.string(forKey: UserDefaultsKeys.activeModelName) ?? "tiny.en"

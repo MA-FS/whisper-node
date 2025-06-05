@@ -590,8 +590,16 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     }
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, accessibilityPermissionRequired: Bool) {
-        Self.logger.warning("Accessibility permissions required")
-        // TODO: Show accessibility permission prompt (T14)
+        Self.logger.warning("Accessibility permissions required for global hotkey functionality")
+
+        // Show user-friendly error message
+        errorManager.handleError(.systemResourcesExhausted)
+
+        // Update menu bar to indicate permission issue
+        menuBarManager.updateState(.error)
+
+        // Haptic feedback for permission error
+        HapticManager.shared.errorOccurred()
     }
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didDetectConflict conflict: HotkeyConflict, suggestedAlternatives: [HotkeyConfiguration]) {

@@ -111,10 +111,65 @@ struct HotkeyRecorderView: View {
     }
     
     private var isValidHotkey: Bool {
+        // Handle modifier-only combinations (keyCode = 0)
+        if let keyCode = recordedKeyCode, keyCode == 0 {
+            // For modifier-only combinations, require at least 2 modifiers
+            let modifierCount = [
+                recordedModifiers.contains(.maskControl),
+                recordedModifiers.contains(.maskAlternate),
+                recordedModifiers.contains(.maskShift),
+                recordedModifiers.contains(.maskCommand)
+            ].filter { $0 }.count
+
+            return modifierCount >= 2
+        }
+
         guard let keyCode = recordedKeyCode, keyCode != 0 else { return false }
-        
-        // Require at least one modifier key
-        return !recordedModifiers.isEmpty
+
+        // Don't allow certain problematic keys
+        let problematicKeys: [UInt16] = [53] // Escape key
+        if problematicKeys.contains(keyCode) {
+            return false
+        }
+
+        // Don't allow dangerous system shortcuts
+        if keyCode == 12 && recordedModifiers.contains(.maskCommand) { // Cmd+Q
+            return false
+        }
+        if keyCode == 13 && recordedModifiers.contains(.maskCommand) { // Cmd+W
+            return false
+        }
+        if keyCode == 48 && recordedModifiers.contains(.maskCommand) { // Cmd+Tab
+            return false
+        }
+
+        // Allow Control+Option combinations (our preferred hotkey type)
+        if recordedModifiers.contains(.maskControl) && recordedModifiers.contains(.maskAlternate) {
+            print("✅ Valid Control+Option combination detected")
+            return true
+        }
+
+        // Allow other modifier combinations
+        if !recordedModifiers.isEmpty {
+            return true
+        }
+
+        // Allow function keys without modifiers
+        if isFunctionKey(keyCode) {
+            return true
+        }
+
+        // Allow space key without modifiers (for testing)
+        if keyCode == 49 { // Space
+            return true
+        }
+
+        return false
+    }
+
+    private func isFunctionKey(_ keyCode: UInt16) -> Bool {
+        // Function key codes (F1-F12)
+        return (122...133).contains(keyCode)
     }
     
     private func startRecording() {
@@ -123,15 +178,28 @@ struct HotkeyRecorderView: View {
         recordedModifiers = []
         recordingStartTime = Date()
 
+        // Check accessibility permissions first
+        let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+        let options = [trusted: false] as CFDictionary // Don't prompt here, just check
+        let hasAccessibilityPermissions = AXIsProcessTrustedWithOptions(options)
+
+        print("🔍 HotkeyRecorderView: Starting recording, accessibility permissions: \(hasAccessibilityPermissions)")
+
         // Start monitoring key events - use both local and global monitors for better capture
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            print("🔑 Local event: type=\(event.type), keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)")
             self.handleKeyEvent(event)
             return nil // Consume the event
         }
 
-        // Also add global monitor as fallback (requires accessibility permissions)
-        globalKeyEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
-            self.handleKeyEvent(event)
+        // Also add global monitor if we have permissions
+        if hasAccessibilityPermissions {
+            globalKeyEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+                print("🌐 Global event: type=\(event.type), keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)")
+                self.handleKeyEvent(event)
+            }
+        } else {
+            print("⚠️ No accessibility permissions - global hotkey capture will not work")
         }
 
         // Set timeout for recording
@@ -185,7 +253,56 @@ struct HotkeyRecorderView: View {
         case .flagsChanged:
             // Update modifier flags - clean them to only include essential modifiers
             let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
-            recordedModifiers = cleanModifierFlags(rawModifiers)
+            let cleanedModifiers = cleanModifierFlags(rawModifiers)
+            recordedModifiers = cleanedModifiers
+
+            print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
+            print("   Control: \(cleanedModifiers.contains(.maskControl))")
+            print("   Option: \(cleanedModifiers.contains(.maskAlternate))")
+            print("   Shift: \(cleanedModifiers.contains(.maskShift))")
+            print("   Command: \(cleanedModifiers.contains(.maskCommand))")
+
+            // Check if we have a valid modifier-only combination (like Control+Option)
+            if !cleanedModifiers.isEmpty && recordedKeyCode == nil {
+                // For modifier-only combinations, we'll use a special key code (0) to indicate "modifiers only"
+                // But we need at least 2 modifiers for a valid combination
+                let modifierCount = [
+                    cleanedModifiers.contains(.maskControl),
+                    cleanedModifiers.contains(.maskAlternate),
+                    cleanedModifiers.contains(.maskShift),
+                    cleanedModifiers.contains(.maskCommand)
+                ].filter { $0 }.count
+
+                // Special check for Control+Option combination (our preferred hotkey)
+                let isControlOption = cleanedModifiers.contains(.maskControl) && 
+                                     cleanedModifiers.contains(.maskAlternate) && 
+                                     modifierCount == 2
+
+                if modifierCount >= 2 {
+                    print("   🎯 Valid modifier-only combination detected: \(modifierCount) modifiers")
+                    if isControlOption {
+                        print("   ✨ Control+Option combination detected - preferred hotkey!")
+                    }
+
+                    // Cancel any previous auto-save work item
+                    autoSaveWorkItem?.cancel()
+
+                    // Auto-save after a delay to allow user to see the combination
+                    let capturedModifiers = cleanedModifiers
+                    let workItem = DispatchWorkItem {
+                        guard self.isRecording,
+                              self.recordedModifiers == capturedModifiers else { return }
+                        print("💾 Auto-saving modifier-only hotkey: \(self.formatModifierOnlyDescription(modifiers: capturedModifiers))")
+                        // Set a special key code for modifier-only combinations
+                        self.recordedKeyCode = 0 // Special value for modifier-only
+                        self.saveRecordedHotkey()
+                    }
+                    autoSaveWorkItem = workItem
+                    // Shorter delay for Control+Option since it's preferred
+                    let delay = isControlOption ? 1.5 : 2.0
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                }
+            }
 
         case .keyDown:
             // Record the key code
@@ -193,10 +310,18 @@ struct HotkeyRecorderView: View {
 
             // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
             let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
-            recordedModifiers = cleanModifierFlags(rawModifiers)
+            let cleanedModifiers = cleanModifierFlags(rawModifiers)
+            recordedModifiers = cleanedModifiers
 
-            // If we have both key and modifiers, we can save
-            if !recordedModifiers.isEmpty {
+            print("⌨️ Key down: code=\(event.keyCode), modifiers=\(cleanedModifiers.rawValue)")
+
+            // Check if we have a valid combination
+            let hasValidModifiers = !recordedModifiers.isEmpty
+            let hasValidKey = recordedKeyCode != nil
+
+            print("   Valid combination: key=\(hasValidKey), modifiers=\(hasValidModifiers)")
+
+            if hasValidKey && hasValidModifiers {
                 // Cancel any previous auto-save work item
                 autoSaveWorkItem?.cancel()
 
@@ -207,6 +332,18 @@ struct HotkeyRecorderView: View {
                     guard self.isRecording,
                           self.recordedKeyCode == capturedKeyCode,
                           self.recordedModifiers == capturedModifiers else { return }
+                    print("💾 Auto-saving hotkey: \(self.formatHotkeyDescription(keyCode: capturedKeyCode, modifiers: capturedModifiers))")
+                    self.saveRecordedHotkey()
+                }
+                autoSaveWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+            } else if hasValidKey && recordedModifiers.isEmpty {
+                // Allow single key combinations (like just Space) for some use cases
+                print("   Single key combination detected")
+                autoSaveWorkItem?.cancel()
+                let workItem = DispatchWorkItem {
+                    guard self.isRecording else { return }
+                    print("💾 Auto-saving single key: \(self.keyCodeToDisplayString(UInt16(event.keyCode)))")
                     self.saveRecordedHotkey()
                 }
                 autoSaveWorkItem = workItem
@@ -240,17 +377,33 @@ struct HotkeyRecorderView: View {
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
         var parts: [String] = []
-        
+
         // Add modifier symbols in standard order
         if modifiers.contains(.maskControl) { parts.append("⌃") }
         if modifiers.contains(.maskAlternate) { parts.append("⌥") }
         if modifiers.contains(.maskShift) { parts.append("⇧") }
         if modifiers.contains(.maskCommand) { parts.append("⌘") }
-        
+
+        // Handle modifier-only combinations (keyCode = 0)
+        if keyCode == 0 {
+            return parts.joined() + " (Hold)"
+        }
+
         // Add key name
         parts.append(keyCodeToDisplayString(keyCode))
-        
+
         return parts.joined()
+    }
+
+    private func formatModifierOnlyDescription(modifiers: CGEventFlags) -> String {
+        var parts: [String] = []
+
+        if modifiers.contains(.maskControl) { parts.append("⌃") }
+        if modifiers.contains(.maskAlternate) { parts.append("⌥") }
+        if modifiers.contains(.maskShift) { parts.append("⇧") }
+        if modifiers.contains(.maskCommand) { parts.append("⌘") }
+
+        return parts.joined() + " (Hold)"
     }
     
     private func keyCodeToDisplayString(_ keyCode: UInt16) -> String {
