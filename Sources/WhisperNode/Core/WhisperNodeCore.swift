@@ -469,7 +469,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     /// Updates the recording state, displays the recording indicator, starts performance monitoring, and initiates audio capture. If audio capture fails to start, resets the recording state, hides the indicator, and stops monitoring.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
         self.isRecording = true
-        Self.logger.info("Voice recording started")
+        Self.logger.info("🎤 Voice recording started - delegate callback received")
         
         // Haptic feedback for recording start
         HapticManager.shared.recordingStarted()
@@ -478,6 +478,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         menuBarManager.updateState(.recording)
         
         // Show visual indicator
+        Self.logger.info("🟢 Showing recording indicator")
         indicatorManager.showRecording()
         
         // Performance monitoring is always active via PerformanceMonitor.shared

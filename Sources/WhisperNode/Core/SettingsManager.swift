@@ -155,19 +155,22 @@ class SettingsManager: ObservableObject {
         self.enableTestRecording = defaults.bool(forKey: UserDefaultsKeys.enableTestRecording)
         
         // Load hotkey settings with defaults (Control+Option+Space)
+        // Note: keyCode=0 is valid for modifier-only combinations, so check if key exists rather than value
+        let hasStoredKeyCode = defaults.object(forKey: UserDefaultsKeys.hotkeyKeyCode) != nil
         let storedKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
         let defaultKeyCode: UInt16 = 49 // Space key
-        self.hotkeyKeyCode = storedKeyCode == 0 ? defaultKeyCode : storedKeyCode
+        self.hotkeyKeyCode = hasStoredKeyCode ? storedKeyCode : defaultKeyCode
 
+        let hasStoredModifierFlags = defaults.object(forKey: UserDefaultsKeys.hotkeyModifierFlags) != nil
         let storedModifierFlags = UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags))
         let defaultModifierFlags = CGEventFlags([.maskControl, .maskAlternate]).rawValue // Default to Control+Option
-        self.hotkeyModifierFlags = storedModifierFlags == 0 ? defaultModifierFlags : storedModifierFlags
+        self.hotkeyModifierFlags = hasStoredModifierFlags ? storedModifierFlags : defaultModifierFlags
 
         // Save defaults to UserDefaults if they weren't already set
-        if storedKeyCode == 0 {
+        if !hasStoredKeyCode {
             defaults.set(defaultKeyCode, forKey: UserDefaultsKeys.hotkeyKeyCode)
         }
-        if storedModifierFlags == 0 {
+        if !hasStoredModifierFlags {
             defaults.set(defaultModifierFlags, forKey: UserDefaultsKeys.hotkeyModifierFlags)
         }
         

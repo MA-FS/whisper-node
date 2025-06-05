@@ -85,6 +85,8 @@ public class GlobalHotkeyManager: ObservableObject {
             modifierFlags: modifierFlags,
             description: description
         )
+        
+        Self.logger.info("📋 Loaded hotkey from settings: keyCode=\(keyCode), modifiers=\(modifierFlags.rawValue), description='\(description)'")
     }
     
     private func setupSettingsObservation() {
@@ -103,6 +105,8 @@ public class GlobalHotkeyManager: ObservableObject {
     private func saveHotkeyToSettings() {
         settingsManager.hotkeyKeyCode = currentHotkey.keyCode
         settingsManager.hotkeyModifierFlags = currentHotkey.modifierFlags.rawValue
+        
+        Self.logger.info("💾 Saved hotkey to settings: keyCode=\(self.currentHotkey.keyCode), modifiers=\(self.currentHotkey.modifierFlags.rawValue), description='\(self.currentHotkey.description)'")
     }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
@@ -114,7 +118,12 @@ public class GlobalHotkeyManager: ObservableObject {
         if modifiers.contains(.maskShift) { parts.append("⇧") }
         if modifiers.contains(.maskCommand) { parts.append("⌘") }
         
-        // Add key name
+        // Handle modifier-only combinations (keyCode = 0)
+        if keyCode == 0 {
+            return parts.joined() + " (Hold)"
+        }
+        
+        // Add key name for regular key combinations
         parts.append(keyCodeToDisplayString(keyCode))
         
         return parts.joined()
