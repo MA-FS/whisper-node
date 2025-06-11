@@ -235,30 +235,11 @@ struct ShortcutTab: View {
     }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
-        var parts: [String] = []
-        
-        if modifiers.contains(.maskControl) { parts.append("Control") }
-        if modifiers.contains(.maskAlternate) { parts.append("Option") }
-        if modifiers.contains(.maskShift) { parts.append("Shift") }
-        if modifiers.contains(.maskCommand) { parts.append("Command") }
-        
-        // Convert keyCode to character name
-        let keyName = keyCodeToString(keyCode)
-        parts.append(keyName)
-        
-        return parts.joined(separator: "+")
+        return HotkeyUtilities.formatTextHotkeyDescription(keyCode: keyCode, modifiers: modifiers)
     }
     
     private func keyCodeToString(_ keyCode: UInt16) -> String {
-        switch keyCode {
-        case 49: return "Space"
-        case 36: return "Return"
-        case 48: return "Tab"
-        case 51: return "Delete"
-        case 53: return "Escape"
-        case 0...25: return String(Character(UnicodeScalar(keyCode + 97)!)) // a-z
-        default: return "Key \(keyCode)"
-        }
+        return HotkeyUtilities.keyCodeToString(keyCode)
     }
 }
 
