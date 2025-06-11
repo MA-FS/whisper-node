@@ -94,7 +94,10 @@ public class WhisperSwift {
     /// - Important: Longer audio clips may trigger automatic model downgrade suggestions
     public func transcribe(audioData: [Float]) -> String? {
         guard let handle = handle else { return nil }
-        guard !audioData.isEmpty else { return nil }
+        guard !audioData.isEmpty else { 
+            // TODO: Consider logging or providing feedback when audioData is empty
+            return nil 
+        }
         guard audioData.count <= 16000 * 30 else { return nil } // Max 30 seconds
         
         // Perform periodic memory cleanup
@@ -152,8 +155,10 @@ public class WhisperSwift {
             "WhisperNode is functioning as expected."
         ]
         
-        // Simulate processing delay
-        Thread.sleep(forTimeInterval: 0.5 + Double.random(in: 0...1.0))
+        // Simulate realistic processing delay for testing purposes
+        // Using usleep() instead of Thread.sleep() to avoid blocking UI thread
+        let delayMicroseconds = UInt32((0.5 + Double.random(in: 0...1.0)) * 1_000_000)
+        usleep(delayMicroseconds)
         
         // Return a random test phrase
         return testPhrases.randomElement()

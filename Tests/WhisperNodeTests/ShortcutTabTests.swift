@@ -32,8 +32,8 @@ final class ShortcutTabTests: XCTestCase {
         // Test valid hotkey (with modifier)
         let validHotkey = HotkeyConfiguration(
             keyCode: 49, // Space
-            modifierFlags: .maskAlternate, // Option
-            description: "⌥Space"
+            modifierFlags: [.maskControl, .maskAlternate], // Control+Option
+            description: "⌃⌥Space"
         )
         
         // Test invalid hotkey (no modifier)
@@ -53,8 +53,8 @@ final class ShortcutTabTests: XCTestCase {
         // Given
         let currentHotkey = HotkeyConfiguration(
             keyCode: 49,
-            modifierFlags: .maskAlternate,
-            description: "⌥Space"
+            modifierFlags: [.maskControl, .maskAlternate],
+            description: "⌃⌥Space"
         )
         
         let isRecording = Binding.constant(false)
@@ -74,7 +74,7 @@ final class ShortcutTabTests: XCTestCase {
     func testHotkeyDescriptionFormatting() {
         // Given
         let testCases: [(keyCode: UInt16, modifiers: CGEventFlags, expected: String)] = [
-            (49, .maskAlternate, "⌥Space"),
+            (49, [.maskControl, .maskAlternate], "⌃⌥Space"),
             (49, [.maskCommand, .maskAlternate], "⌥⌘Space"),
             (36, .maskControl, "⌃↩"),
             (53, [.maskShift, .maskCommand], "⇧⌘⎋")
@@ -221,8 +221,8 @@ final class ShortcutTabTests: XCTestCase {
         // Given
         let currentHotkey = HotkeyConfiguration(
             keyCode: 49,
-            modifierFlags: .maskAlternate,
-            description: "⌥Space"
+            modifierFlags: [.maskControl, .maskAlternate],
+            description: "⌃⌥Space"
         )
         
         // Test not recording state
