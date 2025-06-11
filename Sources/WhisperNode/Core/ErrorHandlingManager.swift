@@ -83,10 +83,12 @@ public class ErrorHandlingManager: ObservableObject {
     /// Core error types for WhisperNode operations
     public enum WhisperNodeError: Error, LocalizedError, Equatable {
         case microphoneAccessDenied
+        case accessibilityPermissionDenied
         case audioCaptureFailure(String)
         case modelDownloadFailed(String)
         case transcriptionFailed
         case hotkeyConflict(String)
+        case hotkeySystemError(String)
         case insufficientDiskSpace
         case networkConnectionFailed
         case modelCorrupted(String)
@@ -96,6 +98,8 @@ public class ErrorHandlingManager: ObservableObject {
             switch self {
             case .microphoneAccessDenied:
                 return "Microphone access is required for voice input"
+            case .accessibilityPermissionDenied:
+                return "Accessibility permissions are required for global hotkeys"
             case .audioCaptureFailure(let details):
                 return "Audio capture failed: \(details)"
             case .modelDownloadFailed(let details):
@@ -104,6 +108,8 @@ public class ErrorHandlingManager: ObservableObject {
                 return "Voice transcription failed"
             case .hotkeyConflict(let conflictDetails):
                 return "Hotkey conflict detected: \(conflictDetails)"
+            case .hotkeySystemError(let details):
+                return "Global hotkey system error: \(details)"
             case .insufficientDiskSpace:
                 return "Insufficient disk space for operation"
             case .networkConnectionFailed:
@@ -119,6 +125,8 @@ public class ErrorHandlingManager: ObservableObject {
             switch self {
             case .microphoneAccessDenied:
                 return "Please enable microphone access in System Preferences > Security & Privacy > Privacy > Microphone"
+            case .accessibilityPermissionDenied:
+                return "Please enable accessibility access in System Preferences > Security & Privacy > Privacy > Accessibility"
             case .audioCaptureFailure:
                 return "Check your audio settings and try again"
             case .modelDownloadFailed:
@@ -127,6 +135,8 @@ public class ErrorHandlingManager: ObservableObject {
                 return "Please try recording again"
             case .hotkeyConflict:
                 return "Choose a different hotkey combination"
+            case .hotkeySystemError:
+                return "Restart the application or try a different hotkey"
             case .insufficientDiskSpace:
                 return "Free up disk space and try again"
             case .networkConnectionFailed:
@@ -141,9 +151,9 @@ public class ErrorHandlingManager: ObservableObject {
         /// Determines if this error type should trigger automatic recovery
         public var isRecoverable: Bool {
             switch self {
-            case .modelDownloadFailed, .networkConnectionFailed, .modelCorrupted, .transcriptionFailed, .audioCaptureFailure:
+            case .modelDownloadFailed, .networkConnectionFailed, .modelCorrupted, .transcriptionFailed, .audioCaptureFailure, .hotkeySystemError:
                 return true
-            case .microphoneAccessDenied, .hotkeyConflict, .insufficientDiskSpace, .systemResourcesExhausted:
+            case .microphoneAccessDenied, .accessibilityPermissionDenied, .hotkeyConflict, .insufficientDiskSpace, .systemResourcesExhausted:
                 return false
             }
         }
@@ -151,9 +161,9 @@ public class ErrorHandlingManager: ObservableObject {
         /// Determines error severity for display strategy
         public var severity: ErrorSeverity {
             switch self {
-            case .microphoneAccessDenied, .insufficientDiskSpace:
+            case .microphoneAccessDenied, .accessibilityPermissionDenied, .insufficientDiskSpace:
                 return .critical
-            case .modelDownloadFailed, .hotkeyConflict, .systemResourcesExhausted, .audioCaptureFailure:
+            case .modelDownloadFailed, .hotkeyConflict, .hotkeySystemError, .systemResourcesExhausted, .audioCaptureFailure:
                 return .warning
             case .transcriptionFailed, .networkConnectionFailed, .modelCorrupted:
                 return .minor
@@ -276,6 +286,12 @@ public class ErrorHandlingManager: ObservableObject {
     public func handleMicrophoneAccessDenied() {
         degradationState["voiceInput"] = false
         handleError(.microphoneAccessDenied)
+    }
+    
+    /// Handle accessibility permission denial with system preferences link
+    public func handleAccessibilityPermissionDenied() {
+        degradationState["hotkey"] = false
+        handleError(.accessibilityPermissionDenied)
     }
     
     /// Handle model download failure with automatic retry and fallback
@@ -463,6 +479,14 @@ public class ErrorHandlingManager: ObservableObject {
                 if response == .alertFirstButtonReturn {
                     openSystemPreferencesPrivacy()
                 }
+            } else if case .accessibilityPermissionDenied = error {
+                alert.addButton(withTitle: "Open System Preferences")
+                alert.addButton(withTitle: "Cancel")
+                
+                let response = alert.runModal()
+                if response == .alertFirstButtonReturn {
+                    openSystemPreferencesAccessibility()
+                }
             } else if error.isRecoverable && recovery != nil {
                 alert.addButton(withTitle: "Retry")
                 alert.addButton(withTitle: "Cancel")
@@ -504,6 +528,11 @@ public class ErrorHandlingManager: ObservableObject {
     
     private func openSystemPreferencesPrivacy() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
+        NSWorkspace.shared.open(url)
+    }
+    
+    private func openSystemPreferencesAccessibility() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         NSWorkspace.shared.open(url)
     }
 }
