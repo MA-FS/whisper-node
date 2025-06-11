@@ -171,8 +171,32 @@ struct HotkeyRecorderView: View {
     }
 
     private func isFunctionKey(_ keyCode: UInt16) -> Bool {
-        // Function key codes (F1-F12)
-        return (122...133).contains(keyCode)
+        // Function key codes (F1-F20) - actual key codes from macOS
+        let functionKeyCodes: Set<UInt16> = [
+            // F1-F12 (standard function keys)
+            122, // F1
+            120, // F2
+            99,  // F3
+            118, // F4
+            96,  // F5
+            97,  // F6
+            98,  // F7
+            100, // F8
+            101, // F9
+            109, // F10
+            103, // F11
+            111, // F12
+            // F13-F20 (extended function keys)
+            105, // F13
+            107, // F14
+            113, // F15
+            78,  // F16
+            64,  // F17
+            79,  // F18
+            80,  // F19
+            90   // F20
+        ]
+        return functionKeyCodes.contains(keyCode)
     }
     
     private func startRecording() {
@@ -502,6 +526,14 @@ struct HotkeyRecorderView: View {
         case 109: return "F10"
         case 103: return "F11"
         case 111: return "F12"
+        case 105: return "F13"
+        case 107: return "F14"
+        case 113: return "F15"
+        case 78: return "F16"
+        case 64: return "F17"
+        case 79: return "F18"
+        case 80: return "F19"
+        case 90: return "F20"
         
         // Arrow keys
         case 123: return "←"
