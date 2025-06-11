@@ -92,7 +92,7 @@ public class WhisperSwift {
     /// - FFI communication errors
     ///
     /// - Important: Longer audio clips may trigger automatic model downgrade suggestions
-    public func transcribe(audioData: [Float]) -> String? {
+    public func transcribe(audioData: [Float]) async -> String? {
         guard let handle = handle else { return nil }
         guard !audioData.isEmpty else { 
             // TODO: Consider logging or providing feedback when audioData is empty
@@ -156,9 +156,10 @@ public class WhisperSwift {
         ]
         
         // Simulate realistic processing delay for testing purposes
-        // Using usleep() instead of Thread.sleep() to avoid blocking UI thread
-        let delayMicroseconds = UInt32((0.5 + Double.random(in: 0...1.0)) * 1_000_000)
-        usleep(delayMicroseconds)
+        // Using async Task.sleep() to avoid blocking any thread
+        let delaySeconds = 0.5 + Double.random(in: 0...1.0)
+        let delayNanoseconds = UInt64(delaySeconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: delayNanoseconds)
         
         // Return a random test phrase
         return testPhrases.randomElement()
@@ -369,7 +370,7 @@ public actor WhisperEngine {
     public func transcribe(audioData: [Float]) async -> TranscriptionResult {
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        if let text = whisper.transcribe(audioData: audioData) {
+        if let text = await whisper.transcribe(audioData: audioData) {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             let metrics = whisper.getPerformanceMetrics()
             
