@@ -257,8 +257,9 @@ struct MenuBarDropdownView: View {
 
     private var currentHotkeyDescription: String {
         // Get the actual hotkey configuration from GlobalHotkeyManager
+        // The description already includes "(Hold)" for modifier-only combinations
         let hotkeyManager = GlobalHotkeyManager.shared
-        return hotkeyManager.currentHotkey.description + " (Hold)"
+        return hotkeyManager.currentHotkey.description
     }
     
     var body: some View {
