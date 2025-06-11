@@ -219,7 +219,7 @@ public class HotkeyRecorder: ObservableObject {
         Self.logger.info("Captured hotkey: \(keyCode) with modifiers \(modifiers.rawValue)")
         
         // Clean up the modifiers to remove system flags
-        let cleanModifiers = cleanModifierFlags(modifiers)
+        let cleanModifiers = modifiers.cleanedModifierFlags
         
         // Call the callback with the captured hotkey
         recordingCallback?(keyCode, cleanModifiers)
@@ -274,23 +274,4 @@ public class HotkeyRecorder: ObservableObject {
         return [49].contains(keyCode) // Space bar
     }
     
-    private func cleanModifierFlags(_ flags: CGEventFlags) -> CGEventFlags {
-        // Keep only the essential modifier flags, remove system/internal flags
-        var cleanFlags = CGEventFlags()
-        
-        if flags.contains(.maskCommand) {
-            cleanFlags.insert(.maskCommand)
-        }
-        if flags.contains(.maskAlternate) {
-            cleanFlags.insert(.maskAlternate)
-        }
-        if flags.contains(.maskShift) {
-            cleanFlags.insert(.maskShift)
-        }
-        if flags.contains(.maskControl) {
-            cleanFlags.insert(.maskControl)
-        }
-        
-        return cleanFlags
-    }
 }
