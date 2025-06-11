@@ -140,7 +140,7 @@ struct ShortcutTab: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This will reset the hotkey to Option+Space. Are you sure?")
+            Text("This will reset the hotkey to Control+Option+Space. Are you sure?")
         }
     }
     
@@ -166,8 +166,8 @@ struct ShortcutTab: View {
     private func resetToDefault() {
         let defaultHotkey = HotkeyConfiguration(
             keyCode: 49, // Space
-            modifierFlags: .maskAlternate, // Option
-            description: "Option+Space"
+            modifierFlags: [.maskControl, .maskAlternate], // Control+Option
+            description: "⌃⌥Space"
         )
         hotkeyManager.updateHotkey(defaultHotkey)
     }
@@ -201,10 +201,8 @@ struct ShortcutTab: View {
             }
         }
         
-        // Check for modifier-only shortcuts (not allowed)
-        if hotkey.keyCode == 0 {
-            conflicts.append("Modifier-only shortcuts are not allowed")
-        }
+        // Allow modifier-only shortcuts (like Control+Option)
+        // These are valid hotkey combinations for WhisperNode
         
         return conflicts
     }
@@ -237,30 +235,11 @@ struct ShortcutTab: View {
     }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
-        var parts: [String] = []
-        
-        if modifiers.contains(.maskControl) { parts.append("Control") }
-        if modifiers.contains(.maskAlternate) { parts.append("Option") }
-        if modifiers.contains(.maskShift) { parts.append("Shift") }
-        if modifiers.contains(.maskCommand) { parts.append("Command") }
-        
-        // Convert keyCode to character name
-        let keyName = keyCodeToString(keyCode)
-        parts.append(keyName)
-        
-        return parts.joined(separator: "+")
+        return HotkeyUtilities.formatTextHotkeyDescription(keyCode: keyCode, modifiers: modifiers)
     }
     
     private func keyCodeToString(_ keyCode: UInt16) -> String {
-        switch keyCode {
-        case 49: return "Space"
-        case 36: return "Return"
-        case 48: return "Tab"
-        case 51: return "Delete"
-        case 53: return "Escape"
-        case 0...25: return String(Character(UnicodeScalar(keyCode + 97)!)) // a-z
-        default: return "Key \(keyCode)"
-        }
+        return HotkeyUtilities.keyCodeToString(keyCode)
     }
 }
 

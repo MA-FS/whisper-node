@@ -29,7 +29,7 @@ final class WhisperIntegrationTests: XCTestCase {
         XCTAssertNotNil(whisperSwift, "WhisperSwift should initialize successfully")
     }
     
-    func testWhisperSwiftTranscription() {
+    func testWhisperSwiftTranscription() async {
         guard let whisper = whisperSwift else {
             XCTFail("WhisperSwift not initialized")
             return
@@ -37,7 +37,7 @@ final class WhisperIntegrationTests: XCTestCase {
         
         // Test with sample audio data
         let testAudioData: [Float] = Array(repeating: 0.1, count: 16000) // 1 second at 16kHz
-        let result = whisper.transcribe(audioData: testAudioData)
+        let result = await whisper.transcribe(audioData: testAudioData)
         
         // With mock FFI, we should get placeholder text
         XCTAssertNotNil(result, "Transcription should return a result")

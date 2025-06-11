@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import ApplicationServices
 
 extension Notification.Name {
     static let whisperModelLoadFailed = Notification.Name("whisperModelLoadFailed")
@@ -95,6 +96,19 @@ public class WhisperNodeCore: ObservableObject {
         
         isInitialized = true
         Self.logger.info("WhisperNode Core initialized successfully")
+        
+        // Start voice activation automatically if onboarding is complete AND accessibility permissions are granted
+        if SettingsManager.shared.hasCompletedOnboarding {
+            if checkAccessibilityPermissions() {
+                Self.logger.info("🚀 Auto-starting voice activation - onboarding complete and permissions granted")
+                startVoiceActivation()
+            } else {
+                Self.logger.warning("⚠️ Voice activation deferred - accessibility permissions not granted")
+                Self.logger.info("💡 User can manually enable voice activation after granting accessibility permissions")
+            }
+        } else {
+            Self.logger.info("⏳ Voice activation deferred - onboarding not complete")
+        }
     }
     
     private func setupAudioEngine() {
@@ -368,6 +382,23 @@ public class WhisperNodeCore: ObservableObject {
     
     // MARK: - Private Implementation
     
+    /// Check if accessibility permissions are granted for global hotkey functionality
+    ///
+    /// This method performs a non-intrusive check for accessibility permissions without
+    /// showing system prompts. It's used for auto-start permission verification.
+    ///
+    /// - Returns: `true` if accessibility permissions are granted, `false` otherwise
+    /// - Note: This method does NOT trigger permission prompts, making it safe for auto-start checks
+    private func checkAccessibilityPermissions() -> Bool {
+        let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+        let options = [trusted: false] as CFDictionary // Don't prompt during auto-start check
+        let hasPermissions = AXIsProcessTrustedWithOptions(options)
+        
+        Self.logger.info("Auto-start accessibility permissions check: \(hasPermissions ? "granted" : "denied")")
+        
+        return hasPermissions
+    }
+    
     private func getModelPath(for modelName: String) -> String {
         // Check bundle resources first
         if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "bin") {
@@ -468,8 +499,9 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     ///
     /// Updates the recording state, displays the recording indicator, starts performance monitoring, and initiates audio capture. If audio capture fails to start, resets the recording state, hides the indicator, and stops monitoring.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
-        self.isRecording = true
-        Self.logger.info("Voice recording started")
+        self.isRecording = isRecording
+        Self.logger.info("🎤 Voice recording started - delegate callback received")
+        Self.logger.info("🔊 WhisperNodeCore delegate method called successfully")
         
         // Haptic feedback for recording start
         HapticManager.shared.recordingStarted()
@@ -477,8 +509,13 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Update menu bar state
         menuBarManager.updateState(.recording)
         
-        // Show visual indicator
+        // Show visual indicator with enhanced logging
+        Self.logger.info("🟢 Attempting to show recording indicator")
         indicatorManager.showRecording()
+        Self.logger.info("✅ indicatorManager.showRecording() called")
+        
+        // Verify indicator manager state
+        Self.logger.info("📊 Indicator state - isVisible: \(self.indicatorManager.isVisible), currentState: \(String(describing: self.indicatorManager.currentState))")
         
         // Performance monitoring is always active via PerformanceMonitor.shared
         
@@ -585,13 +622,28 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Update menu bar state to indicate error
         menuBarManager.updateState(.error)
         
-        // Handle hotkey error through error manager
-        errorManager.handleError(.systemResourcesExhausted)
+        // Handle hotkey error through error manager with proper error mapping
+        switch error {
+        case .accessibilityPermissionDenied:
+            errorManager.handleError(.accessibilityPermissionDenied)
+        case .eventTapCreationFailed:
+            errorManager.handleError(.hotkeySystemError("Failed to create global event tap"))
+        case .hotkeyConflict(let description):
+            errorManager.handleError(.hotkeyConflict(description))
+        }
     }
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, accessibilityPermissionRequired: Bool) {
-        Self.logger.warning("Accessibility permissions required")
-        // TODO: Show accessibility permission prompt (T14)
+        Self.logger.warning("Accessibility permissions required for global hotkey functionality")
+
+        // Show user-friendly error message with proper error type
+        errorManager.handleError(.accessibilityPermissionDenied)
+
+        // Update menu bar to indicate permission issue
+        menuBarManager.updateState(.error)
+
+        // Haptic feedback for permission error
+        HapticManager.shared.errorOccurred()
     }
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didDetectConflict conflict: HotkeyConflict, suggestedAlternatives: [HotkeyConfiguration]) {

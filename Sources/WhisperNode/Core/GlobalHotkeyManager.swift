@@ -85,6 +85,8 @@ public class GlobalHotkeyManager: ObservableObject {
             modifierFlags: modifierFlags,
             description: description
         )
+        
+        Self.logger.info("📋 Loaded hotkey from settings: keyCode=\(keyCode), modifiers=\(modifierFlags.rawValue), description='\(description)'")
     }
     
     private func setupSettingsObservation() {
@@ -103,108 +105,16 @@ public class GlobalHotkeyManager: ObservableObject {
     private func saveHotkeyToSettings() {
         settingsManager.hotkeyKeyCode = currentHotkey.keyCode
         settingsManager.hotkeyModifierFlags = currentHotkey.modifierFlags.rawValue
+        
+        Self.logger.info("💾 Saved hotkey to settings: keyCode=\(self.currentHotkey.keyCode), modifiers=\(self.currentHotkey.modifierFlags.rawValue), description='\(self.currentHotkey.description)'")
     }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
-        var parts: [String] = []
-        
-        // Add modifier symbols in standard order
-        if modifiers.contains(.maskControl) { parts.append("⌃") }
-        if modifiers.contains(.maskAlternate) { parts.append("⌥") }
-        if modifiers.contains(.maskShift) { parts.append("⇧") }
-        if modifiers.contains(.maskCommand) { parts.append("⌘") }
-        
-        // Add key name
-        parts.append(keyCodeToDisplayString(keyCode))
-        
-        return parts.joined()
+        return HotkeyUtilities.formatHotkeyDescription(keyCode: keyCode, modifiers: modifiers)
     }
     
     private func keyCodeToDisplayString(_ keyCode: UInt16) -> String {
-        switch keyCode {
-        // Letters (QWERTY keyboard layout order)
-        case 0: return "A"
-        case 1: return "S"
-        case 2: return "D"
-        case 3: return "F"
-        case 4: return "H"
-        case 5: return "G"
-        case 6: return "Z"
-        case 7: return "X"
-        case 8: return "C"
-        case 9: return "V"
-        case 11: return "B"
-        case 12: return "Q"
-        case 13: return "W"
-        case 14: return "E"
-        case 15: return "R"
-        case 16: return "Y"
-        case 17: return "T"
-        case 31: return "O"
-        case 32: return "U"
-        case 34: return "I"
-        case 35: return "P"
-        case 37: return "L"
-        case 38: return "J"
-        case 40: return "K"
-        case 45: return "N"
-        case 46: return "M"
-        
-        // Numbers
-        case 18: return "1"
-        case 19: return "2"
-        case 20: return "3"
-        case 21: return "4"
-        case 22: return "6"
-        case 23: return "5"
-        case 25: return "9"
-        case 26: return "7"
-        case 28: return "8"
-        case 29: return "0"
-        
-        // Special keys
-        case 49: return "Space"
-        case 36: return "Return"
-        case 48: return "Tab"
-        case 51: return "Delete"
-        case 53: return "Escape"
-        case 76: return "Enter"
-        
-        // Punctuation
-        case 24: return "="
-        case 27: return "-"
-        case 30: return "]"
-        case 33: return "["
-        case 39: return "'"
-        case 41: return ";"
-        case 42: return "\\"
-        case 43: return ","
-        case 44: return "/"
-        case 47: return "."
-        case 50: return "`"
-        
-        // Function keys
-        case 122: return "F1"
-        case 120: return "F2"
-        case 99: return "F3"
-        case 118: return "F4"
-        case 96: return "F5"
-        case 97: return "F6"
-        case 98: return "F7"
-        case 100: return "F8"
-        case 101: return "F9"
-        case 109: return "F10"
-        case 103: return "F11"
-        case 111: return "F12"
-        
-        // Arrow keys
-        case 123: return "←"
-        case 124: return "→"
-        case 125: return "↓"
-        case 126: return "↑"
-        
-        default: return "Key\(keyCode)"
-        }
+        return HotkeyUtilities.keyCodeToDisplayString(keyCode)
     }
     
     // MARK: - Public Methods
@@ -221,22 +131,25 @@ public class GlobalHotkeyManager: ObservableObject {
             Self.logger.warning("Already listening for hotkeys")
             return
         }
-        
+
+        Self.logger.info("Starting global hotkey listening for: \(self.currentHotkey.description)")
+
         // Check accessibility permissions
         guard checkAccessibilityPermissions() else {
-            Self.logger.error("Accessibility permissions not granted")
+            Self.logger.error("Accessibility permissions not granted - cannot start hotkey listening")
             delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
             return
         }
         
         // Create event tap
         guard let tap = createEventTap() else {
-            Self.logger.error("Failed to create event tap")
+            Self.logger.error("Failed to create event tap - this may indicate insufficient permissions or system restrictions")
             delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
             return
         }
-        
+
         eventTap = tap
+        Self.logger.info("Event tap created successfully")
         
         // Create run loop source
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -324,11 +237,55 @@ public class GlobalHotkeyManager: ObservableObject {
     private func checkAccessibilityPermissions() -> Bool {
         let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
         let options = [trusted: true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        let hasPermissions = AXIsProcessTrustedWithOptions(options)
+
+        Self.logger.info("Accessibility permissions check: \(hasPermissions ? "granted" : "denied")")
+
+        if !hasPermissions {
+            Self.logger.warning("Accessibility permissions required for global hotkey functionality")
+            // Show user-friendly permission guidance
+            DispatchQueue.main.async { [weak self] in
+                self?.showAccessibilityPermissionGuidance()
+            }
+        }
+
+        return hasPermissions
+    }
+
+    private func showAccessibilityPermissionGuidance() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permissions Required"
+        alert.informativeText = """
+        WhisperNode needs accessibility permissions to capture global hotkeys.
+
+        To enable:
+        1. Open System Preferences
+        2. Go to Security & Privacy
+        3. Click the Privacy tab
+        4. Select Accessibility from the list
+        5. Click the lock to make changes
+        6. Add WhisperNode to the list and check the box
+
+        After granting permissions, please restart WhisperNode.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            // Open System Preferences to Accessibility section
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
     
     private func createEventTap() -> CFMachPort? {
-        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        // Create event mask for key events including modifier changes
+        let eventMask = (1 << CGEventType.keyDown.rawValue) |
+                       (1 << CGEventType.keyUp.rawValue) |
+                       (1 << CGEventType.flagsChanged.rawValue)
         
         let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -356,20 +313,34 @@ public class GlobalHotkeyManager: ObservableObject {
             return Unmanaged.passRetained(event)
         }
         
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+
+        // Add comprehensive logging for debugging
+        Self.logger.debug("Event received: keyCode=\(keyCode), flags=\(flags.rawValue)")
+        Self.logger.debug("Current hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(self.currentHotkey.modifierFlags.rawValue)")
+
         // Check if this matches our hotkey
-        guard matchesCurrentHotkey(event) else {
+        let matches = matchesCurrentHotkey(event)
+        Self.logger.debug("Event matches hotkey: \(matches)")
+
+        guard matches else {
             return Unmanaged.passRetained(event)
         }
-        
+
+        Self.logger.info("🎯 Hotkey event matched! Processing...")
+
         switch type {
         case .keyDown:
             handleKeyDown(event)
         case .keyUp:
             handleKeyUp(event)
+        case .flagsChanged:
+            handleFlagsChanged(event)
         default:
             break
         }
-        
+
         // Consume the event if it matches our hotkey
         return nil
     }
@@ -377,20 +348,47 @@ public class GlobalHotkeyManager: ObservableObject {
     private func matchesCurrentHotkey(_ event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
-        
-        return keyCode == Int64(currentHotkey.keyCode) &&
-               flags.contains(currentHotkey.modifierFlags)
+
+        // Clean the event flags to remove system flags
+        let cleanEventFlags = flags.cleanedModifierFlags()
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
+
+        Self.logger.debug("🔍 Checking hotkey match:")
+        Self.logger.debug("   Event: keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
+        Self.logger.debug("   Hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(cleanHotkeyFlags.rawValue)")
+
+        // Handle modifier-only combinations (keyCode = UInt16.max)
+        if self.currentHotkey.keyCode == UInt16.max {
+            Self.logger.debug("   Checking modifier-only combination")
+            // For modifier-only hotkeys, we only match flagsChanged events with exact modifiers
+            // and no additional key press
+            return cleanEventFlags == cleanHotkeyFlags && cleanEventFlags.rawValue != 0
+        }
+
+        // Check if key code matches for regular key combinations
+        guard keyCode == Int64(self.currentHotkey.keyCode) else { 
+            Self.logger.debug("   ❌ Key code mismatch: \(keyCode) != \(self.currentHotkey.keyCode)")
+            return false 
+        }
+
+        // For exact matching, all required modifiers must be present and no extra ones
+        let matches = cleanEventFlags == cleanHotkeyFlags
+        Self.logger.debug("   \(matches ? "✅" : "❌") Modifier flags match: \(matches)")
+        return matches
     }
+
     
     private func handleKeyDown(_ event: CGEvent) {
         let currentTime = CFAbsoluteTimeGetCurrent()
-        
+
         // Thread-safe check and update
         guard keyDownTime == nil else { return } // Already pressed
         keyDownTime = currentTime
-        
-        Self.logger.debug("Hotkey pressed down")
-        
+
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+        Self.logger.info("Hotkey pressed down - keyCode: \(keyCode), flags: \(flags.rawValue), description: \(self.currentHotkey.description)")
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = true
@@ -400,23 +398,103 @@ public class GlobalHotkeyManager: ObservableObject {
     
     private func handleKeyUp(_ event: CGEvent) {
         guard let downTime = keyDownTime else { return }
-        
+
         let upTime = CFAbsoluteTimeGetCurrent()
         let holdDuration = upTime - downTime
-        
+
         // Reset state
         keyDownTime = nil
-        
+
         Self.logger.debug("Hotkey released after \(holdDuration)s")
-        
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = false
-            
+
             if holdDuration >= self.minimumHoldDuration {
                 self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
             } else {
                 self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+            }
+        }
+    }
+
+    private func handleFlagsChanged(_ event: CGEvent) {
+        // For modifier-only combinations, we need to detect when the exact modifier combination is pressed
+        // This is primarily for hotkeys like Control+Option without any other key
+
+        let flags = event.flags
+        let cleanFlags = flags.cleanedModifierFlags()
+
+        Self.logger.debug("🏳️ Flags changed: raw=\(flags.rawValue), clean=\(cleanFlags.rawValue)")
+        Self.logger.debug("   Control: \(cleanFlags.contains(.maskControl))")
+        Self.logger.debug("   Option: \(cleanFlags.contains(.maskAlternate))")
+        Self.logger.debug("   Shift: \(cleanFlags.contains(.maskShift))")
+        Self.logger.debug("   Command: \(cleanFlags.contains(.maskCommand))")
+
+        // Check if this is a modifier-only hotkey (keyCode = UInt16.max)
+        guard currentHotkey.keyCode == UInt16.max else { 
+            Self.logger.debug("   Not a modifier-only hotkey, ignoring flags change")
+            return 
+        }
+
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
+        Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
+
+        // Enhanced modifier-only detection with improved Control+Option support
+        if cleanFlags == cleanHotkeyFlags && cleanFlags.rawValue != 0 {
+            // Modifiers pressed - start recording
+            if keyDownTime == nil {
+                let currentTime = CFAbsoluteTimeGetCurrent()
+                keyDownTime = currentTime
+
+                Self.logger.info("🎯 Modifier-only hotkey pressed: \(self.currentHotkey.description)")
+                Self.logger.info("🔊 Triggering delegate callback for recording start")
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.isRecording = true
+                    
+                    // Enhanced delegate notification with validation
+                    if let delegate = self.delegate {
+                        Self.logger.info("✅ Calling delegate.didStartRecording")
+                        delegate.hotkeyManager(self, didStartRecording: true)
+                    } else {
+                        Self.logger.error("❌ No delegate found - recording will not be triggered!")
+                    }
+                }
+            }
+        } else if cleanFlags.rawValue == 0 && keyDownTime != nil {
+            // All modifiers released - stop recording
+            let downTime = keyDownTime!
+            let upTime = CFAbsoluteTimeGetCurrent()
+            let holdDuration = upTime - downTime
+
+            keyDownTime = nil
+
+            Self.logger.info("🎯 Modifier-only hotkey released after \(holdDuration)s")
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isRecording = false
+
+                if holdDuration >= self.minimumHoldDuration {
+                    Self.logger.info("✅ Recording duration met minimum threshold, completing recording")
+                    self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
+                } else {
+                    Self.logger.warning("⚠️ Recording too short (\(holdDuration)s), cancelling")
+                    self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+                }
+            }
+        } else if cleanFlags != cleanHotkeyFlags && keyDownTime != nil {
+            // Modifier combination changed while recording - cancel
+            Self.logger.debug("   Modifier combination changed during recording, cancelling")
+            keyDownTime = nil
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isRecording = false
+                self.delegate?.hotkeyManager(self, didCancelRecording: .interrupted)
             }
         }
     }
@@ -441,13 +519,15 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     private func generateAlternatives(for configuration: HotkeyConfiguration) -> [HotkeyConfiguration] {
-        // Generate safe alternatives
+        // Generate safe alternatives including Control+Option combinations
         let alternatives: [HotkeyConfiguration] = [
-            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskAlternate, .maskShift], description: "Option+Shift+Space"),
-            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskControl, .maskShift], description: "Control+Shift+Space"),
-            HotkeyConfiguration(keyCode: 3, modifierFlags: [.maskCommand, .maskShift], description: "Cmd+Shift+F")
+            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥Space"),
+            HotkeyConfiguration(keyCode: 9, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥V"),
+            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskAlternate, .maskShift], description: "⌥⇧Space"),
+            HotkeyConfiguration(keyCode: 49, modifierFlags: [.maskControl, .maskShift], description: "⌃⇧Space"),
+            HotkeyConfiguration(keyCode: 3, modifierFlags: [.maskCommand, .maskShift], description: "⌘⇧F")
         ]
-        
+
         return alternatives.filter { $0.keyCode != configuration.keyCode || $0.modifierFlags != configuration.modifierFlags }
     }
 }
@@ -471,8 +551,8 @@ public struct HotkeyConfiguration: Equatable {
     
     public static let defaultConfiguration = HotkeyConfiguration(
         keyCode: 49, // Space bar
-        modifierFlags: .maskAlternate, // Option key
-        description: "Option+Space"
+        modifierFlags: [.maskControl, .maskAlternate], // Control+Option keys
+        description: "⌃⌥Space"
     )
 }
 

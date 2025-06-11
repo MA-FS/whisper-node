@@ -31,8 +31,8 @@ final class GlobalHotkeyManagerTests: XCTestCase {
     
     func testDefaultConfiguration() {
         XCTAssertEqual(hotkeyManager.currentHotkey.keyCode, KeyCode.space)
-        XCTAssertEqual(hotkeyManager.currentHotkey.modifierFlags, .maskAlternate)
-        XCTAssertEqual(hotkeyManager.currentHotkey.description, "Option+Space")
+        XCTAssertEqual(hotkeyManager.currentHotkey.modifierFlags, [.maskControl, .maskAlternate])
+        XCTAssertEqual(hotkeyManager.currentHotkey.description, "⌃⌥Space")
     }
     
     func testUpdateHotkey() {
@@ -69,7 +69,7 @@ final class GlobalHotkeyManagerTests: XCTestCase {
         let validConfig = HotkeyConfiguration(
             keyCode: KeyCode.space,
             modifierFlags: [.maskAlternate, .maskShift],
-            description: "Option+Shift+Space"
+            description: "⌥⇧Space"
         )
         
         hotkeyManager.updateHotkey(validConfig)
@@ -87,9 +87,9 @@ final class GlobalHotkeyManagerTests: XCTestCase {
     // MARK: - Configuration Equality Tests
     
     func testHotkeyConfigurationEquality() {
-        let config1 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: .maskAlternate, description: "Option+Space")
-        let config2 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: .maskAlternate, description: "Option+Space")
-        let config3 = HotkeyConfiguration(keyCode: KeyCode.backtick, modifierFlags: .maskAlternate, description: "Option+`")
+        let config1 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥Space")
+        let config2 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥Space")
+        let config3 = HotkeyConfiguration(keyCode: KeyCode.backtick, modifierFlags: .maskAlternate, description: "⌥`")
         
         XCTAssertEqual(config1, config2)
         XCTAssertNotEqual(config1, config3)

@@ -92,9 +92,12 @@ public class WhisperSwift {
     /// - FFI communication errors
     ///
     /// - Important: Longer audio clips may trigger automatic model downgrade suggestions
-    public func transcribe(audioData: [Float]) -> String? {
+    public func transcribe(audioData: [Float]) async -> String? {
         guard let handle = handle else { return nil }
-        guard !audioData.isEmpty else { return nil }
+        guard !audioData.isEmpty else { 
+            // TODO: Consider logging or providing feedback when audioData is empty
+            return nil 
+        }
         guard audioData.count <= 16000 * 30 else { return nil } // Max 30 seconds
         
         // Perform periodic memory cleanup
@@ -143,8 +146,23 @@ public class WhisperSwift {
         
         return transcribedText
         #else
-        // Placeholder implementation
-        return "FFI placeholder - Rust integration pending"
+        // Placeholder implementation for testing hotkey integration
+        let testPhrases = [
+            "Hello, this is a test transcription.",
+            "The hotkey system is working correctly.",
+            "Voice recording completed successfully.",
+            "Testing audio capture and transcription pipeline.",
+            "WhisperNode is functioning as expected."
+        ]
+        
+        // Simulate realistic processing delay for testing purposes
+        // Using async Task.sleep() to avoid blocking any thread
+        let delaySeconds = 0.5 + Double.random(in: 0...1.0)
+        let delayNanoseconds = UInt64(delaySeconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: delayNanoseconds)
+        
+        // Return a random test phrase
+        return testPhrases.randomElement()
         #endif
     }
     
@@ -352,7 +370,7 @@ public actor WhisperEngine {
     public func transcribe(audioData: [Float]) async -> TranscriptionResult {
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        if let text = whisper.transcribe(audioData: audioData) {
+        if let text = await whisper.transcribe(audioData: audioData) {
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             let metrics = whisper.getPerformanceMetrics()
             
