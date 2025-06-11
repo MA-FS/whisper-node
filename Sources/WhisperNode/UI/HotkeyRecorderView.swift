@@ -205,9 +205,9 @@ struct HotkeyRecorderView: View {
         recordedModifiers = []
         recordingStartTime = Date()
 
-        // Check accessibility permissions first
+        // Check accessibility permissions first - prompt user if needed since they're actively configuring hotkeys
         let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
-        let options = [trusted: false] as CFDictionary // Don't prompt here, just check
+        let options = [trusted: true] as CFDictionary // Prompt for permissions during hotkey configuration
         let hasAccessibilityPermissions = AXIsProcessTrustedWithOptions(options)
 
         print("🔍 HotkeyRecorderView: Starting recording, accessibility permissions: \(hasAccessibilityPermissions)")
