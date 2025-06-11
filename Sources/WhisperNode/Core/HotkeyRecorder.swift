@@ -219,7 +219,7 @@ public class HotkeyRecorder: ObservableObject {
         Self.logger.info("Captured hotkey: \(keyCode) with modifiers \(modifiers.rawValue)")
         
         // Clean up the modifiers to remove system flags
-        let cleanModifiers = modifiers.cleanedModifierFlags
+        let cleanModifiers = modifiers.cleanedModifierFlags()
         
         // Call the callback with the captured hotkey
         recordingCallback?(keyCode, cleanModifiers)

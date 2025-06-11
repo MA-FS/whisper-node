@@ -12,12 +12,12 @@ extension CGEventFlags {
     /// ## Usage
     /// ```swift
     /// let eventFlags: CGEventFlags = [.maskControl, .maskAlternate, .maskNumericPad]
-    /// let cleaned = eventFlags.cleanedModifierFlags
+    /// let cleaned = eventFlags.cleanedModifierFlags()
     /// // Result: [.maskControl, .maskAlternate] (NumericPad flag removed)
     /// ```
     ///
     /// - Returns: CGEventFlags containing only Command, Control, Option, and Shift modifiers
-    var cleanedModifierFlags: CGEventFlags {
+    func cleanedModifierFlags() -> CGEventFlags {
         return CGEventFlags(rawValue: self.rawValue & (
             CGEventFlags.maskCommand.rawValue |
             CGEventFlags.maskControl.rawValue |

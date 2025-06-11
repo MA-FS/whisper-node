@@ -300,7 +300,7 @@ struct HotkeyRecorderView: View {
             case .flagsChanged:
                 // Update modifier flags - clean them to only include essential modifiers
                 let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
-                let cleanedModifiers = rawModifiers.cleanedModifierFlags
+                let cleanedModifiers = rawModifiers.cleanedModifierFlags()
                 
                 print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
                 print("   Control: \(cleanedModifiers.contains(.maskControl))")
@@ -371,7 +371,7 @@ struct HotkeyRecorderView: View {
             case .keyDown:
                 // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
                 let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
-                let cleanedModifiers = rawModifiers.cleanedModifierFlags
+                let cleanedModifiers = rawModifiers.cleanedModifierFlags()
 
                 print("⌨️ Key down: code=\(eventKeyCode), modifiers=\(cleanedModifiers.rawValue)")
 

@@ -449,8 +449,8 @@ public class GlobalHotkeyManager: ObservableObject {
         let flags = event.flags
 
         // Clean the event flags to remove system flags
-        let cleanEventFlags = flags.cleanedModifierFlags
-        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags
+        let cleanEventFlags = flags.cleanedModifierFlags()
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
 
         Self.logger.debug("🔍 Checking hotkey match:")
         Self.logger.debug("   Event: keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
@@ -523,7 +523,7 @@ public class GlobalHotkeyManager: ObservableObject {
         // This is primarily for hotkeys like Control+Option without any other key
 
         let flags = event.flags
-        let cleanFlags = flags.cleanedModifierFlags
+        let cleanFlags = flags.cleanedModifierFlags()
 
         Self.logger.debug("🏳️ Flags changed: raw=\(flags.rawValue), clean=\(cleanFlags.rawValue)")
         Self.logger.debug("   Control: \(cleanFlags.contains(.maskControl))")
@@ -537,7 +537,7 @@ public class GlobalHotkeyManager: ObservableObject {
             return 
         }
 
-        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
         Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
 
         // Enhanced modifier-only detection with improved Control+Option support
