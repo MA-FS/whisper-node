@@ -180,7 +180,8 @@ final class ShortcutTabTests: XCTestCase {
         let alternatives: [CGEventFlags] = [
             .maskAlternate, // Option
             [.maskCommand, .maskAlternate], // Command + Option
-            [.maskShift, .maskAlternate] // Shift + Option
+            [.maskShift, .maskAlternate], // Shift + Option
+            [.maskControl, .maskAlternate] // Control + Option
         ]
         
         // When/Then

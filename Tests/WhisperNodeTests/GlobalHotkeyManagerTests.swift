@@ -89,7 +89,7 @@ final class GlobalHotkeyManagerTests: XCTestCase {
     func testHotkeyConfigurationEquality() {
         let config1 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥Space")
         let config2 = HotkeyConfiguration(keyCode: KeyCode.space, modifierFlags: [.maskControl, .maskAlternate], description: "⌃⌥Space")
-        let config3 = HotkeyConfiguration(keyCode: KeyCode.backtick, modifierFlags: .maskAlternate, description: "Option+`")
+        let config3 = HotkeyConfiguration(keyCode: KeyCode.backtick, modifierFlags: .maskAlternate, description: "⌥`")
         
         XCTAssertEqual(config1, config2)
         XCTAssertNotEqual(config1, config3)
