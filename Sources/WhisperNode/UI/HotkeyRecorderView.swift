@@ -100,7 +100,7 @@ struct HotkeyRecorderView: View {
     }
     
     private var recordedHotkey: HotkeyConfiguration {
-        let keyCode = recordedKeyCode ?? 0
+        let keyCode = recordedKeyCode ?? UInt16.max
         let description = formatHotkeyDescription(
             keyCode: keyCode,
             modifiers: recordedModifiers
@@ -114,8 +114,8 @@ struct HotkeyRecorderView: View {
     }
     
     private var isValidHotkey: Bool {
-        // Handle modifier-only combinations (keyCode = 0)
-        if let keyCode = recordedKeyCode, keyCode == 0 {
+        // Handle modifier-only combinations (keyCode = UInt16.max)
+        if let keyCode = recordedKeyCode, keyCode == UInt16.max {
             // For modifier-only combinations, require at least 2 modifiers
             let modifierCount = [
                 recordedModifiers.contains(.maskControl),
@@ -127,7 +127,7 @@ struct HotkeyRecorderView: View {
             return modifierCount >= 2
         }
 
-        guard let keyCode = recordedKeyCode, keyCode != 0 else { return false }
+        guard let keyCode = recordedKeyCode, keyCode != UInt16.max else { return false }
 
         // Don't allow certain problematic keys
         let problematicKeys: [UInt16] = [53] // Escape key
@@ -273,7 +273,7 @@ struct HotkeyRecorderView: View {
             print("   Command: \(cleanedModifiers.contains(.maskCommand))")
 
             // If modifiers changed from a previous valid combination, reset to allow new combination
-            if recordedKeyCode == 0 && cleanedModifiers != recordedModifiers {
+            if recordedKeyCode == UInt16.max && cleanedModifiers != recordedModifiers {
                 print("   🔄 Modifier combination changed, resetting for new input")
                 recordedKeyCode = nil
                 autoSaveWorkItem?.cancel()
@@ -283,7 +283,7 @@ struct HotkeyRecorderView: View {
 
             // Check if we have a valid modifier-only combination (like Control+Option)
             if !cleanedModifiers.isEmpty && recordedKeyCode == nil {
-                // For modifier-only combinations, we'll use a special key code (0) to indicate "modifiers only"
+                // For modifier-only combinations, we'll use a special key code (UInt16.max) to indicate "modifiers only"
                 // But we need at least 2 modifiers for a valid combination
                 let modifierCount = [
                     cleanedModifiers.contains(.maskControl),
@@ -303,8 +303,8 @@ struct HotkeyRecorderView: View {
                         print("   ✨ Control+Option combination detected - preferred hotkey!")
                     }
 
-                    // Immediately set keyCode=0 to update UI
-                    recordedKeyCode = 0
+                    // Immediately set keyCode=UInt16.max to update UI
+                    recordedKeyCode = UInt16.max
                     print("   🎨 UI updated to show modifier combination")
                     
                     // Post debug notification to help track UI updates
@@ -317,7 +317,7 @@ struct HotkeyRecorderView: View {
                     let capturedModifiers = cleanedModifiers
                     let workItem = DispatchWorkItem {
                         guard self.isRecording,
-                              self.recordedKeyCode == 0,
+                              self.recordedKeyCode == UInt16.max,
                               !capturedModifiers.isEmpty else { 
                             print("   ❌ Auto-save skipped: recording=\(self.isRecording), keyCode=\(self.recordedKeyCode ?? 999), modifiers=\(capturedModifiers.rawValue)")
                             return 
@@ -393,8 +393,8 @@ struct HotkeyRecorderView: View {
         if modifiers.contains(.maskShift) { parts.append("⇧") }
         if modifiers.contains(.maskCommand) { parts.append("⌘") }
 
-        // Handle modifier-only combinations (keyCode = 0)
-        if keyCode == 0 {
+        // Handle modifier-only combinations (keyCode = UInt16.max)
+        if keyCode == UInt16.max {
             return parts.joined() + " (Hold)"
         }
 
@@ -497,6 +497,9 @@ struct HotkeyRecorderView: View {
         case 124: return "→"
         case 125: return "↓"
         case 126: return "↑"
+        
+        // Sentinel value for modifier-only combinations
+        case UInt16.max: return "(Modifiers)"
         
         default: return "Key\(keyCode)"
         }
