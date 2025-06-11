@@ -44,6 +44,9 @@ struct HotkeyRecorderView: View {
                     .accessibilityLabel(recordedKeyCode == nil ? "Recording new hotkey" : "New hotkey: \(recordedHotkey.description)")
                     .accessibilityValue(recordedKeyCode == nil ? "Waiting for key combination" : recordedHotkey.description)
                     .accessibilityHint("Shows the new hotkey combination being recorded")
+                    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HotkeyRecorderDebug"))) { _ in
+                        print("🎨 HotkeyDisplayView updated: recordedKeyCode=\(recordedKeyCode ?? 999), description='\(recordedHotkey.description)'")
+                    }
                     
                     HStack(spacing: 12) {
                         Button("Cancel") {
@@ -303,6 +306,9 @@ struct HotkeyRecorderView: View {
                     // Immediately set keyCode=0 to update UI
                     recordedKeyCode = 0
                     print("   🎨 UI updated to show modifier combination")
+                    
+                    // Post debug notification to help track UI updates
+                    NotificationCenter.default.post(name: NSNotification.Name("HotkeyRecorderDebug"), object: nil)
 
                     // Cancel any previous auto-save work item
                     autoSaveWorkItem?.cancel()

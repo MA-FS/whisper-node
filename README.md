@@ -50,15 +50,26 @@ open build/WhisperNode-1.0.0.dmg
 
 ### Build Commands
 ```bash
-# Build app only
+# Build Debug DMG for testing
+./build-dmg.sh
+
+# Build Release DMG for distribution
+./build-dmg.sh Release
+
+# Build app only (no DMG)
 ./scripts/build-release.sh
 
-# Create DMG installer
-./scripts/create-dmg.sh
+# Create DMG from existing app
+./scripts/create-dmg.sh ./build/WhisperNode.app
 
 # Clean build
 rm -rf build/ && ./scripts/build-release.sh
 ```
+
+⏺ **Individual script options:**
+1. **For Release builds:** `./build-dmg.sh Release`
+2. **Just build the app (no DMG):** `./scripts/build-release.sh`
+3. **Just create DMG from existing app:** `./scripts/create-dmg.sh ./build/WhisperNode.app`
 
 ### Project Structure
 ```

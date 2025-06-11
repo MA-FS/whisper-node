@@ -95,6 +95,14 @@ public class WhisperNodeCore: ObservableObject {
         
         isInitialized = true
         Self.logger.info("WhisperNode Core initialized successfully")
+        
+        // Start voice activation automatically if onboarding is complete
+        if SettingsManager.shared.hasCompletedOnboarding {
+            Self.logger.info("🚀 Auto-starting voice activation - onboarding complete")
+            startVoiceActivation()
+        } else {
+            Self.logger.info("⏳ Voice activation deferred - onboarding not complete")
+        }
     }
     
     private func setupAudioEngine() {
@@ -470,6 +478,7 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
         self.isRecording = true
         Self.logger.info("🎤 Voice recording started - delegate callback received")
+        Self.logger.info("🔊 WhisperNodeCore delegate method called successfully")
         
         // Haptic feedback for recording start
         HapticManager.shared.recordingStarted()
@@ -477,9 +486,13 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Update menu bar state
         menuBarManager.updateState(.recording)
         
-        // Show visual indicator
-        Self.logger.info("🟢 Showing recording indicator")
+        // Show visual indicator with enhanced logging
+        Self.logger.info("🟢 Attempting to show recording indicator")
         indicatorManager.showRecording()
+        Self.logger.info("✅ indicatorManager.showRecording() called")
+        
+        // Verify indicator manager state
+        Self.logger.info("📊 Indicator state - isVisible: \(self.indicatorManager.isVisible), currentState: \(String(describing: self.indicatorManager.currentState))")
         
         // Performance monitoring is always active via PerformanceMonitor.shared
         

@@ -559,7 +559,7 @@ public class GlobalHotkeyManager: ObservableObject {
         let cleanHotkeyFlags = cleanModifierFlags(self.currentHotkey.modifierFlags)
         Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
 
-        // Check if the current flags match our modifier-only hotkey
+        // Enhanced modifier-only detection with improved Control+Option support
         if cleanFlags == cleanHotkeyFlags && cleanFlags.rawValue != 0 {
             // Modifiers pressed - start recording
             if keyDownTime == nil {
@@ -567,11 +567,19 @@ public class GlobalHotkeyManager: ObservableObject {
                 keyDownTime = currentTime
 
                 Self.logger.info("🎯 Modifier-only hotkey pressed: \(self.currentHotkey.description)")
+                Self.logger.info("🔊 Triggering delegate callback for recording start")
 
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.isRecording = true
-                    self.delegate?.hotkeyManager(self, didStartRecording: true)
+                    
+                    // Enhanced delegate notification with validation
+                    if let delegate = self.delegate {
+                        Self.logger.info("✅ Calling delegate.didStartRecording")
+                        delegate.hotkeyManager(self, didStartRecording: true)
+                    } else {
+                        Self.logger.error("❌ No delegate found - recording will not be triggered!")
+                    }
                 }
             }
         } else if cleanFlags.rawValue == 0 && keyDownTime != nil {
@@ -589,8 +597,10 @@ public class GlobalHotkeyManager: ObservableObject {
                 self.isRecording = false
 
                 if holdDuration >= self.minimumHoldDuration {
+                    Self.logger.info("✅ Recording duration met minimum threshold, completing recording")
                     self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
                 } else {
+                    Self.logger.warning("⚠️ Recording too short (\(holdDuration)s), cancelling")
                     self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
                 }
             }
