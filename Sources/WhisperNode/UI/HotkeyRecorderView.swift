@@ -264,7 +264,7 @@ struct HotkeyRecorderView: View {
         case .flagsChanged:
             // Update modifier flags - clean them to only include essential modifiers
             let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
-            let cleanedModifiers = cleanModifierFlags(rawModifiers)
+            let cleanedModifiers = rawModifiers.cleanedModifierFlags
             
             print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
             print("   Control: \(cleanedModifiers.contains(.maskControl))")
@@ -338,7 +338,7 @@ struct HotkeyRecorderView: View {
 
             // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
             let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
-            let cleanedModifiers = cleanModifierFlags(rawModifiers)
+            let cleanedModifiers = rawModifiers.cleanedModifierFlags
             recordedModifiers = cleanedModifiers
 
             print("⌨️ Key down: code=\(event.keyCode), modifiers=\(cleanedModifiers.rawValue)")
@@ -383,25 +383,6 @@ struct HotkeyRecorderView: View {
         }
     }
 
-    private func cleanModifierFlags(_ flags: CGEventFlags) -> CGEventFlags {
-        // Keep only the essential modifier flags, remove system/internal flags
-        var cleanFlags = CGEventFlags()
-
-        if flags.contains(.maskCommand) {
-            cleanFlags.insert(.maskCommand)
-        }
-        if flags.contains(.maskAlternate) {
-            cleanFlags.insert(.maskAlternate)
-        }
-        if flags.contains(.maskShift) {
-            cleanFlags.insert(.maskShift)
-        }
-        if flags.contains(.maskControl) {
-            cleanFlags.insert(.maskControl)
-        }
-
-        return cleanFlags
-    }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
         var parts: [String] = []

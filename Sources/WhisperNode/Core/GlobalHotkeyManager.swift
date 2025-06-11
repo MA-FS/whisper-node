@@ -449,8 +449,8 @@ public class GlobalHotkeyManager: ObservableObject {
         let flags = event.flags
 
         // Clean the event flags to remove system flags
-        let cleanEventFlags = cleanModifierFlags(flags)
-        let cleanHotkeyFlags = cleanModifierFlags(self.currentHotkey.modifierFlags)
+        let cleanEventFlags = flags.cleanedModifierFlags
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags
 
         Self.logger.debug("🔍 Checking hotkey match:")
         Self.logger.debug("   Event: keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
@@ -476,25 +476,6 @@ public class GlobalHotkeyManager: ObservableObject {
         return matches
     }
 
-    private func cleanModifierFlags(_ flags: CGEventFlags) -> CGEventFlags {
-        // Keep only the essential modifier flags, remove system/internal flags
-        var cleanFlags = CGEventFlags()
-
-        if flags.contains(.maskCommand) {
-            cleanFlags.insert(.maskCommand)
-        }
-        if flags.contains(.maskAlternate) {
-            cleanFlags.insert(.maskAlternate)
-        }
-        if flags.contains(.maskShift) {
-            cleanFlags.insert(.maskShift)
-        }
-        if flags.contains(.maskControl) {
-            cleanFlags.insert(.maskControl)
-        }
-
-        return cleanFlags
-    }
     
     private func handleKeyDown(_ event: CGEvent) {
         let currentTime = CFAbsoluteTimeGetCurrent()
@@ -542,7 +523,7 @@ public class GlobalHotkeyManager: ObservableObject {
         // This is primarily for hotkeys like Control+Option without any other key
 
         let flags = event.flags
-        let cleanFlags = cleanModifierFlags(flags)
+        let cleanFlags = flags.cleanedModifierFlags
 
         Self.logger.debug("🏳️ Flags changed: raw=\(flags.rawValue), clean=\(cleanFlags.rawValue)")
         Self.logger.debug("   Control: \(cleanFlags.contains(.maskControl))")
@@ -556,7 +537,7 @@ public class GlobalHotkeyManager: ObservableObject {
             return 
         }
 
-        let cleanHotkeyFlags = cleanModifierFlags(self.currentHotkey.modifierFlags)
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags
         Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
 
         // Enhanced modifier-only detection with improved Control+Option support
