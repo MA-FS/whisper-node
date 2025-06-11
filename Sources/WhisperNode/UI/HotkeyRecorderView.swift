@@ -282,27 +282,32 @@ struct HotkeyRecorderView: View {
     }
     
     private func handleKeyEvent(_ event: NSEvent) {
-        guard isRecording else { return }
+        // Capture isRecording state on the current thread first
+        let currentlyRecording = isRecording
+        guard currentlyRecording else { return }
 
         // Capture event data on the current thread before dispatching to main thread
         let eventType = event.type
         let eventKeyCode = event.keyCode
         let eventModifierFlags = event.modifierFlags
 
-        switch eventType {
-        case .flagsChanged:
-            // Update modifier flags - clean them to only include essential modifiers
-            let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
-            let cleanedModifiers = rawModifiers.cleanedModifierFlags
+        // All SwiftUI state updates must happen on the main thread
+        DispatchQueue.main.async {
+            // Double-check we're still recording after thread dispatch
+            guard self.isRecording else { return }
             
-            print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
-            print("   Control: \(cleanedModifiers.contains(.maskControl))")
-            print("   Option: \(cleanedModifiers.contains(.maskAlternate))")
-            print("   Shift: \(cleanedModifiers.contains(.maskShift))")
-            print("   Command: \(cleanedModifiers.contains(.maskCommand))")
+            switch eventType {
+            case .flagsChanged:
+                // Update modifier flags - clean them to only include essential modifiers
+                let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
+                let cleanedModifiers = rawModifiers.cleanedModifierFlags
+                
+                print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
+                print("   Control: \(cleanedModifiers.contains(.maskControl))")
+                print("   Option: \(cleanedModifiers.contains(.maskAlternate))")
+                print("   Shift: \(cleanedModifiers.contains(.maskShift))")
+                print("   Command: \(cleanedModifiers.contains(.maskCommand))")
 
-            // Dispatch @State updates to main thread
-            DispatchQueue.main.async {
                 // If modifiers changed from a previous valid combination, reset to allow new combination
                 if self.recordedKeyCode == UInt16.max && cleanedModifiers != self.recordedModifiers {
                     print("   🔄 Modifier combination changed, resetting for new input")
@@ -362,17 +367,14 @@ struct HotkeyRecorderView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
                     }
                 }
-            }
 
-        case .keyDown:
-            // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
-            let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
-            let cleanedModifiers = rawModifiers.cleanedModifierFlags
+            case .keyDown:
+                // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
+                let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
+                let cleanedModifiers = rawModifiers.cleanedModifierFlags
 
-            print("⌨️ Key down: code=\(eventKeyCode), modifiers=\(cleanedModifiers.rawValue)")
+                print("⌨️ Key down: code=\(eventKeyCode), modifiers=\(cleanedModifiers.rawValue)")
 
-            // Dispatch @State updates to main thread
-            DispatchQueue.main.async {
                 // Record the key code
                 self.recordedKeyCode = UInt16(eventKeyCode)
                 self.recordedModifiers = cleanedModifiers
@@ -411,10 +413,10 @@ struct HotkeyRecorderView: View {
                     self.autoSaveWorkItem = workItem
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
                 }
-            }
 
-        default:
-            break
+            default:
+                break
+            }
         }
     }
 
