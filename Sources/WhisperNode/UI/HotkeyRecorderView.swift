@@ -260,10 +260,15 @@ struct HotkeyRecorderView: View {
     private func handleKeyEvent(_ event: NSEvent) {
         guard isRecording else { return }
 
-        switch event.type {
+        // Capture event data on the current thread before dispatching to main thread
+        let eventType = event.type
+        let eventKeyCode = event.keyCode
+        let eventModifierFlags = event.modifierFlags
+
+        switch eventType {
         case .flagsChanged:
             // Update modifier flags - clean them to only include essential modifiers
-            let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+            let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
             let cleanedModifiers = rawModifiers.cleanedModifierFlags
             
             print("🏳️ Flags changed: raw=\(rawModifiers.rawValue), cleaned=\(cleanedModifiers.rawValue)")
@@ -272,110 +277,116 @@ struct HotkeyRecorderView: View {
             print("   Shift: \(cleanedModifiers.contains(.maskShift))")
             print("   Command: \(cleanedModifiers.contains(.maskCommand))")
 
-            // If modifiers changed from a previous valid combination, reset to allow new combination
-            if recordedKeyCode == UInt16.max && cleanedModifiers != recordedModifiers {
-                print("   🔄 Modifier combination changed, resetting for new input")
-                recordedKeyCode = nil
-                autoSaveWorkItem?.cancel()
-            }
-            
-            recordedModifiers = cleanedModifiers
+            // Dispatch @State updates to main thread
+            DispatchQueue.main.async {
+                // If modifiers changed from a previous valid combination, reset to allow new combination
+                if self.recordedKeyCode == UInt16.max && cleanedModifiers != self.recordedModifiers {
+                    print("   🔄 Modifier combination changed, resetting for new input")
+                    self.recordedKeyCode = nil
+                    self.autoSaveWorkItem?.cancel()
+                }
+                
+                self.recordedModifiers = cleanedModifiers
 
-            // Check if we have a valid modifier-only combination (like Control+Option)
-            if !cleanedModifiers.isEmpty && recordedKeyCode == nil {
-                // For modifier-only combinations, we'll use a special key code (UInt16.max) to indicate "modifiers only"
-                // But we need at least 2 modifiers for a valid combination
-                let modifierCount = [
-                    cleanedModifiers.contains(.maskControl),
-                    cleanedModifiers.contains(.maskAlternate),
-                    cleanedModifiers.contains(.maskShift),
-                    cleanedModifiers.contains(.maskCommand)
-                ].filter { $0 }.count
+                // Check if we have a valid modifier-only combination (like Control+Option)
+                if !cleanedModifiers.isEmpty && self.recordedKeyCode == nil {
+                    // For modifier-only combinations, we'll use a special key code (UInt16.max) to indicate "modifiers only"
+                    // But we need at least 2 modifiers for a valid combination
+                    let modifierCount = [
+                        cleanedModifiers.contains(.maskControl),
+                        cleanedModifiers.contains(.maskAlternate),
+                        cleanedModifiers.contains(.maskShift),
+                        cleanedModifiers.contains(.maskCommand)
+                    ].filter { $0 }.count
 
-                // Special check for Control+Option combination (our preferred hotkey)
-                let isControlOption = cleanedModifiers.contains(.maskControl) && 
-                                     cleanedModifiers.contains(.maskAlternate) && 
-                                     modifierCount == 2
+                    // Special check for Control+Option combination (our preferred hotkey)
+                    let isControlOption = cleanedModifiers.contains(.maskControl) && 
+                                         cleanedModifiers.contains(.maskAlternate) && 
+                                         modifierCount == 2
 
-                if modifierCount >= 2 {
-                    print("   🎯 Valid modifier-only combination detected: \(modifierCount) modifiers")
-                    if isControlOption {
-                        print("   ✨ Control+Option combination detected - preferred hotkey!")
-                    }
-
-                    // Immediately set keyCode=UInt16.max to update UI
-                    recordedKeyCode = UInt16.max
-                    print("   🎨 UI updated to show modifier combination")
-                    
-                    // Post debug notification to help track UI updates
-                    NotificationCenter.default.post(name: NSNotification.Name("HotkeyRecorderDebug"), object: nil)
-
-                    // Cancel any previous auto-save work item
-                    autoSaveWorkItem?.cancel()
-
-                    // Create more robust auto-save with stable state check
-                    let capturedModifiers = cleanedModifiers
-                    let workItem = DispatchWorkItem {
-                        guard self.isRecording,
-                              self.recordedKeyCode == UInt16.max,
-                              !capturedModifiers.isEmpty else { 
-                            print("   ❌ Auto-save skipped: recording=\(self.isRecording), keyCode=\(self.recordedKeyCode ?? 999), modifiers=\(capturedModifiers.rawValue)")
-                            return 
+                    if modifierCount >= 2 {
+                        print("   🎯 Valid modifier-only combination detected: \(modifierCount) modifiers")
+                        if isControlOption {
+                            print("   ✨ Control+Option combination detected - preferred hotkey!")
                         }
-                        print("💾 Auto-saving modifier-only hotkey: \(self.formatModifierOnlyDescription(modifiers: capturedModifiers))")
-                        self.saveRecordedHotkey()
+
+                        // Immediately set keyCode=UInt16.max to update UI
+                        self.recordedKeyCode = UInt16.max
+                        print("   🎨 UI updated to show modifier combination")
+                        
+                        // Post debug notification to help track UI updates
+                        NotificationCenter.default.post(name: NSNotification.Name("HotkeyRecorderDebug"), object: nil)
+
+                        // Cancel any previous auto-save work item
+                        self.autoSaveWorkItem?.cancel()
+
+                        // Create more robust auto-save with stable state check
+                        let capturedModifiers = cleanedModifiers
+                        let workItem = DispatchWorkItem {
+                            guard self.isRecording,
+                                  self.recordedKeyCode == UInt16.max,
+                                  !capturedModifiers.isEmpty else { 
+                                print("   ❌ Auto-save skipped: recording=\(self.isRecording), keyCode=\(self.recordedKeyCode ?? 999), modifiers=\(capturedModifiers.rawValue)")
+                                return 
+                            }
+                            print("💾 Auto-saving modifier-only hotkey: \(self.formatModifierOnlyDescription(modifiers: capturedModifiers))")
+                            self.saveRecordedHotkey()
+                        }
+                        self.autoSaveWorkItem = workItem
+                        // Shorter delay for Control+Option since it's preferred
+                        let delay = isControlOption ? 1.0 : 1.5
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
                     }
-                    autoSaveWorkItem = workItem
-                    // Shorter delay for Control+Option since it's preferred
-                    let delay = isControlOption ? 1.0 : 1.5
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
                 }
             }
 
         case .keyDown:
-            // Record the key code
-            recordedKeyCode = UInt16(event.keyCode)
-
             // Update modifiers from the key event as well (in case flagsChanged wasn't captured)
-            let rawModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+            let rawModifiers = CGEventFlags(rawValue: UInt64(eventModifierFlags.rawValue))
             let cleanedModifiers = rawModifiers.cleanedModifierFlags
-            recordedModifiers = cleanedModifiers
 
-            print("⌨️ Key down: code=\(event.keyCode), modifiers=\(cleanedModifiers.rawValue)")
+            print("⌨️ Key down: code=\(eventKeyCode), modifiers=\(cleanedModifiers.rawValue)")
 
-            // Check if we have a valid combination
-            let hasValidModifiers = !recordedModifiers.isEmpty
-            let hasValidKey = recordedKeyCode != nil
+            // Dispatch @State updates to main thread
+            DispatchQueue.main.async {
+                // Record the key code
+                self.recordedKeyCode = UInt16(eventKeyCode)
+                self.recordedModifiers = cleanedModifiers
 
-            print("   Valid combination: key=\(hasValidKey), modifiers=\(hasValidModifiers)")
+                // Check if we have a valid combination
+                let hasValidModifiers = !self.recordedModifiers.isEmpty
+                let hasValidKey = self.recordedKeyCode != nil
 
-            if hasValidKey && hasValidModifiers {
-                // Cancel any previous auto-save work item
-                autoSaveWorkItem?.cancel()
+                print("   Valid combination: key=\(hasValidKey), modifiers=\(hasValidModifiers)")
 
-                // Auto-save after a delay to allow user to see the combination
-                let capturedKeyCode = UInt16(event.keyCode)
-                let capturedModifiers = recordedModifiers
-                let workItem = DispatchWorkItem {
-                    guard self.isRecording,
-                          self.recordedKeyCode == capturedKeyCode,
-                          self.recordedModifiers == capturedModifiers else { return }
-                    print("💾 Auto-saving hotkey: \(self.formatHotkeyDescription(keyCode: capturedKeyCode, modifiers: capturedModifiers))")
-                    self.saveRecordedHotkey()
+                if hasValidKey && hasValidModifiers {
+                    // Cancel any previous auto-save work item
+                    self.autoSaveWorkItem?.cancel()
+
+                    // Auto-save after a delay to allow user to see the combination
+                    let capturedKeyCode = UInt16(eventKeyCode)
+                    let capturedModifiers = self.recordedModifiers
+                    let workItem = DispatchWorkItem {
+                        guard self.isRecording,
+                              self.recordedKeyCode == capturedKeyCode,
+                              self.recordedModifiers == capturedModifiers else { return }
+                        print("💾 Auto-saving hotkey: \(self.formatHotkeyDescription(keyCode: capturedKeyCode, modifiers: capturedModifiers))")
+                        self.saveRecordedHotkey()
+                    }
+                    self.autoSaveWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+                } else if hasValidKey && self.recordedModifiers.isEmpty {
+                    // Allow single key combinations (like just Space) for some use cases
+                    print("   Single key combination detected")
+                    self.autoSaveWorkItem?.cancel()
+                    let workItem = DispatchWorkItem {
+                        guard self.isRecording else { return }
+                        print("💾 Auto-saving single key: \(self.keyCodeToDisplayString(UInt16(eventKeyCode)))")
+                        self.saveRecordedHotkey()
+                    }
+                    self.autoSaveWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
                 }
-                autoSaveWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
-            } else if hasValidKey && recordedModifiers.isEmpty {
-                // Allow single key combinations (like just Space) for some use cases
-                print("   Single key combination detected")
-                autoSaveWorkItem?.cancel()
-                let workItem = DispatchWorkItem {
-                    guard self.isRecording else { return }
-                    print("💾 Auto-saving single key: \(self.keyCodeToDisplayString(UInt16(event.keyCode)))")
-                    self.saveRecordedHotkey()
-                }
-                autoSaveWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
             }
 
         default:

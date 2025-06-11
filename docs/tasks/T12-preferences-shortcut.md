@@ -57,7 +57,7 @@ struct HotkeyRecorder: View {
 - **Conflict Detection**: Validates against system shortcuts (Spotlight, etc.)
 - **Alternative Suggestions**: Generates safe alternatives when conflicts occur
 - **Visual Feedback**: Recording state indicators and key combination display
-- **Reset to Default**: Option+Space default with confirmation dialog
+- **Reset to Default**: Control+Option+Space default with confirmation dialog
 
 ## Testing Plan
 

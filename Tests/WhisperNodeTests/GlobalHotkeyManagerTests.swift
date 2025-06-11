@@ -69,7 +69,7 @@ final class GlobalHotkeyManagerTests: XCTestCase {
         let validConfig = HotkeyConfiguration(
             keyCode: KeyCode.space,
             modifierFlags: [.maskAlternate, .maskShift],
-            description: "Option+Shift+Space"
+            description: "⌥⇧Space"
         )
         
         hotkeyManager.updateHotkey(validConfig)
