@@ -118,8 +118,8 @@ public class GlobalHotkeyManager: ObservableObject {
         if modifiers.contains(.maskShift) { parts.append("⇧") }
         if modifiers.contains(.maskCommand) { parts.append("⌘") }
         
-        // Handle modifier-only combinations (keyCode = 0)
-        if keyCode == 0 {
+        // Handle modifier-only combinations (keyCode = UInt16.max)
+        if keyCode == UInt16.max {
             return parts.joined() + " (Hold)"
         }
         
@@ -456,8 +456,8 @@ public class GlobalHotkeyManager: ObservableObject {
         Self.logger.debug("   Event: keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
         Self.logger.debug("   Hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(cleanHotkeyFlags.rawValue)")
 
-        // Handle modifier-only combinations (keyCode = 0)
-        if self.currentHotkey.keyCode == 0 {
+        // Handle modifier-only combinations (keyCode = UInt16.max)
+        if self.currentHotkey.keyCode == UInt16.max {
             Self.logger.debug("   Checking modifier-only combination")
             // For modifier-only hotkeys, we only match flagsChanged events with exact modifiers
             // and no additional key press
@@ -531,8 +531,8 @@ public class GlobalHotkeyManager: ObservableObject {
         Self.logger.debug("   Shift: \(cleanFlags.contains(.maskShift))")
         Self.logger.debug("   Command: \(cleanFlags.contains(.maskCommand))")
 
-        // Check if this is a modifier-only hotkey (keyCode = 0)
-        guard currentHotkey.keyCode == 0 else { 
+        // Check if this is a modifier-only hotkey (keyCode = UInt16.max)
+        guard currentHotkey.keyCode == UInt16.max else { 
             Self.logger.debug("   Not a modifier-only hotkey, ignoring flags change")
             return 
         }
