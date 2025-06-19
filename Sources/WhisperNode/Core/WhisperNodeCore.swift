@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import ApplicationServices
+import AppKit
 
 extension Notification.Name {
     static let whisperModelLoadFailed = Notification.Name("whisperModelLoadFailed")
@@ -63,6 +64,11 @@ public class WhisperNodeCore: ObservableObject {
     @Published public private(set) var isInitialized = false
     @Published public private(set) var isRecording = false
     @Published public private(set) var currentModel: String = "tiny.en"
+
+    // Permission monitoring
+    private var permissionMonitorTimer: Timer?
+    private var lastAccessibilityPermissionStatus = false
+    private var appActivationObserver: NSObjectProtocol?
     
     // Performance monitoring properties for backward compatibility
     public var memoryUsage: UInt64 {
@@ -78,22 +84,38 @@ public class WhisperNodeCore: ObservableObject {
     private init() {
         initialize()
     }
+
+    deinit {
+        // Clean up permission monitoring resources
+        permissionMonitorTimer?.invalidate()
+        permissionMonitorTimer = nil
+
+        if let observer = appActivationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        // Note: Can't use logger in deinit due to main actor isolation
+        print("WhisperNodeCore deinitialized")
+    }
     
     public func initialize() {
         Self.logger.info("WhisperNode Core initializing...")
-        
+
         // Setup hotkey manager delegate
         hotkeyManager.delegate = self
-        
+
         // Setup audio engine callbacks
         setupAudioEngine()
-        
+
         // Initialize with default model
         loadDefaultModel()
-        
+
         // Setup performance monitoring with automatic adjustments
         setupPerformanceMonitoring()
-        
+
+        // Setup runtime permission monitoring
+        setupPermissionMonitoring()
+
         isInitialized = true
         Self.logger.info("WhisperNode Core initialized successfully")
         
@@ -135,6 +157,91 @@ public class WhisperNodeCore: ObservableObject {
         // PerformanceMonitor.shared is already started automatically
         // Setup performance observation for automatic adjustments
         setupPerformanceObservation()
+    }
+
+    /// Sets up runtime permission monitoring to automatically activate hotkey system when permissions become available
+    private func setupPermissionMonitoring() {
+        Self.logger.info("Setting up runtime permission monitoring")
+
+        // Initialize current permission status
+        lastAccessibilityPermissionStatus = AXIsProcessTrusted()
+        Self.logger.info("Initial accessibility permission status: \(self.lastAccessibilityPermissionStatus)")
+
+        // Set up periodic permission checking (every 2 seconds when app is active)
+        startPermissionMonitorTimer()
+
+        // Set up app activation observer to check permissions when app becomes active
+        setupAppActivationObserver()
+    }
+
+    /// Starts the permission monitoring timer
+    private func startPermissionMonitorTimer() {
+        // Stop existing timer if any
+        stopPermissionMonitorTimer()
+
+        // Create new timer that checks permissions every 2 seconds
+        permissionMonitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.checkPermissionStatusAndActivateIfNeeded()
+            }
+        }
+
+        Self.logger.debug("Permission monitor timer started")
+    }
+
+    /// Stops the permission monitoring timer
+    private func stopPermissionMonitorTimer() {
+        permissionMonitorTimer?.invalidate()
+        permissionMonitorTimer = nil
+        Self.logger.debug("Permission monitor timer stopped")
+    }
+
+    /// Sets up observer for app activation to check permissions when app becomes active
+    private func setupAppActivationObserver() {
+        // Remove existing observer if any
+        if let observer = appActivationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        // Add observer for app becoming active
+        appActivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                Self.logger.debug("App became active - checking permission status")
+                await self?.checkPermissionStatusAndActivateIfNeeded()
+            }
+        }
+
+        Self.logger.debug("App activation observer set up")
+    }
+
+    /// Checks current permission status and activates hotkey system if permissions became available
+    @MainActor
+    private func checkPermissionStatusAndActivateIfNeeded() async {
+        let currentPermissionStatus = AXIsProcessTrusted()
+
+        // Only act if permission status changed from false to true
+        if !lastAccessibilityPermissionStatus && currentPermissionStatus {
+            Self.logger.info("🎉 Accessibility permissions detected as newly granted - activating hotkey system")
+
+            // Update stored status
+            lastAccessibilityPermissionStatus = currentPermissionStatus
+
+            // Start hotkey system immediately
+            startVoiceActivation()
+
+            // Update menu bar state to reflect activation
+            menuBarManager.updateState(.normal)
+
+            Self.logger.info("✅ Hotkey system automatically activated after permission grant - no restart required")
+        } else if lastAccessibilityPermissionStatus != currentPermissionStatus {
+            // Permission status changed (could be revoked)
+            lastAccessibilityPermissionStatus = currentPermissionStatus
+            Self.logger.info("Accessibility permission status changed to: \(currentPermissionStatus)")
+        }
     }
     
     private func setupPerformanceObservation() {
@@ -378,6 +485,28 @@ public class WhisperNodeCore: ObservableObject {
                 Self.logger.info("Memory cleanup \(success ? "successful" : "failed")")
             }
         }
+    }
+
+    /// Manually trigger permission status check and hotkey activation if permissions are available
+    ///
+    /// This method can be called when preferences window closes or when the app needs to
+    /// check if accessibility permissions have been granted at runtime.
+    ///
+    /// ## Usage
+    /// - Call when preferences window closes
+    /// - Call after user might have granted permissions in System Preferences
+    /// - Safe to call multiple times
+    ///
+    /// ## Behavior
+    /// - Checks current accessibility permission status
+    /// - Automatically starts hotkey system if permissions are newly available
+    /// - Updates UI state to reflect activation
+    /// - Logs permission status changes
+    ///
+    /// - Note: This method is async and should be called with await
+    /// - Important: Safe to call even if hotkey system is already active
+    public func checkPermissionsAndActivateIfNeeded() async {
+        await checkPermissionStatusAndActivateIfNeeded()
     }
     
     // MARK: - Private Implementation

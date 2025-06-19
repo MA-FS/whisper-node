@@ -112,14 +112,20 @@ private class WindowDelegate: NSObject, NSWindowDelegate {
     /// - Parameter notification: The notification containing the window that is closing.
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        
+
         // Save window frame
         manager?.settings.saveWindowFrame(window.frame)
-        
+
         // Clear the window references
         manager?.windowWillClose()
-        
-        PreferencesWindowManager.logger.debug("Preferences window will close")
+
+        // Check permissions after preferences window closes
+        // User might have granted accessibility permissions in System Preferences
+        Task { @MainActor in
+            await WhisperNodeCore.shared.checkPermissionsAndActivateIfNeeded()
+        }
+
+        PreferencesWindowManager.logger.debug("Preferences window will close - permission check triggered")
     }
     
     /// Saves the window frame to settings when the preferences window is resized.

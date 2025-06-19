@@ -113,9 +113,44 @@ struct OnboardingFlow: View {
         settings.hasCompletedOnboarding = true
         settings.onboardingStep = 0
         Self.logger.info("Onboarding completed successfully")
-        
-        // Use the window manager to handle dismissal
-        OnboardingWindowManager.shared.hideOnboarding()
+
+        // Immediately attempt to start hotkey system after onboarding completion
+        Task { @MainActor in
+            do {
+                try await initializeHotkeySystemAfterOnboarding()
+            } catch {
+                Self.logger.error("Failed to initialize hotkey system after onboarding: \(error.localizedDescription)")
+                // Continue with dismissal even if hotkey initialization fails
+            }
+
+            // Use the window manager to handle dismissal
+            OnboardingWindowManager.shared.hideOnboarding()
+        }
+    }
+
+    /// Attempts to initialize the hotkey system immediately after onboarding completion
+    /// This eliminates the need for app restart when accessibility permissions are already granted
+    @MainActor
+    private func initializeHotkeySystemAfterOnboarding() async throws {
+        Self.logger.info("Attempting to initialize hotkey system after onboarding completion")
+
+        // Ensure core is initialized
+        if !core.isInitialized {
+            core.initialize()
+        }
+
+        // Check if accessibility permissions are already granted
+        let hasAccessibilityPermissions = AXIsProcessTrusted()
+        Self.logger.info("Accessibility permissions status after onboarding: \(hasAccessibilityPermissions)")
+
+        if hasAccessibilityPermissions {
+            // Permissions are available, start hotkey system immediately
+            core.startVoiceActivation()
+            Self.logger.info("✅ Hotkey system started immediately after onboarding - no restart required")
+        } else {
+            Self.logger.info("⚠️ Accessibility permissions not yet granted - hotkey system will start when permissions become available")
+            // The runtime permission monitoring in WhisperNodeCore will handle activation when permissions are granted
+        }
     }
 }
 
