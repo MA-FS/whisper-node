@@ -190,8 +190,8 @@ public class MenuBarManager: ObservableObject {
                 self?.hasAccessibilityPermission = granted
                 self?.updateTooltip()
 
-                // Update state if permission is required
-                if !granted && self?.currentState == .normal {
+                // Update state if permission is required, but avoid conflicts with recording state
+                if !granted && self?.currentState != .recording {
                     self?.updateState(.permissionRequired)
                 } else if granted && self?.currentState == .permissionRequired {
                     self?.updateState(.normal)
@@ -202,6 +202,13 @@ public class MenuBarManager: ObservableObject {
         // Start monitoring if not already started
         if !permissionHelper.isMonitoring {
             permissionHelper.startMonitoring()
+        }
+    }
+
+    deinit {
+        // Clean up permission monitoring callbacks
+        Task { @MainActor in
+            permissionHelper.onPermissionChanged = nil
         }
     }
 
@@ -395,7 +402,7 @@ struct StatusRow: View {
 }
 
 struct PermissionStatusRow: View {
-    @StateObject private var permissionHelper = PermissionHelper.shared
+    @ObservedObject private var permissionHelper = PermissionHelper.shared
 
     var body: some View {
         HStack {

@@ -4,7 +4,7 @@ import Carbon
 /// Preferences tab for configuring global hotkey shortcuts
 struct ShortcutTab: View {
     @ObservedObject private var hotkeyManager = GlobalHotkeyManager.shared
-    @StateObject private var permissionHelper = PermissionHelper.shared
+    @ObservedObject private var permissionHelper = PermissionHelper.shared
     @State private var isRecording = false
     @State private var conflictAlert: ConflictAlert?
     @State private var showingResetConfirmation = false
@@ -271,7 +271,7 @@ private struct InstructionRow: View {
 }
 
 private struct PermissionBanner: View {
-    @StateObject private var permissionHelper = PermissionHelper.shared
+    @ObservedObject private var permissionHelper = PermissionHelper.shared
 
     var body: some View {
         VStack(spacing: 12) {

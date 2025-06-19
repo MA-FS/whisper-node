@@ -111,28 +111,29 @@ public class PermissionHelper: ObservableObject {
     /// observers. Automatically detects when permissions are granted or revoked
     /// without requiring app restart.
     ///
+    /// - Parameter interval: Monitoring interval in seconds (default: 3.0)
     /// - Note: Safe to call multiple times - will not create duplicate monitors
-    public func startMonitoring() {
+    public func startMonitoring(interval: TimeInterval = 3.0) {
         guard !isMonitoring else {
             Self.logger.debug("Permission monitoring already active")
             return
         }
-        
-        Self.logger.info("Starting accessibility permission monitoring")
-        
+
+        Self.logger.info("Starting accessibility permission monitoring with \(interval)s interval")
+
         // Update initial status
         updatePermissionStatus()
-        
-        // Set up periodic checking (every 3 seconds for responsive detection)
-        monitoringTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+
+        // Set up periodic checking with configurable interval
+        monitoringTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updatePermissionStatus()
             }
         }
-        
+
         // Set up app activation observer for immediate checking when app becomes active
         setupAppActivationObserver()
-        
+
         isMonitoring = true
         Self.logger.info("Permission monitoring started successfully")
     }
@@ -207,16 +208,39 @@ public class PermissionHelper: ObservableObject {
     /// where users can grant permissions to WhisperNode.
     public func openSystemPreferences() {
         Self.logger.info("Opening System Preferences to Accessibility section")
-        
-        // Try modern Privacy & Security URL first (macOS 13+)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        } else {
-            // Fallback to older Security & Privacy URL
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security") {
-                NSWorkspace.shared.open(url)
+
+        let urls = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.preference.security"
+        ]
+
+        for urlString in urls {
+            if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
+                Self.logger.info("Successfully opened System Preferences with URL: \(urlString)")
+                return // Success
             }
         }
+
+        // Fallback: show error if all URLs fail
+        Self.logger.error("Failed to open System Preferences - all URLs failed")
+        showSystemPreferencesError()
+    }
+
+    /// Show error when System Preferences cannot be opened
+    private func showSystemPreferencesError() {
+        let alert = NSAlert()
+        alert.messageText = "Unable to Open System Preferences"
+        alert.informativeText = """
+        WhisperNode couldn't automatically open System Preferences.
+
+        Please manually open:
+        System Preferences → Privacy & Security → Accessibility
+
+        Then add WhisperNode to the list and enable it.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
     
     /// Show additional help for accessibility permissions

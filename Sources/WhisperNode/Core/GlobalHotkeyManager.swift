@@ -244,7 +244,8 @@ public class GlobalHotkeyManager: ObservableObject {
     // MARK: - Private Methods
     
     private func checkAccessibilityPermissions() -> Bool {
-        let hasPermissions = PermissionHelper.shared.checkPermissions(showPrompt: true)
+        // Use quiet check first to avoid double prompts
+        let hasPermissions = PermissionHelper.shared.checkPermissions(showPrompt: false)
 
         Self.logger.info("Accessibility permissions check: \(hasPermissions ? "granted" : "denied")")
 
