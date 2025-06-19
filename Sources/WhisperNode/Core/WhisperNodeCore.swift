@@ -161,74 +161,33 @@ public class WhisperNodeCore: ObservableObject {
 
     /// Sets up runtime permission monitoring to automatically activate hotkey system when permissions become available
     private func setupPermissionMonitoring() {
-        Self.logger.info("Setting up runtime permission monitoring")
+        Self.logger.info("Setting up runtime permission monitoring using PermissionHelper")
 
         // Initialize current permission status
-        lastAccessibilityPermissionStatus = AXIsProcessTrusted()
+        lastAccessibilityPermissionStatus = PermissionHelper.shared.hasAccessibilityPermission
         Self.logger.info("Initial accessibility permission status: \(self.lastAccessibilityPermissionStatus)")
 
-        // Set up periodic permission checking (every 5 seconds when app is active for better battery life)
-        startPermissionMonitorTimer()
-
-        // Set up app activation observer to check permissions when app becomes active
-        setupAppActivationObserver()
-    }
-
-    /// Starts the permission monitoring timer
-    private func startPermissionMonitorTimer() {
-        // Stop existing timer if any
-        stopPermissionMonitorTimer()
-
-        // Create new timer that checks permissions every 5 seconds (optimized for battery life)
-        permissionMonitorTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        // Use PermissionHelper's monitoring instead of duplicate timer
+        PermissionHelper.shared.onPermissionChanged = { [weak self] granted in
             Task { @MainActor in
-                await self?.checkPermissionStatusAndActivateIfNeeded()
+                await self?.handlePermissionChange(granted)
             }
         }
 
-        Self.logger.debug("Permission monitor timer started")
-    }
-
-    /// Stops the permission monitoring timer
-    private func stopPermissionMonitorTimer() {
-        permissionMonitorTimer?.invalidate()
-        permissionMonitorTimer = nil
-        Self.logger.debug("Permission monitor timer stopped")
-    }
-
-    /// Sets up observer for app activation to check permissions when app becomes active
-    private func setupAppActivationObserver() {
-        // Remove existing observer if any
-        if let observer = appActivationObserver {
-            NotificationCenter.default.removeObserver(observer)
+        // Start PermissionHelper monitoring if not already started
+        if !PermissionHelper.shared.isMonitoring {
+            PermissionHelper.shared.startMonitoring(interval: 5.0) // Use 5s for battery efficiency
         }
-
-        // Add observer for app becoming active
-        appActivationObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                Self.logger.debug("App became active - checking permission status")
-                await self?.checkPermissionStatusAndActivateIfNeeded()
-            }
-        }
-
-        Self.logger.debug("App activation observer set up")
     }
 
-    /// Checks current permission status and activates hotkey system if permissions became available
+    /// Handles permission status changes from PermissionHelper
     @MainActor
-    private func checkPermissionStatusAndActivateIfNeeded() async {
-        let currentPermissionStatus = AXIsProcessTrusted()
-
-        // Check if permission status changed from false to true (main actor safe)
+    private func handlePermissionChange(_ granted: Bool) async {
         let wasGranted = lastAccessibilityPermissionStatus
-        let isNowGranted = currentPermissionStatus
+        let isNowGranted = granted
 
         // Update stored status
-        lastAccessibilityPermissionStatus = currentPermissionStatus
+        lastAccessibilityPermissionStatus = granted
 
         // Only activate if permission status changed from denied to granted
         if !wasGranted && isNowGranted {
@@ -244,7 +203,23 @@ public class WhisperNodeCore: ObservableObject {
         } else if wasGranted != isNowGranted {
             // Permission status changed (could be revoked)
             Self.logger.debug("Accessibility permission status changed to: \(isNowGranted)")
+
+            if !isNowGranted {
+                // Permission was revoked - stop hotkey system
+                stopVoiceActivation()
+                menuBarManager.updateState(.permissionRequired)
+            }
         }
+    }
+
+    /// Checks current permission status and activates hotkey system if permissions became available
+    @MainActor
+    private func checkPermissionStatusAndActivateIfNeeded() async {
+        // Use PermissionHelper's current status instead of direct AX call
+        let currentPermissionStatus = PermissionHelper.shared.hasAccessibilityPermission
+
+        // Delegate to the new permission change handler
+        await handlePermissionChange(currentPermissionStatus)
     }
     
     private func setupPerformanceObservation() {
@@ -771,8 +746,8 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Show user-friendly error message with proper error type
         errorManager.handleError(.accessibilityPermissionDenied)
 
-        // Update menu bar to indicate permission issue
-        menuBarManager.updateState(.error)
+        // Update menu bar to indicate permission issue (use specific permission state)
+        menuBarManager.updateState(.permissionRequired)
 
         // Haptic feedback for permission error
         HapticManager.shared.errorOccurred()
