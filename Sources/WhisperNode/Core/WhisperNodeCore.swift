@@ -771,8 +771,8 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
         // Show user-friendly error message with proper error type
         errorManager.handleError(.accessibilityPermissionDenied)
 
-        // Update menu bar to indicate permission issue
-        menuBarManager.updateState(.error)
+        // Update menu bar to indicate permission issue (use specific permission state)
+        menuBarManager.updateState(.permissionRequired)
 
         // Haptic feedback for permission error
         HapticManager.shared.errorOccurred()

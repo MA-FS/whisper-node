@@ -4,6 +4,7 @@ import Carbon
 /// Preferences tab for configuring global hotkey shortcuts
 struct ShortcutTab: View {
     @ObservedObject private var hotkeyManager = GlobalHotkeyManager.shared
+    @StateObject private var permissionHelper = PermissionHelper.shared
     @State private var isRecording = false
     @State private var conflictAlert: ConflictAlert?
     @State private var showingResetConfirmation = false
@@ -38,7 +39,15 @@ struct ShortcutTab: View {
             .padding(.top, 20)
             
             Divider()
-            
+
+            // Permission Status Banner
+            if !permissionHelper.hasAccessibilityPermission {
+                PermissionBanner()
+                    .padding(.horizontal, 20)
+
+                Divider()
+            }
+
             // Current Hotkey Section
             VStack(spacing: 16) {
                 HStack {
@@ -258,6 +267,53 @@ private struct InstructionRow: View {
                 .foregroundColor(.primary)
             Spacer()
         }
+    }
+}
+
+private struct PermissionBanner: View {
+    @StateObject private var permissionHelper = PermissionHelper.shared
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .foregroundColor(.orange)
+                    .font(.title2)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Accessibility Permissions Required")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Text("WhisperNode needs accessibility permissions to capture global hotkeys")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+
+            HStack {
+                Button("Grant Permissions") {
+                    permissionHelper.showPermissionGuidance()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Help") {
+                    permissionHelper.showPermissionHelp()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+            }
+        }
+        .padding(16)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 

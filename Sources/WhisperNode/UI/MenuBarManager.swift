@@ -20,6 +20,7 @@ public class MenuBarManager: ObservableObject {
         case normal
         case recording
         case error
+        case permissionRequired
     }
     
     /// Errors that can occur during menu bar setup
@@ -40,6 +41,7 @@ public class MenuBarManager: ObservableObject {
     @Published public var currentState: AppState = .normal
     @Published public var showDockIcon: Bool = false
     @Published public var initializationError: MenuBarError?
+    @Published public var hasAccessibilityPermission = false
     
     // MARK: - Menu Bar Components
     
@@ -48,10 +50,11 @@ public class MenuBarManager: ObservableObject {
     private var popover: NSPopover?
     
     // MARK: - Configuration
-    
+
     private static let iconSize: CGFloat = 16.0
     public static let dropdownWidth: CGFloat = 240.0
     private static let initialDropdownHeight: CGFloat = 200.0
+    private var permissionHelper = PermissionHelper.shared
     
     // MARK: - Initialization
     
@@ -60,6 +63,7 @@ public class MenuBarManager: ObservableObject {
             try setupMenuBar()
             try setupPopover()
             configureAppBehavior()
+            setupPermissionMonitoring()
             Self.logger.info("MenuBarManager initialized successfully")
         } catch {
             Self.logger.error("MenuBarManager initialization failed: \(error.localizedDescription)")
@@ -128,8 +132,8 @@ public class MenuBarManager: ObservableObject {
         button.action = #selector(statusItemClicked)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         
-        // Accessibility
-        button.toolTip = "Whisper Node - Voice to Text (Click for menu)"
+        // Accessibility and tooltip (will be updated based on permission status)
+        updateTooltip()
         
         // Enhanced accessibility support
         button.setAccessibilityRole(.menuButton)
@@ -173,6 +177,45 @@ public class MenuBarManager: ObservableObject {
     private func updateMenuBarIcon() {
         guard let button = statusItem?.button else { return }
         button.image = createMenuBarIcon(for: currentState)
+        updateTooltip()
+    }
+
+    private func setupPermissionMonitoring() {
+        // Initialize permission status
+        hasAccessibilityPermission = permissionHelper.hasAccessibilityPermission
+
+        // Set up permission change callbacks
+        permissionHelper.onPermissionChanged = { [weak self] granted in
+            Task { @MainActor in
+                self?.hasAccessibilityPermission = granted
+                self?.updateTooltip()
+
+                // Update state if permission is required
+                if !granted && self?.currentState == .normal {
+                    self?.updateState(.permissionRequired)
+                } else if granted && self?.currentState == .permissionRequired {
+                    self?.updateState(.normal)
+                }
+            }
+        }
+
+        // Start monitoring if not already started
+        if !permissionHelper.isMonitoring {
+            permissionHelper.startMonitoring()
+        }
+    }
+
+    private func updateTooltip() {
+        guard let button = statusItem?.button else { return }
+
+        let baseTooltip = "Whisper Node - Voice to Text"
+        let actionHint = "(Click for menu)"
+
+        if hasAccessibilityPermission {
+            button.toolTip = "\(baseTooltip) \(actionHint)"
+        } else {
+            button.toolTip = "\(baseTooltip) - Accessibility permissions required \(actionHint)"
+        }
     }
     
     private func createMenuBarIcon(for state: AppState) -> NSImage? {
@@ -199,6 +242,11 @@ public class MenuBarManager: ObservableObject {
         case .error:
             image.isTemplate = false
             if let tintedImage = tintImage(image, with: .systemRed) {
+                return tintedImage
+            }
+        case .permissionRequired:
+            image.isTemplate = false
+            if let tintedImage = tintImage(image, with: .systemOrange) {
                 return tintedImage
             }
         }
@@ -285,6 +333,7 @@ struct MenuBarDropdownView: View {
                 StatusRow(icon: "speaker.wave.2.fill", label: "Microphone", value: currentMicrophoneName)
                 StatusRow(icon: "brain.head.profile", label: "Model", value: "Whisper Small")
                 StatusRow(icon: "keyboard", label: "Shortcut", value: currentHotkeyDescription)
+                PermissionStatusRow()
             }
             
             Divider()
@@ -324,24 +373,56 @@ struct StatusRow: View {
     let icon: String
     let label: String
     let value: String
-    
+
     var body: some View {
         HStack {
             Image(systemName: icon)
                 .foregroundColor(.secondary)
                 .frame(width: 16)
-            
+
             Text(label)
                 .foregroundColor(.secondary)
-            
+
             Spacer()
-            
+
             Text(value)
                 .foregroundColor(.primary)
         }
         .font(.system(size: 13))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
+    }
+}
+
+struct PermissionStatusRow: View {
+    @StateObject private var permissionHelper = PermissionHelper.shared
+
+    var body: some View {
+        HStack {
+            Image(systemName: permissionHelper.hasAccessibilityPermission ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                .foregroundColor(permissionHelper.hasAccessibilityPermission ? .green : .orange)
+                .frame(width: 16)
+
+            Text("Permissions")
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            if permissionHelper.hasAccessibilityPermission {
+                Text("Granted")
+                    .foregroundColor(.green)
+            } else {
+                Button("Grant") {
+                    permissionHelper.showPermissionGuidance()
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.orange)
+                .underline()
+            }
+        }
+        .font(.system(size: 13))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Accessibility permissions: \(permissionHelper.hasAccessibilityPermission ? "granted" : "required")")
     }
 }
 

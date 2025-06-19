@@ -244,50 +244,19 @@ public class GlobalHotkeyManager: ObservableObject {
     // MARK: - Private Methods
     
     private func checkAccessibilityPermissions() -> Bool {
-        let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
-        let options = [trusted: true] as CFDictionary
-        let hasPermissions = AXIsProcessTrustedWithOptions(options)
+        let hasPermissions = PermissionHelper.shared.checkPermissions(showPrompt: true)
 
         Self.logger.info("Accessibility permissions check: \(hasPermissions ? "granted" : "denied")")
 
         if !hasPermissions {
             Self.logger.warning("Accessibility permissions required for global hotkey functionality")
-            // Show user-friendly permission guidance
-            DispatchQueue.main.async { [weak self] in
-                self?.showAccessibilityPermissionGuidance()
+            // Show enhanced user-friendly permission guidance
+            DispatchQueue.main.async {
+                PermissionHelper.shared.showPermissionGuidance()
             }
         }
 
         return hasPermissions
-    }
-
-    private func showAccessibilityPermissionGuidance() {
-        let alert = NSAlert()
-        alert.messageText = "Accessibility Permissions Required"
-        alert.informativeText = """
-        WhisperNode needs accessibility permissions to capture global hotkeys.
-
-        To enable:
-        1. Open System Preferences
-        2. Go to Security & Privacy
-        3. Click the Privacy tab
-        4. Select Accessibility from the list
-        5. Click the lock to make changes
-        6. Add WhisperNode to the list and check the box
-
-        After granting permissions, please restart WhisperNode.
-        """
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Open System Preferences")
-        alert.addButton(withTitle: "Cancel")
-
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            // Open System Preferences to Accessibility section
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                NSWorkspace.shared.open(url)
-            }
-        }
     }
     
     private func createEventTap() -> CFMachPort? {

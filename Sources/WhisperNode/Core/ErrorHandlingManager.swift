@@ -126,7 +126,7 @@ public class ErrorHandlingManager: ObservableObject {
             case .microphoneAccessDenied:
                 return "Please enable microphone access in System Preferences > Security & Privacy > Privacy > Microphone"
             case .accessibilityPermissionDenied:
-                return "Please enable accessibility access in System Preferences > Security & Privacy > Privacy > Accessibility"
+                return "Please enable accessibility access in System Preferences > Privacy & Security > Accessibility. No restart required!"
             case .audioCaptureFailure:
                 return "Check your audio settings and try again"
             case .modelDownloadFailed:
@@ -480,12 +480,16 @@ public class ErrorHandlingManager: ObservableObject {
                     openSystemPreferencesPrivacy()
                 }
             } else if case .accessibilityPermissionDenied = error {
-                alert.addButton(withTitle: "Open System Preferences")
+                alert.addButton(withTitle: "Grant Permissions")
                 alert.addButton(withTitle: "Cancel")
-                
+                alert.addButton(withTitle: "Help")
+
                 let response = alert.runModal()
                 if response == .alertFirstButtonReturn {
-                    openSystemPreferencesAccessibility()
+                    // Use the enhanced permission guidance from PermissionHelper
+                    PermissionHelper.shared.showPermissionGuidance()
+                } else if response == .alertThirdButtonReturn {
+                    PermissionHelper.shared.showPermissionHelp()
                 }
             } else if error.isRecoverable && recovery != nil {
                 alert.addButton(withTitle: "Retry")
