@@ -4,18 +4,25 @@ import AppKit
 import os.log
 import Combine
 
-/// Manager for global hotkey detection using CGEventTap
-/// 
+/// Manager for global hotkey detection using CGEventTap with dedicated threading
+///
 /// This class provides system-wide hotkey monitoring for press-and-hold voice activation.
 /// It handles accessibility permissions, conflict detection with system shortcuts,
 /// and provides a delegate-based interface for hotkey events.
 ///
 /// ## Features
-/// - Global hotkey capture using CGEventTap
+/// - Global hotkey capture using CGEventTap on dedicated background thread (T29f)
 /// - Press-and-hold detection with configurable minimum duration
 /// - Conflict detection against common system shortcuts
 /// - Accessibility permission management
 /// - Customizable hotkey configuration
+/// - Thread-safe state management with main thread delegate callbacks
+///
+/// ## Threading Model (T29f Enhancement)
+/// - Event processing occurs on dedicated background thread for improved responsiveness
+/// - All delegate callbacks are dispatched to main thread for UI safety
+/// - State updates are synchronized between background and main threads
+/// - Fallback to main thread processing if background thread fails
 ///
 /// ## Usage
 /// ```swift
@@ -35,6 +42,10 @@ public class GlobalHotkeyManager: ObservableObject {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var isListening = false
+
+    // Threading enhancements for T29f
+    private var eventThread: EventProcessingThread?
+    private let hotkeyState = ThreadSafeHotkeyState()
     
     // Hotkey configuration
     @Published public var currentHotkey: HotkeyConfiguration = .defaultConfiguration
@@ -129,8 +140,14 @@ public class GlobalHotkeyManager: ObservableObject {
     
     /// Request accessibility permissions and start listening for global hotkeys
     ///
-    /// This method sets up a global event tap to monitor keyboard events.
+    /// This method sets up a global event tap to monitor keyboard events on a dedicated
+    /// background thread to improve reliability and responsiveness under high system load.
     /// It will automatically request accessibility permissions if not already granted.
+    ///
+    /// ## Threading Enhancement (T29f)
+    /// - Event processing occurs on dedicated background thread
+    /// - Delegate callbacks are dispatched to main thread
+    /// - Falls back to main thread processing if background thread fails
     ///
     /// - Important: Accessibility permissions are required for this to work
     /// - Throws: No exceptions, but failures are reported through delegate callbacks
@@ -165,8 +182,25 @@ public class GlobalHotkeyManager: ObservableObject {
         eventTap = tap
         Self.logger.debug("Event tap created successfully")
 
+        // Start dedicated event processing thread (T29f enhancement)
+        Self.logger.debug("Starting dedicated event processing thread")
+        eventThread = EventProcessingThread()
+        guard let eventThread = eventThread, eventThread.start(with: tap) else {
+            Self.logger.error("Failed to start event processing thread - falling back to main thread")
+            // Fallback to main thread processing for compatibility
+            startListeningOnMainThread(with: tap)
+            return
+        }
+
+        isListening = true
+        Self.logger.info("Successfully started listening for global hotkeys with dedicated thread - system ready")
+        delegate?.hotkeyManager(self, didStartListening: true)
+    }
+
+    /// Fallback method for main thread processing if background thread fails
+    private func startListeningOnMainThread(with tap: CFMachPort) {
         // Create run loop source
-        Self.logger.debug("Creating run loop source")
+        Self.logger.debug("Creating run loop source for main thread fallback")
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         guard let source = runLoopSource else {
             Self.logger.error("Failed to create run loop source")
@@ -176,7 +210,7 @@ public class GlobalHotkeyManager: ObservableObject {
         }
 
         // Add to current run loop
-        Self.logger.debug("Adding event tap to run loop")
+        Self.logger.debug("Adding event tap to main thread run loop")
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
 
         // Enable the tap
@@ -184,10 +218,10 @@ public class GlobalHotkeyManager: ObservableObject {
         CGEvent.tapEnable(tap: tap, enable: true)
 
         isListening = true
-        Self.logger.info("Successfully started listening for global hotkeys - system ready")
+        Self.logger.info("Successfully started listening for global hotkeys on main thread - system ready")
         delegate?.hotkeyManager(self, didStartListening: true)
     }
-    
+
     /// Stop listening for global hotkeys
     ///
     /// Cleanly removes the event tap and cleans up resources.
@@ -199,17 +233,26 @@ public class GlobalHotkeyManager: ObservableObject {
     
     private func cleanup() {
         guard isListening else { return }
-        
+
+        // Stop event processing thread first (T29f enhancement)
+        if let thread = eventThread {
+            Self.logger.debug("Stopping event processing thread")
+            thread.stop()
+            eventThread = nil
+        }
+
+        // Clean up main thread run loop source if used as fallback
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
             runLoopSource = nil
         }
-        
+
+        // Disable and clean up event tap
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
             eventTap = nil
         }
-        
+
         isListening = false
         keyDownTime = nil
 
@@ -217,7 +260,10 @@ public class GlobalHotkeyManager: ObservableObject {
         modifierReleaseState.removeAll()
         releaseCheckTimer?.invalidate()
         releaseCheckTimer = nil
-        
+
+        // Reset thread-safe state
+        hotkeyState.reset()
+
         Self.logger.info("Stopped listening for global hotkeys")
     }
     
@@ -818,6 +864,13 @@ public class GlobalHotkeyManager: ObservableObject {
         diagnostics["isRecording"] = isRecording
         diagnostics["hasEventTap"] = eventTap != nil
         diagnostics["hasRunLoopSource"] = runLoopSource != nil
+
+        // Threading information (T29f)
+        diagnostics["hasEventThread"] = eventThread != nil
+        diagnostics["eventThreadRunning"] = eventThread?.isThreadRunning ?? false
+        if let eventThread = eventThread {
+            diagnostics["eventThreadDiagnostics"] = eventThread.getDiagnostics()
+        }
 
         // Current configuration
         diagnostics["currentHotkey"] = [
