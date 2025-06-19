@@ -111,9 +111,9 @@ public class PermissionHelper: ObservableObject {
     /// observers. Automatically detects when permissions are granted or revoked
     /// without requiring app restart.
     ///
-    /// - Parameter interval: Monitoring interval in seconds (default: 3.0)
+    /// - Parameter interval: Monitoring interval in seconds (default: 1.0 for more responsive detection)
     /// - Note: Safe to call multiple times - will not create duplicate monitors
-    public func startMonitoring(interval: TimeInterval = 3.0) {
+    public func startMonitoring(interval: TimeInterval = 1.0) {
         guard !isMonitoring else {
             Self.logger.debug("Permission monitoring already active")
             return
@@ -143,21 +143,37 @@ public class PermissionHelper: ObservableObject {
     /// Cleans up timers and observers. Safe to call multiple times.
     public func stopMonitoring() {
         guard isMonitoring else { return }
-        
+
         Self.logger.info("Stopping accessibility permission monitoring")
-        
+
         // Clean up timer
         monitoringTimer?.invalidate()
         monitoringTimer = nil
-        
+
         // Clean up app activation observer
         if let observer = appActivationObserver {
             NotificationCenter.default.removeObserver(observer)
             appActivationObserver = nil
         }
-        
+
         isMonitoring = false
         Self.logger.info("Permission monitoring stopped")
+    }
+
+    /// Manually refresh permission status
+    ///
+    /// Forces an immediate check of accessibility permissions. Useful when users
+    /// have just granted permissions and want to verify the change is detected.
+    /// This method provides immediate feedback without waiting for the next
+    /// monitoring cycle.
+    ///
+    /// - Returns: Current permission status after refresh
+    @discardableResult
+    public func refreshPermissionStatus() -> Bool {
+        Self.logger.info("Manually refreshing accessibility permission status")
+        updatePermissionStatus()
+        Self.logger.info("Permission status after refresh: \(self.hasAccessibilityPermission)")
+        return self.hasAccessibilityPermission
     }
     
     /// Show enhanced accessibility permission guidance dialog
@@ -185,17 +201,29 @@ public class PermissionHelper: ObservableObject {
         
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "Check Again")
         alert.addButton(withTitle: "Cancel")
         alert.addButton(withTitle: "Help")
-        
+
         // Show alert (parentWindow support can be added later if needed)
         let response = alert.runModal()
-        
+
         // Handle response
         switch response {
         case .alertFirstButtonReturn:
             openSystemPreferences()
+        case .alertSecondButtonReturn:
+            // Check permissions again and show result
+            let hasPermissions = refreshPermissionStatus()
+            if hasPermissions {
+                showPermissionGrantedConfirmation()
+            } else {
+                showPermissionStillMissingAlert()
+            }
         case .alertThirdButtonReturn:
+            // Cancel - do nothing
+            break
+        case NSApplication.ModalResponse(rawValue: 1003): // Fourth button (Help)
             showPermissionHelp()
         default:
             break
@@ -252,18 +280,51 @@ public class PermissionHelper: ObservableObject {
         alert.messageText = "Accessibility Permission Help"
         alert.informativeText = """
         If you're having trouble granting accessibility permissions:
-        
+
         1. Make sure WhisperNode is running when you check System Preferences
         2. If WhisperNode doesn't appear in the list, try:
            • Quit and restart WhisperNode
            • Click the "+" button to manually add WhisperNode
         3. If the checkbox is grayed out, click the lock icon first
         4. After enabling, return to WhisperNode - it will work immediately
-        
+
         No restart is required! WhisperNode automatically detects permission changes.
         """
-        
+
         alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    /// Show confirmation when permissions are successfully granted
+    private func showPermissionGrantedConfirmation() {
+        let alert = NSAlert()
+        alert.messageText = "Permissions Granted Successfully!"
+        alert.informativeText = """
+        WhisperNode now has accessibility permissions and can capture global hotkeys.
+
+        You can now use your configured hotkey to activate voice recording.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Great!")
+        alert.runModal()
+    }
+
+    /// Show alert when permissions are still missing after check
+    private func showPermissionStillMissingAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Permissions Still Required"
+        alert.informativeText = """
+        WhisperNode still doesn't have accessibility permissions.
+
+        Please make sure you:
+        1. Opened System Preferences → Privacy & Security → Accessibility
+        2. Found WhisperNode in the list and enabled it
+        3. Clicked the lock icon if needed to make changes
+
+        Try "Check Again" after granting permissions.
+        """
+        alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
@@ -274,26 +335,32 @@ public class PermissionHelper: ObservableObject {
     private func updatePermissionStatus() {
         let currentStatus = checkPermissionsQuietly()
         let previousStatus = hasAccessibilityPermission
-        
+
+        // Log detailed permission check for debugging
+        Self.logger.debug("Permission check: previous=\(previousStatus), current=\(currentStatus)")
+
         // Update published property
         hasAccessibilityPermission = currentStatus
-        
+
         // Check for status changes
         if previousStatus != currentStatus {
             Self.logger.info("Accessibility permission status changed: \(previousStatus) -> \(currentStatus)")
-            
+
             // Notify observers
             onPermissionChanged?(currentStatus)
-            
+
             if currentStatus && !previousStatus {
                 // Permission newly granted
-                Self.logger.info("Accessibility permissions newly granted")
+                Self.logger.info("Accessibility permissions newly granted - hotkey functionality now available")
                 onPermissionGranted?()
             } else if !currentStatus && previousStatus {
                 // Permission revoked
-                Self.logger.warning("Accessibility permissions revoked")
+                Self.logger.warning("Accessibility permissions revoked - hotkey functionality disabled")
                 onPermissionRevoked?()
             }
+        } else if currentStatus {
+            // Log periodic confirmation that permissions are still active
+            Self.logger.debug("Accessibility permissions confirmed active")
         }
     }
     

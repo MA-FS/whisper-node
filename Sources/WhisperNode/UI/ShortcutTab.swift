@@ -17,100 +17,100 @@ struct ShortcutTab: View {
     }
     
     var body: some View {
-        VStack(spacing: 24) {
-            // Header
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "command")
-                        .font(.title2)
-                        .foregroundColor(.accentColor)
-                    Text("Hotkey Settings")
-                        .font(.title2)
-                        .fontWeight(.medium)
-                    Spacer()
-                }
-                
-                Text("Configure the global hotkey for voice recording activation")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            
-            Divider()
+        ScrollView {
+            VStack(spacing: 20) {
+                // Header
+                VStack(spacing: 6) {
+                    HStack {
+                        Image(systemName: "command")
+                            .font(.title2)
+                            .foregroundColor(.accentColor)
+                        Text("Hotkey Settings")
+                            .font(.title2)
+                            .fontWeight(.medium)
+                        Spacer()
+                    }
 
-            // Permission Status Banner
-            if !permissionHelper.hasAccessibilityPermission {
-                PermissionBanner()
-                    .padding(.horizontal, 20)
+                    Text("Configure the global hotkey for voice recording activation")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
 
                 Divider()
-            }
 
-            // Current Hotkey Section
-            VStack(spacing: 16) {
-                HStack {
-                    Text("Current Hotkey")
-                        .font(.headline)
-                    Spacer()
+                // Permission Status Banner
+                if !permissionHelper.hasAccessibilityPermission {
+                    PermissionBanner()
+                        .padding(.horizontal, 20)
+
+                    Divider()
                 }
-                
-                HotkeyRecorderView(
-                    currentHotkey: hotkeyManager.currentHotkey,
-                    isRecording: $isRecording,
-                    onHotkeyChange: { newHotkey in
-                        updateHotkey(newHotkey)
+
+                // Current Hotkey Section
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("Current Hotkey")
+                            .font(.headline)
+                        Spacer()
                     }
-                )
-            }
-            .padding(.horizontal, 20)
-            
-            Divider()
-            
-            // Instructions Section
-            VStack(spacing: 12) {
+
+                    HotkeyRecorderView(
+                        currentHotkey: hotkeyManager.currentHotkey,
+                        isRecording: $isRecording,
+                        onHotkeyChange: { newHotkey in
+                            updateHotkey(newHotkey)
+                        }
+                    )
+                }
+                .padding(.horizontal, 20)
+
+                Divider()
+
+                // Instructions Section
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Instructions")
+                            .font(.headline)
+                        Spacer()
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        InstructionRow(
+                            icon: "1.circle.fill",
+                            text: "Click \"Record New Hotkey\" to start recording"
+                        )
+                        InstructionRow(
+                            icon: "2.circle.fill",
+                            text: "Press your desired key combination"
+                        )
+                        InstructionRow(
+                            icon: "3.circle.fill",
+                            text: "The hotkey will be automatically validated"
+                        )
+                        InstructionRow(
+                            icon: "exclamationmark.triangle.fill",
+                            text: "Use modifier keys (⌘⌥⌃⇧) for best compatibility",
+                            color: .orange
+                        )
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                // Reset Button
                 HStack {
-                    Text("Instructions")
-                        .font(.headline)
                     Spacer()
+                    Button("Reset to Default") {
+                        showingResetConfirmation = true
+                    }
+                    .buttonStyle(.bordered)
+                    .foregroundColor(.secondary)
                 }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    InstructionRow(
-                        icon: "1.circle.fill",
-                        text: "Click \"Record New Hotkey\" to start recording"
-                    )
-                    InstructionRow(
-                        icon: "2.circle.fill", 
-                        text: "Press your desired key combination"
-                    )
-                    InstructionRow(
-                        icon: "3.circle.fill",
-                        text: "The hotkey will be automatically validated"
-                    )
-                    InstructionRow(
-                        icon: "exclamationmark.triangle.fill",
-                        text: "Use modifier keys (⌘⌥⌃⇧) for best compatibility",
-                        color: .orange
-                    )
-                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal, 20)
-            
-            Spacer()
-            
-            // Reset Button
-            HStack {
-                Spacer()
-                Button("Reset to Default") {
-                    showingResetConfirmation = true
-                }
-                .buttonStyle(.bordered)
-                .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.windowBackgroundColor))
@@ -274,40 +274,49 @@ private struct PermissionBanner: View {
     @ObservedObject private var permissionHelper = PermissionHelper.shared
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             HStack {
                 Image(systemName: "exclamationmark.shield.fill")
                     .foregroundColor(.orange)
-                    .font(.title2)
+                    .font(.title3)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Accessibility Permissions Required")
-                        .font(.headline)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                         .foregroundColor(.primary)
 
                     Text("WhisperNode needs accessibility permissions to capture global hotkeys")
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
                 Spacer()
             }
 
-            HStack {
+            HStack(spacing: 8) {
                 Button("Grant Permissions") {
                     permissionHelper.showPermissionGuidance()
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button("Check Again") {
+                    permissionHelper.refreshPermissionStatus()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
 
                 Button("Help") {
                     permissionHelper.showPermissionHelp()
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
 
                 Spacer()
             }
         }
-        .padding(16)
+        .padding(12)
         .background(Color.orange.opacity(0.1))
         .cornerRadius(8)
         .overlay(
