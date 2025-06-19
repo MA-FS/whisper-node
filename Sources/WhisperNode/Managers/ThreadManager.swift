@@ -58,6 +58,7 @@ public class ThreadManager {
     /// - Warning: Can cause deadlocks if called from main thread
     public func executeOnMainThreadSync<T>(_ block: @escaping () -> T) -> T {
         if Thread.isMainThread {
+            Self.logger.warning("executeOnMainThreadSync called from main thread - executing immediately")
             return block()
         } else {
             return DispatchQueue.main.sync {
@@ -209,8 +210,8 @@ public class ThreadSafeValue<T> {
             return queue.sync { _value }
         }
         set {
-            queue.async(flags: .barrier) { [weak self] in
-                self?._value = newValue
+            queue.sync(flags: .barrier) {
+                _value = newValue
             }
         }
     }
