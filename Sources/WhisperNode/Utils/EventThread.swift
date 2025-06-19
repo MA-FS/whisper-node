@@ -26,7 +26,8 @@ import os.log
 /// - Note: Thread lifecycle is managed automatically
 public class EventProcessingThread {
     private static let logger = Logger(subsystem: "com.whispernode.threading", category: "event-thread")
-    
+    private static let runLoopInterval: TimeInterval = 0.1
+
     // MARK: - Properties
     private var thread: Thread?
     private var runLoop: RunLoop?
@@ -140,7 +141,7 @@ public class EventProcessingThread {
         // Keep the run loop alive until cancelled
         while !Thread.current.isCancelled && isRunning {
             _ = autoreleasepool {
-                runLoop?.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+                runLoop?.run(mode: .default, before: Date(timeIntervalSinceNow: Self.runLoopInterval))
             }
         }
         
@@ -216,8 +217,8 @@ public class ThreadSafeHotkeyState {
             return queue.sync { _isRecording }
         }
         set {
-            queue.async(flags: .barrier) { [weak self] in
-                self?._isRecording = newValue
+            queue.sync(flags: .barrier) {
+                _isRecording = newValue
             }
         }
     }
@@ -228,8 +229,8 @@ public class ThreadSafeHotkeyState {
             return queue.sync { _keyDownTime }
         }
         set {
-            queue.async(flags: .barrier) { [weak self] in
-                self?._keyDownTime = newValue
+            queue.sync(flags: .barrier) {
+                _keyDownTime = newValue
             }
         }
     }
@@ -240,8 +241,8 @@ public class ThreadSafeHotkeyState {
             return queue.sync { _lastEventTime }
         }
         set {
-            queue.async(flags: .barrier) { [weak self] in
-                self?._lastEventTime = newValue
+            queue.sync(flags: .barrier) {
+                _lastEventTime = newValue
             }
         }
     }

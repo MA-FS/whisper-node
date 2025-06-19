@@ -352,7 +352,7 @@ class GlobalHotkeyManager {
 
 ### Key Features Implemented
 
-- **Background Event Processing**: CGEventTap now runs on dedicated thread
+- **Background Event Processing**: CGEventTap now runs on a dedicated thread
 - **Thread Safety**: All state updates synchronized between threads
 - **Graceful Fallback**: Automatic fallback to main thread if background thread fails
 - **Performance Monitoring**: Built-in diagnostics for thread status and performance
