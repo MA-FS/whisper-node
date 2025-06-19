@@ -127,21 +127,27 @@ public class GlobalHotkeyManager: ObservableObject {
     /// - Important: Accessibility permissions are required for this to work
     /// - Throws: No exceptions, but failures are reported through delegate callbacks
     @MainActor public func startListening() {
+        Self.logger.debug("startListening() called - current state: isListening=\(self.isListening)")
+
         guard !isListening else {
-            Self.logger.warning("Already listening for hotkeys")
+            Self.logger.debug("Already listening for hotkeys - ignoring duplicate start request")
             return
         }
 
         Self.logger.info("Starting global hotkey listening for: \(self.currentHotkey.description)")
 
         // Check accessibility permissions
-        guard checkAccessibilityPermissions() else {
+        let hasPermissions = checkAccessibilityPermissions()
+        Self.logger.debug("Accessibility permissions check result: \(hasPermissions)")
+
+        guard hasPermissions else {
             Self.logger.error("Accessibility permissions not granted - cannot start hotkey listening")
             delegate?.hotkeyManager(self, accessibilityPermissionRequired: true)
             return
         }
-        
+
         // Create event tap
+        Self.logger.debug("Creating event tap for hotkey monitoring")
         guard let tap = createEventTap() else {
             Self.logger.error("Failed to create event tap - this may indicate insufficient permissions or system restrictions")
             delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
@@ -149,9 +155,10 @@ public class GlobalHotkeyManager: ObservableObject {
         }
 
         eventTap = tap
-        Self.logger.info("Event tap created successfully")
-        
+        Self.logger.debug("Event tap created successfully")
+
         // Create run loop source
+        Self.logger.debug("Creating run loop source")
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         guard let source = runLoopSource else {
             Self.logger.error("Failed to create run loop source")
@@ -159,15 +166,17 @@ public class GlobalHotkeyManager: ObservableObject {
             delegate?.hotkeyManager(self, didFailWithError: .eventTapCreationFailed)
             return
         }
-        
+
         // Add to current run loop
+        Self.logger.debug("Adding event tap to run loop")
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-        
+
         // Enable the tap
+        Self.logger.debug("Enabling event tap")
         CGEvent.tapEnable(tap: tap, enable: true)
-        
+
         isListening = true
-        Self.logger.info("Started listening for global hotkeys")
+        Self.logger.info("Successfully started listening for global hotkeys - system ready")
         delegate?.hotkeyManager(self, didStartListening: true)
     }
     
