@@ -299,45 +299,84 @@ public class GlobalHotkeyManager: ObservableObject {
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Handle event tap disable/enable
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            Self.logger.warning("Event tap disabled - Type: \(type.rawValue), re-enabling...")
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
+                Self.logger.info("Event tap re-enabled successfully")
             }
             return Unmanaged.passRetained(event)
         }
-        
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
 
-        // Add comprehensive logging for debugging
-        Self.logger.debug("Event received: keyCode=\(keyCode), flags=\(flags.rawValue)")
-        Self.logger.debug("Current hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(self.currentHotkey.modifierFlags.rawValue)")
+        // Enhanced event validation and logging (T29e)
+        EventUtils.logEventDetails(event, context: "HotkeyManager")
+        Self.logger.debug("   Current hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(self.currentHotkey.modifierFlags.rawValue)")
+        Self.logger.debug("   Recording state: isRecording=\(self.isRecording), keyDownTime=\(self.keyDownTime != nil)")
 
-        // Check if this matches our hotkey
-        let matches = matchesCurrentHotkey(event)
-        Self.logger.debug("Event matches hotkey: \(matches)")
+        // Validate event for potential issues
+        let validationIssues = EventUtils.validateEvent(event)
+        if !validationIssues.isEmpty {
+            Self.logger.warning("⚠️ Event validation issues: \(validationIssues.joined(separator: ", "))")
+        }
+
+        // Validate event type before processing
+        guard isValidEventType(type) else {
+            Self.logger.debug("   ⚠️ Ignoring unsupported event type: \(type.rawValue)")
+            return Unmanaged.passRetained(event)
+        }
+
+        // Check if this matches our hotkey with enhanced validation
+        let matches = matchesCurrentHotkey(event, eventType: type)
+        Self.logger.debug("   Event matches hotkey: \(matches)")
 
         guard matches else {
             return Unmanaged.passRetained(event)
         }
 
-        Self.logger.info("🎯 Hotkey event matched! Processing...")
+        Self.logger.info("🎯 Hotkey event matched! Processing type: \(type.rawValue)")
 
-        switch type {
-        case .keyDown:
-            handleKeyDown(event)
-        case .keyUp:
-            handleKeyUp(event)
-        case .flagsChanged:
-            handleFlagsChanged(event)
-        default:
-            break
+        // Enhanced event routing with error handling and performance monitoring
+        do {
+            let (_, processingTime) = try EventUtils.measureEventProcessing {
+                switch type {
+                case .keyDown:
+                    try handleKeyDownWithValidation(event)
+                case .keyUp:
+                    try handleKeyUpWithValidation(event)
+                case .flagsChanged:
+                    try handleFlagsChangedWithValidation(event)
+                default:
+                    Self.logger.warning("⚠️ Unexpected event type in matched event: \(type.rawValue)")
+                }
+            }
+
+            // Log performance if processing is slow
+            if processingTime > 0.005 { // 5ms threshold
+                Self.logger.warning("⚠️ Slow event processing: \(processingTime * 1000)ms for \(EventUtils.eventTypeName(type))")
+            }
+        } catch {
+            Self.logger.error("❌ Error processing hotkey event: \(error)")
+            return Unmanaged.passRetained(event)
         }
 
         // Consume the event if it matches our hotkey
+        Self.logger.debug("   ✅ Event consumed")
         return nil
     }
     
-    private func matchesCurrentHotkey(_ event: CGEvent) -> Bool {
+    // MARK: - Enhanced Event Validation (T29e)
+
+    /// Validates if the event type should be processed
+    private func isValidEventType(_ type: CGEventType) -> Bool {
+        switch type {
+        case .keyDown, .keyUp, .flagsChanged:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Enhanced hotkey matching with event type validation
+    private func matchesCurrentHotkey(_ event: CGEvent, eventType: CGEventType) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
@@ -345,8 +384,8 @@ public class GlobalHotkeyManager: ObservableObject {
         let cleanEventFlags = flags.cleanedModifierFlags()
         let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
 
-        Self.logger.debug("🔍 Checking hotkey match:")
-        Self.logger.debug("   Event: keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
+        Self.logger.debug("🔍 Enhanced hotkey match check:")
+        Self.logger.debug("   Event: type=\(eventType.rawValue), keyCode=\(keyCode), flags=\(cleanEventFlags.rawValue)")
         Self.logger.debug("   Hotkey: keyCode=\(self.currentHotkey.keyCode), flags=\(cleanHotkeyFlags.rawValue)")
 
         // Handle modifier-only combinations (keyCode = UInt16.max)
@@ -354,13 +393,23 @@ public class GlobalHotkeyManager: ObservableObject {
             Self.logger.debug("   Checking modifier-only combination")
             // For modifier-only hotkeys, we only match flagsChanged events with exact modifiers
             // and no additional key press
-            return cleanEventFlags == cleanHotkeyFlags && cleanEventFlags.rawValue != 0
+            let isModifierOnlyMatch = eventType == .flagsChanged &&
+                                    cleanEventFlags == cleanHotkeyFlags &&
+                                    cleanEventFlags.rawValue != 0
+            Self.logger.debug("   Modifier-only match: \(isModifierOnlyMatch)")
+            return isModifierOnlyMatch
+        }
+
+        // For regular key combinations, only match keyDown and keyUp events
+        guard eventType == .keyDown || eventType == .keyUp else {
+            Self.logger.debug("   ❌ Wrong event type for regular hotkey: \(eventType.rawValue)")
+            return false
         }
 
         // Check if key code matches for regular key combinations
-        guard keyCode == Int64(self.currentHotkey.keyCode) else { 
+        guard keyCode == Int64(self.currentHotkey.keyCode) else {
             Self.logger.debug("   ❌ Key code mismatch: \(keyCode) != \(self.currentHotkey.keyCode)")
-            return false 
+            return false
         }
 
         // For exact matching, all required modifiers must be present and no extra ones
@@ -369,27 +418,73 @@ public class GlobalHotkeyManager: ObservableObject {
         return matches
     }
 
-    
-    private func handleKeyDown(_ event: CGEvent) {
+    /// Legacy method for backward compatibility
+    private func matchesCurrentHotkey(_ event: CGEvent) -> Bool {
+        return matchesCurrentHotkey(event, eventType: CGEventType(rawValue: 0) ?? .keyDown)
+    }
+
+
+    // MARK: - Enhanced Event Handlers with Validation (T29e)
+
+    /// Enhanced keyDown handler with double-triggering prevention
+    private func handleKeyDownWithValidation(_ event: CGEvent) throws {
         let currentTime = CFAbsoluteTimeGetCurrent()
-
-        // Thread-safe check and update
-        guard keyDownTime == nil else { return } // Already pressed
-        keyDownTime = currentTime
-
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
-        Self.logger.info("Hotkey pressed down - keyCode: \(keyCode), flags: \(flags.rawValue), description: \(self.currentHotkey.description)")
+
+        Self.logger.debug("🔽 Processing keyDown event - keyCode: \(keyCode), flags: \(flags.rawValue)")
+
+        // Enhanced double-triggering prevention
+        if let lastKeyDown = keyDownTime {
+            let timeSinceLastKeyDown = currentTime - lastKeyDown
+            if timeSinceLastKeyDown < 0.05 { // 50ms minimum between key events
+                Self.logger.debug("   ⚠️ Ignoring rapid keyDown event (time since last: \(timeSinceLastKeyDown)s)")
+                return
+            }
+        }
+
+        // Prevent starting if already recording
+        guard !isRecording else {
+            Self.logger.debug("   ⚠️ Already recording, ignoring keyDown")
+            return
+        }
+
+        keyDownTime = currentTime
+        Self.logger.info("🎯 Hotkey pressed down - keyCode: \(keyCode), flags: \(flags.rawValue), description: \(self.currentHotkey.description)")
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = true
+            Self.logger.info("✅ Recording started via delegate")
             self.delegate?.hotkeyManager(self, didStartRecording: true)
         }
     }
-    
-    private func handleKeyUp(_ event: CGEvent) {
-        guard let downTime = keyDownTime else { return }
+
+    /// Legacy keyDown handler for backward compatibility
+    private func handleKeyDown(_ event: CGEvent) {
+        do {
+            try handleKeyDownWithValidation(event)
+        } catch {
+            Self.logger.error("❌ Error in keyDown handler: \(error)")
+        }
+    }
+
+    /// Enhanced keyUp handler with validation
+    private func handleKeyUpWithValidation(_ event: CGEvent) throws {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+
+        Self.logger.debug("🔼 Processing keyUp event - keyCode: \(keyCode), flags: \(flags.rawValue)")
+
+        guard let downTime = keyDownTime else {
+            Self.logger.debug("   ⚠️ No corresponding keyDown event found, ignoring keyUp")
+            return
+        }
+
+        guard isRecording else {
+            Self.logger.debug("   ⚠️ Not currently recording, ignoring keyUp")
+            return
+        }
 
         let upTime = CFAbsoluteTimeGetCurrent()
         let holdDuration = upTime - downTime
@@ -397,28 +492,43 @@ public class GlobalHotkeyManager: ObservableObject {
         // Reset state
         keyDownTime = nil
 
-        Self.logger.debug("Hotkey released after \(holdDuration)s")
+        Self.logger.info("🎯 Hotkey released after \(holdDuration)s")
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isRecording = false
 
             if holdDuration >= self.minimumHoldDuration {
+                Self.logger.info("✅ Recording completed (duration: \(holdDuration)s)")
                 self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
             } else {
+                Self.logger.warning("⚠️ Recording too short (\(holdDuration)s < \(self.minimumHoldDuration)s), cancelling")
                 self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
             }
         }
     }
 
-    private func handleFlagsChanged(_ event: CGEvent) {
+    /// Legacy keyUp handler for backward compatibility
+    private func handleKeyUp(_ event: CGEvent) {
+        do {
+            try handleKeyUpWithValidation(event)
+        } catch {
+            Self.logger.error("❌ Error in keyUp handler: \(error)")
+        }
+    }
+
+    /// Enhanced flagsChanged handler with validation
+    private func handleFlagsChangedWithValidation(_ event: CGEvent) throws {
         // Enhanced modifier-only hotkey logic with sequential release support (T29d)
-        // This fixes the issue where releasing modifier keys non-simultaneously cancels transcription
+        // Enhanced with additional validation and error handling (T29e)
 
         let flags = event.flags
         let cleanFlags = flags.cleanedModifierFlags()
+        let timestamp = event.timestamp
 
-        Self.logger.debug("🏳️ Flags changed: raw=\(flags.rawValue), clean=\(cleanFlags.rawValue)")
+        Self.logger.debug("🏳️ Processing flagsChanged event:")
+        Self.logger.debug("   Raw flags: \(flags.rawValue), Clean flags: \(cleanFlags.rawValue)")
+        Self.logger.debug("   Timestamp: \(timestamp)")
         Self.logger.debug("   Control: \(cleanFlags.contains(.maskControl))")
         Self.logger.debug("   Option: \(cleanFlags.contains(.maskAlternate))")
         Self.logger.debug("   Shift: \(cleanFlags.contains(.maskShift))")
@@ -432,20 +542,37 @@ public class GlobalHotkeyManager: ObservableObject {
 
         let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
         Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
+        Self.logger.debug("   Current recording state: \(self.isRecording)")
 
-        if !isRecording {
+        if !self.isRecording {
             // Not recording - check if we should start
             if cleanFlags == cleanHotkeyFlags && cleanFlags.rawValue != 0 {
+                Self.logger.debug("   ✅ Modifier combination matches, starting recording")
                 startModifierOnlyRecording()
+            } else {
+                Self.logger.debug("   ❌ Modifier combination doesn't match target")
             }
         } else {
-            // Currently recording - handle release logic
+            // Currently recording - handle release logic with enhanced validation
             if KeyEventUtils.isReleasingTargetModifiers(current: cleanFlags, target: cleanHotkeyFlags) {
+                Self.logger.debug("   🔓 Target modifiers being released")
                 handleModifierRelease(current: cleanFlags, target: cleanHotkeyFlags)
             } else if KeyEventUtils.isAddingUnrelatedModifiers(current: cleanFlags, target: cleanHotkeyFlags) {
                 // Only cancel if adding unrelated modifiers, not releasing target ones
+                Self.logger.debug("   ❌ Unrelated modifiers added during recording")
                 cancelModifierOnlyRecording(reason: "Unrelated modifier pressed during recording")
+            } else {
+                Self.logger.debug("   ➡️ No significant modifier change detected")
             }
+        }
+    }
+
+    /// Legacy flagsChanged handler for backward compatibility
+    private func handleFlagsChanged(_ event: CGEvent) {
+        do {
+            try handleFlagsChangedWithValidation(event)
+        } catch {
+            Self.logger.error("❌ Error in flagsChanged handler: \(error)")
         }
     }
 
@@ -613,6 +740,111 @@ public class GlobalHotkeyManager: ObservableObject {
         ]
 
         return alternatives.filter { $0.keyCode != configuration.keyCode || $0.modifierFlags != configuration.modifierFlags }
+    }
+
+    // MARK: - Enhanced Configuration Validation (T29e)
+
+    /// Validates a hotkey configuration for potential issues
+    ///
+    /// Performs comprehensive validation of hotkey configurations to identify
+    /// potential problems before they cause runtime issues.
+    ///
+    /// - Parameter configuration: The hotkey configuration to validate
+    /// - Returns: Array of validation issues found (empty if valid)
+    public func validateHotkeyConfiguration(_ configuration: HotkeyConfiguration) -> [String] {
+        var issues: [String] = []
+
+        // Validate key code
+        if configuration.keyCode != UInt16.max {
+            // Regular key combination validation
+            if configuration.keyCode > 127 {
+                issues.append("Invalid key code: \(configuration.keyCode) (should be 0-127)")
+            }
+
+            // Check for modifier requirements
+            let cleanModifiers = configuration.modifierFlags.cleanedModifierFlags()
+            if cleanModifiers.rawValue == 0 {
+                issues.append("Regular key combinations should include modifier keys")
+            }
+        } else {
+            // Modifier-only combination validation
+            let cleanModifiers = configuration.modifierFlags.cleanedModifierFlags()
+            if cleanModifiers.rawValue == 0 {
+                issues.append("Modifier-only hotkeys must specify at least one modifier")
+            }
+
+            // Check for single modifier (usually not recommended)
+            let modifierCount = [
+                cleanModifiers.contains(.maskCommand),
+                cleanModifiers.contains(.maskControl),
+                cleanModifiers.contains(.maskAlternate),
+                cleanModifiers.contains(.maskShift)
+            ].filter { $0 }.count
+
+            if modifierCount < 2 {
+                issues.append("Single modifier hotkeys may conflict with system shortcuts")
+            }
+        }
+
+        // Check for known problematic combinations
+        let problematicCombinations: [(keyCode: UInt16, modifiers: CGEventFlags, reason: String)] = [
+            (48, .maskCommand, "Cmd+Tab conflicts with app switcher"),
+            (49, .maskCommand, "Cmd+Space conflicts with Spotlight"),
+            (53, .maskCommand, "Cmd+Esc conflicts with force quit"),
+            (36, .maskCommand, "Cmd+Return may conflict with system shortcuts")
+        ]
+
+        for combo in problematicCombinations {
+            if configuration.keyCode == combo.keyCode &&
+               configuration.modifierFlags.contains(combo.modifiers) {
+                issues.append(combo.reason)
+            }
+        }
+
+        return issues
+    }
+
+    /// Performs comprehensive diagnostics on the current hotkey system
+    ///
+    /// Provides detailed information about the current state of the hotkey system
+    /// for debugging and troubleshooting purposes.
+    ///
+    /// - Returns: Dictionary containing diagnostic information
+    public func performHotkeyDiagnostics() -> [String: Any] {
+        var diagnostics: [String: Any] = [:]
+
+        // System state
+        diagnostics["isListening"] = isListening
+        diagnostics["isRecording"] = isRecording
+        diagnostics["hasEventTap"] = eventTap != nil
+        diagnostics["hasRunLoopSource"] = runLoopSource != nil
+
+        // Current configuration
+        diagnostics["currentHotkey"] = [
+            "keyCode": currentHotkey.keyCode,
+            "modifierFlags": currentHotkey.modifierFlags.rawValue,
+            "description": currentHotkey.description
+        ]
+
+        // Configuration validation
+        let validationIssues = validateHotkeyConfiguration(currentHotkey)
+        diagnostics["configurationIssues"] = validationIssues
+
+        // Permissions
+        diagnostics["hasAccessibilityPermissions"] = checkAccessibilityPermissions()
+
+        // Timing information
+        diagnostics["keyDownTime"] = keyDownTime
+        diagnostics["minimumHoldDuration"] = minimumHoldDuration
+
+        // Modifier-only specific state
+        if currentHotkey.keyCode == UInt16.max {
+            diagnostics["modifierReleaseState"] = modifierReleaseState.mapValues { $0.timeIntervalSinceNow }
+            diagnostics["releaseToleranceInterval"] = releaseToleranceInterval
+            diagnostics["hasReleaseTimer"] = releaseCheckTimer != nil
+        }
+
+        return diagnostics
     }
 }
 
