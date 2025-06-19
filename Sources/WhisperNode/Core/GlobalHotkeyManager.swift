@@ -47,6 +47,11 @@ public class GlobalHotkeyManager: ObservableObject {
     // Press-and-hold tracking
     private var keyDownTime: CFTimeInterval?
     private let minimumHoldDuration: CFTimeInterval = 0.1 // 100ms minimum hold
+
+    // Enhanced modifier release tracking for T29d
+    private var modifierReleaseState: [UInt64: Date] = [:]
+    private let releaseToleranceInterval: TimeInterval = 0.1 // 100ms tolerance for sequential releases
+    private var releaseCheckTimer: Timer?
     
     // Delegates
     public weak var delegate: GlobalHotkeyManagerDelegate?
@@ -67,10 +72,13 @@ public class GlobalHotkeyManager: ObservableObject {
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
         }
-        
+
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
+
+        // Clean up release tracking timer
+        releaseCheckTimer?.invalidate()
     }
     
     // MARK: - Settings Integration
@@ -204,6 +212,11 @@ public class GlobalHotkeyManager: ObservableObject {
         
         isListening = false
         keyDownTime = nil
+
+        // Clean up release tracking state
+        modifierReleaseState.removeAll()
+        releaseCheckTimer?.invalidate()
+        releaseCheckTimer = nil
         
         Self.logger.info("Stopped listening for global hotkeys")
     }
@@ -399,8 +412,8 @@ public class GlobalHotkeyManager: ObservableObject {
     }
 
     private func handleFlagsChanged(_ event: CGEvent) {
-        // For modifier-only combinations, we need to detect when the exact modifier combination is pressed
-        // This is primarily for hotkeys like Control+Option without any other key
+        // Enhanced modifier-only hotkey logic with sequential release support (T29d)
+        // This fixes the issue where releasing modifier keys non-simultaneously cancels transcription
 
         let flags = event.flags
         let cleanFlags = flags.cleanedModifierFlags()
@@ -412,72 +425,164 @@ public class GlobalHotkeyManager: ObservableObject {
         Self.logger.debug("   Command: \(cleanFlags.contains(.maskCommand))")
 
         // Check if this is a modifier-only hotkey (keyCode = UInt16.max)
-        guard currentHotkey.keyCode == UInt16.max else { 
+        guard currentHotkey.keyCode == UInt16.max else {
             Self.logger.debug("   Not a modifier-only hotkey, ignoring flags change")
-            return 
+            return
         }
 
         let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
         Self.logger.debug("   Target modifier flags: \(cleanHotkeyFlags.rawValue)")
 
-        // Enhanced modifier-only detection with improved Control+Option support
-        if cleanFlags == cleanHotkeyFlags && cleanFlags.rawValue != 0 {
-            // Modifiers pressed - start recording
-            if keyDownTime == nil {
-                let currentTime = CFAbsoluteTimeGetCurrent()
-                keyDownTime = currentTime
-
-                Self.logger.info("🎯 Modifier-only hotkey pressed: \(self.currentHotkey.description)")
-                Self.logger.info("🔊 Triggering delegate callback for recording start")
-
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    self.isRecording = true
-                    
-                    // Enhanced delegate notification with validation
-                    if let delegate = self.delegate {
-                        Self.logger.info("✅ Calling delegate.didStartRecording")
-                        delegate.hotkeyManager(self, didStartRecording: true)
-                    } else {
-                        Self.logger.error("❌ No delegate found - recording will not be triggered!")
-                    }
-                }
+        if !isRecording {
+            // Not recording - check if we should start
+            if cleanFlags == cleanHotkeyFlags && cleanFlags.rawValue != 0 {
+                startModifierOnlyRecording()
             }
-        } else if cleanFlags.rawValue == 0 && keyDownTime != nil {
-            // All modifiers released - stop recording
-            let downTime = keyDownTime!
-            let upTime = CFAbsoluteTimeGetCurrent()
-            let holdDuration = upTime - downTime
-
-            keyDownTime = nil
-
-            Self.logger.info("🎯 Modifier-only hotkey released after \(holdDuration)s")
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.isRecording = false
-
-                if holdDuration >= self.minimumHoldDuration {
-                    Self.logger.info("✅ Recording duration met minimum threshold, completing recording")
-                    self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
-                } else {
-                    Self.logger.warning("⚠️ Recording too short (\(holdDuration)s), cancelling")
-                    self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
-                }
-            }
-        } else if cleanFlags != cleanHotkeyFlags && keyDownTime != nil {
-            // Modifier combination changed while recording - cancel
-            Self.logger.debug("   Modifier combination changed during recording, cancelling")
-            keyDownTime = nil
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.isRecording = false
-                self.delegate?.hotkeyManager(self, didCancelRecording: .interrupted)
+        } else {
+            // Currently recording - handle release logic
+            if KeyEventUtils.isReleasingTargetModifiers(current: cleanFlags, target: cleanHotkeyFlags) {
+                handleModifierRelease(current: cleanFlags, target: cleanHotkeyFlags)
+            } else if KeyEventUtils.isAddingUnrelatedModifiers(current: cleanFlags, target: cleanHotkeyFlags) {
+                // Only cancel if adding unrelated modifiers, not releasing target ones
+                cancelModifierOnlyRecording(reason: "Unrelated modifier pressed during recording")
             }
         }
     }
-    
+
+    // MARK: - Enhanced Modifier-Only Hotkey Logic (T29d)
+
+    /// Starts recording for modifier-only hotkeys
+    private func startModifierOnlyRecording() {
+        guard keyDownTime == nil else { return }
+
+        let currentTime = CFAbsoluteTimeGetCurrent()
+        keyDownTime = currentTime
+
+        // Clear any previous release state
+        modifierReleaseState.removeAll()
+        releaseCheckTimer?.invalidate()
+        releaseCheckTimer = nil
+
+        Self.logger.info("🎯 Modifier-only hotkey pressed: \(self.currentHotkey.description)")
+        Self.logger.info("🔊 Triggering delegate callback for recording start")
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isRecording = true
+
+            if let delegate = self.delegate {
+                Self.logger.info("✅ Calling delegate.didStartRecording")
+                delegate.hotkeyManager(self, didStartRecording: true)
+            } else {
+                Self.logger.error("❌ No delegate found - recording will not be triggered!")
+            }
+        }
+    }
+
+    /// Handles the release of modifier keys with tolerance for sequential releases
+    private func handleModifierRelease(current: CGEventFlags, target: CGEventFlags) {
+        // Track which modifiers have been released
+        let releasedModifiers = target.subtracting(current)
+        let now = Date()
+
+        // Record release times for newly released modifiers
+        for modifier in releasedModifiers.individualFlags {
+            if modifierReleaseState[modifier.rawValue] == nil {
+                modifierReleaseState[modifier.rawValue] = now
+                Self.logger.debug("🔓 Modifier released: \(modifier.rawValue) at \(now)")
+            }
+        }
+
+        // Check if all target modifiers have been released
+        if current.intersection(target).isEmpty {
+            // All modifiers released - complete recording immediately
+            Self.logger.info("🎯 All modifiers released simultaneously")
+            completeModifierOnlyRecording()
+        } else {
+            // Some modifiers still held - schedule a check for tolerance period
+            Self.logger.debug("⏱️ Some modifiers still held, scheduling release check")
+            scheduleReleaseCheck()
+        }
+    }
+
+    /// Schedules a delayed check to see if all modifiers are released within tolerance
+    private func scheduleReleaseCheck() {
+        // Cancel any existing timer
+        releaseCheckTimer?.invalidate()
+
+        releaseCheckTimer = Timer.scheduledTimer(withTimeInterval: releaseToleranceInterval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkForCompleteRelease()
+            }
+        }
+    }
+
+    /// Checks if all target modifiers have been released within the tolerance period
+    private func checkForCompleteRelease() {
+        guard keyDownTime != nil else { return }
+
+        let cleanHotkeyFlags = self.currentHotkey.modifierFlags.cleanedModifierFlags()
+
+        // Check if we should complete recording based on release state
+        if KeyEventUtils.shouldCompleteRecording(
+            current: CGEventFlags(rawValue: 0), // Assume all released for tolerance check
+            target: cleanHotkeyFlags,
+            releaseState: modifierReleaseState,
+            tolerance: releaseToleranceInterval
+        ) {
+            Self.logger.info("🎯 All modifiers released within tolerance period")
+            completeModifierOnlyRecording()
+        } else {
+            Self.logger.debug("⚠️ Release tolerance exceeded, continuing to wait")
+        }
+    }
+
+    /// Completes the modifier-only recording session
+    private func completeModifierOnlyRecording() {
+        guard let downTime = keyDownTime else { return }
+
+        let upTime = CFAbsoluteTimeGetCurrent()
+        let holdDuration = upTime - downTime
+
+        // Clean up state
+        keyDownTime = nil
+        modifierReleaseState.removeAll()
+        releaseCheckTimer?.invalidate()
+        releaseCheckTimer = nil
+
+        Self.logger.info("🎯 Modifier-only hotkey released after \(holdDuration)s")
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isRecording = false
+
+            if holdDuration >= self.minimumHoldDuration {
+                Self.logger.info("✅ Recording duration met minimum threshold, completing recording")
+                self.delegate?.hotkeyManager(self, didCompleteRecording: holdDuration)
+            } else {
+                Self.logger.warning("⚠️ Recording too short (\(holdDuration)s), cancelling")
+                self.delegate?.hotkeyManager(self, didCancelRecording: .tooShort)
+            }
+        }
+    }
+
+    /// Cancels the modifier-only recording session
+    private func cancelModifierOnlyRecording(reason: String) {
+        Self.logger.debug("❌ Cancelling recording: \(reason)")
+
+        // Clean up state
+        keyDownTime = nil
+        modifierReleaseState.removeAll()
+        releaseCheckTimer?.invalidate()
+        releaseCheckTimer = nil
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isRecording = false
+            self.delegate?.hotkeyManager(self, didCancelRecording: .interrupted)
+        }
+    }
+
     private func detectHotkeyConflicts(_ configuration: HotkeyConfiguration) -> HotkeyConflict? {
         // Check against common system shortcuts
         let systemShortcuts: [(keyCode: UInt16, modifiers: CGEventFlags, description: String)] = [
