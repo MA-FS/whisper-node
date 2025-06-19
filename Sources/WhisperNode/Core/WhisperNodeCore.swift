@@ -167,7 +167,7 @@ public class WhisperNodeCore: ObservableObject {
         lastAccessibilityPermissionStatus = AXIsProcessTrusted()
         Self.logger.info("Initial accessibility permission status: \(self.lastAccessibilityPermissionStatus)")
 
-        // Set up periodic permission checking (every 2 seconds when app is active)
+        // Set up periodic permission checking (every 5 seconds when app is active for better battery life)
         startPermissionMonitorTimer()
 
         // Set up app activation observer to check permissions when app becomes active
@@ -179,8 +179,8 @@ public class WhisperNodeCore: ObservableObject {
         // Stop existing timer if any
         stopPermissionMonitorTimer()
 
-        // Create new timer that checks permissions every 2 seconds
-        permissionMonitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        // Create new timer that checks permissions every 5 seconds (optimized for battery life)
+        permissionMonitorTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.checkPermissionStatusAndActivateIfNeeded()
             }
@@ -223,12 +223,16 @@ public class WhisperNodeCore: ObservableObject {
     private func checkPermissionStatusAndActivateIfNeeded() async {
         let currentPermissionStatus = AXIsProcessTrusted()
 
-        // Only act if permission status changed from false to true
-        if !lastAccessibilityPermissionStatus && currentPermissionStatus {
-            Self.logger.info("🎉 Accessibility permissions detected as newly granted - activating hotkey system")
+        // Check if permission status changed from false to true (main actor safe)
+        let wasGranted = lastAccessibilityPermissionStatus
+        let isNowGranted = currentPermissionStatus
 
-            // Update stored status
-            lastAccessibilityPermissionStatus = currentPermissionStatus
+        // Update stored status
+        lastAccessibilityPermissionStatus = currentPermissionStatus
+
+        // Only activate if permission status changed from denied to granted
+        if !wasGranted && isNowGranted {
+            Self.logger.info("Accessibility permissions detected as newly granted - activating hotkey system")
 
             // Start hotkey system immediately
             startVoiceActivation()
@@ -236,11 +240,10 @@ public class WhisperNodeCore: ObservableObject {
             // Update menu bar state to reflect activation
             menuBarManager.updateState(.normal)
 
-            Self.logger.info("✅ Hotkey system automatically activated after permission grant - no restart required")
-        } else if lastAccessibilityPermissionStatus != currentPermissionStatus {
+            Self.logger.info("Hotkey system automatically activated after permission grant - no restart required")
+        } else if wasGranted != isNowGranted {
             // Permission status changed (could be revoked)
-            lastAccessibilityPermissionStatus = currentPermissionStatus
-            Self.logger.info("Accessibility permission status changed to: \(currentPermissionStatus)")
+            Self.logger.debug("Accessibility permission status changed to: \(isNowGranted)")
         }
     }
     

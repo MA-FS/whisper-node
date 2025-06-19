@@ -1,6 +1,6 @@
 # Global Hotkey Listener Initialization Fixes
 
-**Date**: December 18, 2024
+**Date**: June 19, 2025
 **Status**: 🔄 REVIEW
 **Priority**: HIGH
 
@@ -173,16 +173,16 @@ Fix the initialization of the global hotkey listener to ensure `GlobalHotkeyMana
 
 ## Acceptance Criteria
 
-1. **No Restart Required**: User can complete onboarding and immediately use hotkey functionality ✅
-2. **Runtime Activation**: Granting permissions while app is running automatically enables hotkey ✅
-3. **Proper Error Handling**: Clear feedback when initialization fails with actionable guidance ✅
-4. **Performance**: Permission monitoring doesn't impact app responsiveness ✅
-5. **Reliability**: Initialization works consistently across different macOS versions and hardware ✅
+- [x] **No Restart Required**: User can complete onboarding and immediately use hotkey functionality
+- [x] **Runtime Activation**: Granting permissions while app is running automatically enables hotkey
+- [x] **Proper Error Handling**: Clear feedback when initialization fails with actionable guidance
+- [x] **Performance**: Permission monitoring doesn't impact app responsiveness
+- [x] **Reliability**: Initialization works consistently across different macOS versions and hardware
 
 ## Implementation Summary
 
 **Completed**: June 19, 2025
-**Pull Request**: #37 - https://github.com/MA-FS/whisper-node/pull/37
+**Pull Request**: [#37](https://github.com/MA-FS/whisper-node/pull/37)
 **Branch**: `feature/hotkey-listener-initialization`
 
 ### Key Achievements
@@ -190,7 +190,7 @@ Fix the initialization of the global hotkey listener to ensure `GlobalHotkeyMana
 1. **Immediate Onboarding Activation**: Modified `OnboardingFlow.swift` to attempt hotkey system activation immediately after onboarding completion, eliminating restart requirements.
 
 2. **Runtime Permission Monitoring**: Implemented comprehensive permission monitoring in `WhisperNodeCore.swift`:
-   - Periodic timer checking every 2 seconds when app is active
+   - Periodic timer checking every 5 seconds when app is active (optimized for battery life)
    - App activation observer for background-to-foreground transitions
    - Automatic hotkey activation when permissions become available
 
