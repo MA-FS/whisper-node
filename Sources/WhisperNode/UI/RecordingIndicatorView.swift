@@ -32,16 +32,24 @@ public struct RecordingIndicatorView: View {
     
     @State private var pulseScale: CGFloat = 1.0
     @State private var rotationAngle: Angle = .zero
-    
+    @State private var glowOpacity: Double = 0.0
+    @State private var shadowRadius: CGFloat = 0
+    @State private var breathingScale: CGFloat = 1.0
+    @State private var particleOpacity: Double = 0.0
+    @State private var stateTransitionProgress: Double = 0.0
+
     private let orbSize: CGFloat = 80
     private let cornerPadding: CGFloat = 24
-    
-    // Animation duration constants
-    private let recordingPulseDuration: Double = 1.2
-    private let processingRotationDuration: Double = 2.0
-    private let defaultAnimationDuration: Double = 0.3
-    private let completionPulseDuration: Double = 0.2
-    private let completionReturnDuration: Double = 0.2
+
+    // Enhanced animation duration constants for Siri-like experience
+    private let recordingPulseDuration: Double = 1.8  // Slower, more natural breathing
+    private let processingRotationDuration: Double = 2.5  // Smoother rotation
+    private let defaultAnimationDuration: Double = 0.4  // Slightly longer for smoothness
+    private let completionPulseDuration: Double = 0.3  // More pronounced success
+    private let completionReturnDuration: Double = 0.4
+    private let stateTransitionDuration: Double = 0.6  // Smooth state transitions
+    private let glowAnimationDuration: Double = 0.8
+    private let breathingDuration: Double = 2.2  // Natural breathing rhythm
     
     // Accessibility constants
     private static let highContrastOpacity: Double = 0.9
@@ -59,73 +67,162 @@ public struct RecordingIndicatorView: View {
     public var body: some View {
         GeometryReader { geometry in
             if isVisible {
-                ZStack {
-                    // Blur background
-                    VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                        .frame(width: orbSize, height: orbSize)
-                        .clipShape(Circle())
-                    
-                    // Main orb content
-                    ZStack {
-                        // Base circle with state color
-                        Circle()
-                            .fill(stateColor.opacity(stateOpacity))
-                            .frame(width: orbSize, height: orbSize)
-                        
-                        // Progress ring (only shown during processing)
-                        if state == .processing {
-                            Circle()
-                                .trim(from: 0, to: progress)
-                                .stroke(
-                                    stateColor,
-                                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                                )
-                                .frame(width: orbSize - 6, height: orbSize - 6)
-                                .rotationEffect(rotationAngle)
-                        }
-                        
-                        // Accessibility icon overlay
-                        if differentiateWithoutColor {
-                            stateIcon
-                                .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(.primary)
-                        }
-                    }
-                    .scaleEffect(pulseScale)
-                    .animation(
-                        reduceMotion ? .none : pulseAnimation,
-                        value: state
+                mainOrbView
+                    .position(
+                        x: geometry.size.width - orbSize / 2 - cornerPadding,
+                        y: geometry.size.height - orbSize / 2 - cornerPadding
                     )
-                    .animation(
-                        reduceMotion ? .none : pulseAnimation,
-                        value: pulseScale
-                    )
-                }
-                .position(
-                    x: geometry.size.width - cornerPadding - orbSize / 2,
-                    y: geometry.size.height - cornerPadding - orbSize / 2
-                )
-                .opacity(isVisible ? 1 : 0)
-                .animation(
-                    .easeInOut(duration: 0.3),
-                    value: isVisible
-                )
-                .onAppear {
-                    startAnimations()
-                }
-                .onDisappear {
-                    stopAnimations()
-                }
-                .onChange(of: state) { newState in
-                    updateAnimationsForState(newState)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(accessibilityHint)
-                .accessibilityValue(accessibilityValue)
-                .accessibilityAddTraits(accessibilityTraits)
             }
         }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityTraits(accessibilityTraits)
+        .onChange(of: state) { newState in
+            updateAnimationsForState(newState)
+        }
+        .onAppear {
+            startAnimations()
+        }
+        .onDisappear {
+            stopAnimations()
+        }
+    }
+
+    private var mainOrbView: some View {
+        ZStack {
+            // Blur background
+            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+                .frame(width: orbSize, height: orbSize)
+                .clipShape(Circle())
+
+            // Enhanced main orb content
+            orbContentView
+                .scaleEffect(pulseScale)
+                .animation(
+                    reduceMotion ? .none : enhancedStateAnimation,
+                    value: state
+                )
+                .animation(
+                    reduceMotion ? .none : enhancedPulseAnimation,
+                    value: pulseScale
+                )
+        }
+    }
+
+    private var orbContentView: some View {
+        ZStack {
+            // Outer glow effect for active states
+            if glowOpacity > 0 {
+                Circle()
+                    .fill(stateColor.opacity(glowOpacity * 0.3))
+                    .frame(width: orbSize + 20, height: orbSize + 20)
+                    .blur(radius: 8)
+                    .scaleEffect(breathingScale)
+            }
+
+            // Shadow layer for depth
+            Circle()
+                .fill(Color.black.opacity(0.15))
+                .frame(width: orbSize, height: orbSize)
+                .blur(radius: shadowRadius)
+                .offset(y: shadowRadius / 2)
+
+            // Base circle with enhanced state color
+            baseCircleView
+
+            // Inner highlight for glass effect
+            highlightView
+
+            // Enhanced progress ring
+            if state == .processing {
+                progressRingView
+            }
+
+            // Completion particles effect
+            if state == .completed && particleOpacity > 0 {
+                particlesView
+            }
+
+            // Accessibility icon overlay
+            if differentiateWithoutColor {
+                accessibilityIconView
+            }
+        }
+    }
+
+    private var baseCircleView: some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        stateColor.opacity(stateOpacity * 1.1),
+                        stateColor.opacity(stateOpacity * 0.8)
+                    ]),
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: orbSize / 2
+                )
+            )
+            .frame(width: orbSize, height: orbSize)
+    }
+
+    private var highlightView: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.white.opacity(0.3),
+                        Color.clear
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: orbSize * 0.6, height: orbSize * 0.6)
+            .offset(x: -orbSize * 0.1, y: -orbSize * 0.1)
+    }
+
+    private var progressRingView: some View {
+        Circle()
+            .trim(from: 0, to: progress)
+            .stroke(
+                AngularGradient(
+                    gradient: Gradient(colors: [
+                        stateColor,
+                        stateColor.opacity(0.6),
+                        stateColor
+                    ]),
+                    center: .center
+                ),
+                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+            )
+            .frame(width: orbSize - 8, height: orbSize - 8)
+            .rotationEffect(rotationAngle)
+    }
+
+    private var particlesView: some View {
+        ForEach(0..<8, id: \.self) { index in
+            Circle()
+                .fill(Color.green.opacity(particleOpacity))
+                .frame(width: 4, height: 4)
+                .offset(
+                    x: cos(Double(index) * .pi / 4) * (orbSize / 2 + 15),
+                    y: sin(Double(index) * .pi / 4) * (orbSize / 2 + 15)
+                )
+                .scaleEffect(particleOpacity)
+        }
+    }
+
+    private var accessibilityIconView: some View {
+        stateIcon
+            .font(.system(size: 24, weight: .medium))
+            .foregroundColor(.primary)
+            .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
+    }
         .allowsHitTesting(false) // Allow clicks to pass through
         .ignoresSafeArea(.all)
     }
@@ -240,17 +337,32 @@ public struct RecordingIndicatorView: View {
         }
     }
     
-    // MARK: - Animations
-    
-    private var pulseAnimation: Animation {
+    // MARK: - Enhanced Animations for Siri-like Experience
+
+    private var enhancedStateAnimation: Animation {
+        .spring(response: stateTransitionDuration, dampingFraction: 0.8, blendDuration: 0.2)
+    }
+
+    private var enhancedPulseAnimation: Animation {
         switch state {
         case .recording:
             return .easeInOut(duration: recordingPulseDuration).repeatForever(autoreverses: true)
         case .processing:
             return .linear(duration: processingRotationDuration).repeatForever(autoreverses: false)
+        case .completed:
+            return .spring(response: completionPulseDuration, dampingFraction: 0.6, blendDuration: 0.1)
         default:
-            return .easeInOut(duration: defaultAnimationDuration)
+            return .spring(response: defaultAnimationDuration, dampingFraction: 0.8, blendDuration: 0.1)
         }
+    }
+
+    private var breathingAnimation: Animation {
+        .easeInOut(duration: breathingDuration).repeatForever(autoreverses: true)
+    }
+
+    // Legacy animation for backward compatibility
+    private var pulseAnimation: Animation {
+        enhancedPulseAnimation
     }
     
     /// Starts the appropriate animations based on the current recording state.
@@ -264,54 +376,140 @@ public struct RecordingIndicatorView: View {
         rotationAngle = .zero
     }
     
-    /// Updates animation properties based on the given recording state.
+    /// Enhanced animation state management for Siri-like visual feedback
     ///
-    /// Adjusts pulsing and rotation values to trigger appropriate animations for idle, recording, processing, or error states. Animations are disabled if reduce motion is enabled.
+    /// Provides smooth, polished transitions between states with sophisticated visual effects
+    /// including glow, shadow, breathing, and particle animations. Respects accessibility preferences.
     private func updateAnimationsForState(_ newState: RecordingState) {
         guard !reduceMotion else {
-            pulseScale = 1.0
-            rotationAngle = .zero
+            resetAllAnimations()
             return
         }
-        
+
+        // Smooth state transition with anticipation
+        withAnimation(enhancedStateAnimation) {
+            stateTransitionProgress = 1.0
+        }
+
         switch newState {
         case .idle:
-            pulseScale = 1.0
-            rotationAngle = .zero
-            
+            animateToIdleState()
+
         case .recording:
-            // Start pulsing animation
-            withAnimation(pulseAnimation) {
-                pulseScale = 1.1
-            }
-            
+            animateToRecordingState()
+
         case .processing:
-            pulseScale = 1.0
-            // Start rotation animation for progress ring
-            withAnimation(.linear(duration: processingRotationDuration).repeatForever(autoreverses: false)) {
-                rotationAngle = .degrees(360)
-            }
+            animateToProcessingState()
 
         case .completed:
-            rotationAngle = .zero
-            // Brief success pulse animation
-            withAnimation(.easeInOut(duration: completionPulseDuration)) {
-                pulseScale = 1.15
-            }
-            // Return to normal size after pulse
-            DispatchQueue.main.asyncAfter(deadline: .now() + completionPulseDuration) {
-                withAnimation(.easeInOut(duration: completionReturnDuration)) {
-                    pulseScale = 1.0
-                }
-            }
+            animateToCompletedState()
 
         case .error:
+            animateToErrorState()
+        }
+    }
+
+    private func resetAllAnimations() {
+        pulseScale = 1.0
+        rotationAngle = .zero
+        glowOpacity = 0.0
+        shadowRadius = 0
+        breathingScale = 1.0
+        particleOpacity = 0.0
+        stateTransitionProgress = 0.0
+    }
+
+    private func animateToIdleState() {
+        withAnimation(enhancedStateAnimation) {
             pulseScale = 1.0
             rotationAngle = .zero
-            // Brief shake animation for error state
-            withAnimation(.easeInOut(duration: 0.1).repeatCount(3, autoreverses: true)) {
-                pulseScale = 1.05
+            glowOpacity = 0.0
+            shadowRadius = 2
+            breathingScale = 1.0
+            particleOpacity = 0.0
+        }
+    }
+
+    private func animateToRecordingState() {
+        // Gentle breathing animation with subtle glow
+        withAnimation(enhancedPulseAnimation) {
+            pulseScale = 1.08
+        }
+
+        withAnimation(.easeInOut(duration: glowAnimationDuration)) {
+            glowOpacity = 0.6
+            shadowRadius = 8
+        }
+
+        // Start breathing animation
+        withAnimation(breathingAnimation) {
+            breathingScale = 1.05
+        }
+    }
+
+    private func animateToProcessingState() {
+        withAnimation(enhancedStateAnimation) {
+            pulseScale = 1.0
+            glowOpacity = 0.8
+            shadowRadius = 12
+            breathingScale = 1.0
+        }
+
+        // Smooth rotation animation for progress ring
+        withAnimation(.linear(duration: processingRotationDuration).repeatForever(autoreverses: false)) {
+            rotationAngle = .degrees(360)
+        }
+    }
+
+    private func animateToCompletedState() {
+        // Success pulse with particle burst
+        withAnimation(.spring(response: completionPulseDuration, dampingFraction: 0.5)) {
+            pulseScale = 1.2
+            glowOpacity = 1.0
+            shadowRadius = 15
+            particleOpacity = 1.0
+        }
+
+        // Particle fade and return to normal
+        DispatchQueue.main.asyncAfter(deadline: .now() + completionPulseDuration) {
+            withAnimation(.easeOut(duration: completionReturnDuration)) {
+                self.pulseScale = 1.0
+                self.glowOpacity = 0.0
+                self.shadowRadius = 2
+                self.particleOpacity = 0.0
             }
+        }
+
+        // Reset rotation
+        withAnimation(enhancedStateAnimation) {
+            rotationAngle = .zero
+        }
+    }
+
+    private func animateToErrorState() {
+        // Error shake with red glow
+        withAnimation(.easeInOut(duration: 0.1).repeatCount(4, autoreverses: true)) {
+            pulseScale = 1.08
+        }
+
+        withAnimation(.easeInOut(duration: 0.3)) {
+            glowOpacity = 0.7
+            shadowRadius = 10
+        }
+
+        // Fade error effects
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            withAnimation(.easeOut(duration: 0.4)) {
+                self.glowOpacity = 0.0
+                self.shadowRadius = 2
+                self.pulseScale = 1.0
+            }
+        }
+
+        withAnimation(enhancedStateAnimation) {
+            rotationAngle = .zero
+            breathingScale = 1.0
+            particleOpacity = 0.0
         }
     }
 }

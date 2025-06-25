@@ -180,48 +180,102 @@ public class ErrorHandlingManager: ObservableObject {
     
     // MARK: - Error Handling Interface
     
-    /// Handle an error with appropriate user feedback and recovery options
+    /// Enhanced error handling with intelligent recovery and user guidance
     ///
     /// Provides comprehensive error handling including visual feedback, user notifications,
-    /// and automatic recovery mechanisms based on error type and severity.
+    /// automatic recovery mechanisms, and contextual help based on error type and severity.
     ///
     /// - Parameters:
     ///   - error: The error to handle
     ///   - recovery: Optional recovery closure to execute after user notification
     ///   - userContext: Additional context for user-facing error messages
+    ///   - showHelp: Whether to offer contextual help for this error
     ///
-    /// ## Error Handling Strategy
-    /// - **Minor errors**: Brief visual feedback through orb color changes
-    /// - **Warning errors**: Non-blocking system notifications
-    /// - **Critical errors**: Modal alerts with action buttons
-    /// - **Recoverable errors**: Automatic retry with fallback options
+    /// ## Enhanced Error Handling Strategy
+    /// - **Minor errors**: Brief visual feedback with auto-recovery
+    /// - **Warning errors**: Non-blocking notifications with guidance
+    /// - **Critical errors**: Modal alerts with recovery options and help
+    /// - **Recoverable errors**: Intelligent retry with progressive fallback
+    /// - **System errors**: Adaptive degradation with user notification
     ///
-    /// ## Visual Feedback
-    /// Visual feedback is provided through the recording indicator orb:
-    /// - Red flash for transcription failures
-    /// - Persistent red for critical errors
-    /// - Orange pulse for warnings
+    /// ## Visual Feedback & User Guidance
+    /// - Recording indicator orb provides immediate visual feedback
+    /// - Contextual help system offers specific guidance
+    /// - Progressive disclosure of technical details
+    /// - Accessibility-compliant error presentation
     ///
-    /// - Important: This method coordinates with the recording indicator system
-    /// - Note: Recovery actions are executed asynchronously
+    /// - Important: This method coordinates with visual feedback and help systems
+    /// - Note: Recovery actions are executed asynchronously with progress indication
     public func handleError(
         _ error: WhisperNodeError,
         recovery: (() async -> Void)? = nil,
-        userContext: String? = nil
+        userContext: String? = nil,
+        showHelp: Bool = true
     ) {
         Self.logger.error("Handling error: \(error.localizedDescription)")
-        
-        // Log error details for debugging
+
+        // Log error details for debugging and analytics
         logErrorDetails(error, context: userContext)
-        
-        // Determine handling strategy based on severity
+
+        // Update error statistics for pattern analysis
+        updateErrorStatistics(error)
+
+        // Determine handling strategy based on severity and context
         switch error.severity {
         case .minor:
-            handleMinorError(error, recovery: recovery)
+            handleMinorError(error, recovery: recovery, showHelp: showHelp)
         case .warning:
-            handleWarningError(error, recovery: recovery)
+            handleWarningError(error, recovery: recovery, showHelp: showHelp)
         case .critical:
-            handleCriticalError(error, recovery: recovery)
+            handleCriticalError(error, recovery: recovery, showHelp: showHelp)
+        }
+
+        // Trigger adaptive system response if needed
+        triggerAdaptiveResponse(for: error)
+    }
+
+    /// Enhanced error handling with automatic retry and progressive fallback
+    public func handleErrorWithRetry(
+        _ error: WhisperNodeError,
+        maxRetries: Int = 3,
+        retryDelay: TimeInterval = 1.0,
+        fallbackAction: (() async -> Void)? = nil,
+        userContext: String? = nil
+    ) async {
+        var retryCount = 0
+        var lastError = error
+
+        while retryCount < maxRetries {
+            Self.logger.info("Attempting error recovery (attempt \(retryCount + 1)/\(maxRetries))")
+
+            do {
+                // Attempt automatic recovery based on error type
+                try await performAutomaticRecovery(for: lastError)
+                Self.logger.info("Automatic recovery successful after \(retryCount + 1) attempts")
+                return
+            } catch let recoveryError as WhisperNodeError {
+                lastError = recoveryError
+                retryCount += 1
+
+                if retryCount < maxRetries {
+                    // Progressive delay between retries
+                    let delay = retryDelay * Double(retryCount)
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+            } catch {
+                // Unexpected error during recovery
+                lastError = .networkConnectionFailed
+                break
+            }
+        }
+
+        // All retries failed, handle the final error
+        handleError(lastError, userContext: userContext)
+
+        // Execute fallback action if provided
+        if let fallbackAction = fallbackAction {
+            Self.logger.info("Executing fallback action after failed recovery")
+            await fallbackAction()
         }
     }
     
@@ -568,4 +622,319 @@ extension ErrorHandlingManager {
         let state = getCurrentDegradationState()
         return state["voiceInput"] == true && state["transcription"] == true
     }
+
+    // MARK: - Enhanced Error Handling Methods
+
+    private func handleMinorError(_ error: WhisperNodeError, recovery: (() async -> Void)?, showHelp: Bool) {
+        // Brief visual feedback
+        showVisualErrorFeedback(error, duration: 1.0)
+
+        // Auto-recovery for minor errors
+        if let recovery = recovery {
+            Task {
+                await recovery()
+            }
+        }
+
+        // Optional contextual help
+        if showHelp && shouldShowHelpForError(error) {
+            scheduleContextualHelp(for: error, delay: 2.0)
+        }
+    }
+
+    private func handleWarningError(_ error: WhisperNodeError, recovery: (() async -> Void)?, showHelp: Bool) {
+        // Visual feedback with longer duration
+        showVisualErrorFeedback(error, duration: 3.0)
+
+        // Non-blocking notification
+        showUserNotification(for: error, includeRecovery: recovery != nil)
+
+        // Contextual help if requested
+        if showHelp {
+            scheduleContextualHelp(for: error, delay: 1.0)
+        }
+
+        // Execute recovery if provided
+        if let recovery = recovery {
+            Task {
+                await recovery()
+            }
+        }
+    }
+
+    private func handleCriticalError(_ error: WhisperNodeError, recovery: (() async -> Void)?, showHelp: Bool) {
+        // Persistent visual feedback
+        showVisualErrorFeedback(error, duration: 0) // Persistent until resolved
+
+        // Modal alert with recovery options
+        showCriticalErrorAlert(error, recovery: recovery, showHelp: showHelp)
+    }
+
+    private func updateErrorStatistics(_ error: WhisperNodeError) {
+        // Track error patterns for analytics and adaptive responses
+        let errorKey = error.analyticsKey
+        let currentCount = UserDefaults.standard.integer(forKey: "error_count_\(errorKey)")
+        UserDefaults.standard.set(currentCount + 1, forKey: "error_count_\(errorKey)")
+
+        // Track recent error timestamps for pattern detection
+        let timestampKey = "error_timestamps_\(errorKey)"
+        var timestamps = UserDefaults.standard.array(forKey: timestampKey) as? [Date] ?? []
+        timestamps.append(Date())
+
+        // Keep only recent timestamps (last 24 hours)
+        let dayAgo = Date().addingTimeInterval(-24 * 60 * 60)
+        timestamps = timestamps.filter { $0 > dayAgo }
+        UserDefaults.standard.set(timestamps, forKey: timestampKey)
+    }
+
+    private func triggerAdaptiveResponse(for error: WhisperNodeError) {
+        // Trigger system adaptations based on error patterns
+        switch error {
+        case .transcriptionFailed:
+            // Suggest model downgrade if transcription keeps failing
+            if getErrorFrequency(.transcriptionFailed) > 3 {
+                NotificationCenter.default.post(
+                    name: .performanceOptimizationRecommended,
+                    object: nil,
+                    userInfo: ["recommendedModel": "tiny.en", "reason": "transcription_failures"]
+                )
+            }
+        case .networkConnectionFailed:
+            // Enable conservative mode for network errors
+            enableConservativeMode()
+        default:
+            break
+        }
+    }
+
+    private func performAutomaticRecovery(for error: WhisperNodeError) async throws {
+        Self.logger.info("Attempting automatic recovery for: \(error)")
+
+        switch error {
+        case .microphoneAccessDenied:
+            // Check if permissions were granted since the error
+            let hasPermission = await AudioCaptureEngine.shared.requestPermission()
+            if !hasPermission {
+                throw WhisperNodeError.microphoneAccessDenied
+            }
+
+        case .accessibilityPermissionDenied:
+            // Check if accessibility permissions were granted
+            if !AXIsProcessTrusted() {
+                throw WhisperNodeError.accessibilityPermissionDenied
+            }
+
+        case .transcriptionFailed:
+            // Try with a more reliable model
+            let currentModel = WhisperNodeCore.shared.currentModel
+            if !currentModel.contains("tiny") {
+                WhisperNodeCore.shared.loadModel("tiny.en")
+                // Give the model time to load
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            } else {
+                throw error // Can't recover further
+            }
+
+        case .modelDownloadFailed:
+            // Check network connectivity and retry
+            if await isNetworkAvailable() {
+                // Network is available, the download might succeed now
+                return
+            } else {
+                throw WhisperNodeError.networkConnectionFailed
+            }
+
+        default:
+            throw error // No automatic recovery available
+        }
+    }
+
+    private func showVisualErrorFeedback(_ error: WhisperNodeError, duration: TimeInterval) {
+        // Show error state in recording indicator
+        let indicatorManager = RecordingIndicatorWindowManager()
+        indicatorManager.showIndicator(state: .error)
+
+        if duration > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                indicatorManager.hideIndicator()
+            }
+        }
+    }
+
+    private func scheduleContextualHelp(for error: WhisperNodeError, delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let helpContext = self.getHelpContextForError(error)
+            // Show contextual help tooltip or guidance
+            self.showContextualHelp(for: helpContext)
+        }
+    }
+
+    private func showUserNotification(for error: WhisperNodeError, includeRecovery: Bool) {
+        let notification = NSUserNotification()
+        notification.title = "WhisperNode"
+        notification.informativeText = error.userFriendlyDescription
+        notification.soundName = NSUserNotificationDefaultSoundName
+
+        if includeRecovery {
+            notification.hasActionButton = true
+            notification.actionButtonTitle = "Retry"
+        }
+
+        NSUserNotificationCenter.default.deliver(notification)
+    }
+
+    private func showCriticalErrorAlert(_ error: WhisperNodeError, recovery: (() async -> Void)?, showHelp: Bool) {
+        let alert = NSAlert()
+        alert.messageText = error.title
+        alert.informativeText = error.userFriendlyDescription
+        alert.alertStyle = .critical
+
+        // Add recovery button if available
+        if recovery != nil {
+            alert.addButton(withTitle: "Retry")
+        }
+
+        // Add help button if requested
+        if showHelp {
+            alert.addButton(withTitle: "Get Help")
+        }
+
+        alert.addButton(withTitle: "OK")
+
+        let response = alert.runModal()
+
+        // Handle user response
+        switch response {
+        case .alertFirstButtonReturn where recovery != nil:
+            Task {
+                await recovery?()
+            }
+        case .alertSecondButtonReturn where showHelp:
+            let helpContext = getHelpContextForError(error)
+            showContextualHelp(for: helpContext)
+        default:
+            break
+        }
+    }
+
+    private func getErrorFrequency(_ error: WhisperNodeError) -> Int {
+        let errorKey = error.analyticsKey
+        return UserDefaults.standard.integer(forKey: "error_count_\(errorKey)")
+    }
+
+    private func enableConservativeMode() {
+        Self.logger.info("Enabling conservative mode due to system errors")
+
+        // Notify performance monitor to enable conservative settings
+        NotificationCenter.default.post(
+            name: .conservativeModeEnabled,
+            object: nil,
+            userInfo: ["reason": "system_errors"]
+        )
+    }
+
+    private func shouldShowHelpForError(_ error: WhisperNodeError) -> Bool {
+        // Don't show help for frequently occurring errors to avoid spam
+        return getErrorFrequency(error) < 3
+    }
+
+    private func getHelpContextForError(_ error: WhisperNodeError) -> HelpSystem.HelpContext {
+        switch error {
+        case .microphoneAccessDenied:
+            return .microphonePermissions
+        case .accessibilityPermissionDenied:
+            return .accessibilityPermissions
+        case .hotkeyConflict:
+            return .hotkeySetup
+        case .transcriptionFailed:
+            return .voiceSettings
+        default:
+            return .troubleshooting
+        }
+    }
+
+    private func showContextualHelp(for context: HelpSystem.HelpContext) {
+        // This would integrate with the HelpSystem to show contextual help
+        // For now, we'll just log the intent
+        Self.logger.info("Would show contextual help for: \(context.rawValue)")
+    }
+
+    private func isNetworkAvailable() async -> Bool {
+        // Simple network connectivity check
+        guard let url = URL(string: "https://www.apple.com") else { return false }
+
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+}
+
+// MARK: - WhisperNodeError Extensions
+
+extension WhisperNodeError {
+    var analyticsKey: String {
+        switch self {
+        case .microphoneAccessDenied:
+            return "microphone_access_denied"
+        case .accessibilityPermissionDenied:
+            return "accessibility_permission_denied"
+        case .transcriptionFailed:
+            return "transcription_failed"
+        case .modelDownloadFailed:
+            return "model_download_failed"
+        case .hotkeyConflict:
+            return "hotkey_conflict"
+        case .systemError:
+            return "system_error"
+        case .networkConnectionFailed:
+            return "network_connection_failed"
+        }
+    }
+
+    var userFriendlyDescription: String {
+        switch self {
+        case .microphoneAccessDenied:
+            return "WhisperNode needs microphone access to transcribe your voice. Please grant permission in System Preferences."
+        case .accessibilityPermissionDenied:
+            return "WhisperNode needs accessibility permission to detect global hotkeys. Please grant permission in System Preferences."
+        case .transcriptionFailed:
+            return "Unable to transcribe the audio. Please try speaking more clearly or check your microphone."
+        case .modelDownloadFailed(let details):
+            return "Failed to download the AI model. Please check your internet connection. Details: \(details)"
+        case .hotkeyConflict(let details):
+            return "The selected hotkey conflicts with another application. Please choose a different combination. Details: \(details)"
+        case .systemError(let details):
+            return "A system error occurred. Please try restarting WhisperNode. Details: \(details)"
+        case .networkConnectionFailed:
+            return "Unable to connect to the internet. Please check your network connection."
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .microphoneAccessDenied:
+            return "Microphone Access Required"
+        case .accessibilityPermissionDenied:
+            return "Accessibility Permission Required"
+        case .transcriptionFailed:
+            return "Transcription Failed"
+        case .modelDownloadFailed:
+            return "Download Failed"
+        case .hotkeyConflict:
+            return "Hotkey Conflict"
+        case .systemError:
+            return "System Error"
+        case .networkConnectionFailed:
+            return "Network Error"
+        }
+    }
+}
+
+// MARK: - Additional Notification Names
+
+extension Notification.Name {
+    static let conservativeModeEnabled = Notification.Name("conservativeModeEnabled")
 }

@@ -267,18 +267,146 @@ public class PerformanceMonitor: ObservableObject {
         }
     }
     
-    public func getBatteryOptimizedSettings() -> [String: Any] {
-        var settings: [String: Any] = [:]
-        
+    /// Enhanced adaptive performance settings based on system conditions
+    ///
+    /// Provides intelligent optimization recommendations based on current system state,
+    /// including battery level, thermal conditions, CPU load, and memory pressure.
+    /// These settings enable the app to gracefully adapt to system constraints.
+    public func getAdaptivePerformanceSettings() -> AdaptiveSettings {
+        var settings = AdaptiveSettings()
+
+        // Battery-based optimizations
         if isOnBattery {
-            settings["preferFasterModel"] = batteryLevel > 0.5
-            settings["reducedMonitoringFrequency"] = batteryLevel < 0.3
-            settings["enablePowerSaving"] = batteryLevel < 0.2
+            settings.preferFasterModel = batteryLevel > 0.5
+            settings.reducedMonitoringFrequency = batteryLevel < 0.3
+            settings.enablePowerSaving = batteryLevel < 0.2
+            settings.maxConcurrentOperations = batteryLevel > 0.3 ? 2 : 1
+        } else {
+            settings.maxConcurrentOperations = 4
         }
-        
+
+        // Thermal-based optimizations
+        switch thermalState {
+        case .critical:
+            settings.enableThermalThrottling = true
+            settings.preferFasterModel = true
+            settings.reducedQuality = true
+            settings.maxConcurrentOperations = 1
+        case .serious:
+            settings.enableThermalThrottling = true
+            settings.preferFasterModel = true
+            settings.maxConcurrentOperations = min(settings.maxConcurrentOperations, 2)
+        case .fair:
+            settings.preferFasterModel = cpuUsage > 80
+        default:
+            break
+        }
+
+        // CPU-based optimizations
+        if cpuUsage > 90 {
+            settings.enableCPUThrottling = true
+            settings.preferFasterModel = true
+            settings.reducedQuality = true
+        } else if cpuUsage > 70 {
+            settings.preferFasterModel = true
+        }
+
+        // Memory-based optimizations
+        let memoryMB = Double(memoryUsage) / 1024.0 / 1024.0
+        if memoryMB > 500 {
+            settings.enableMemoryOptimization = true
+            settings.preferFasterModel = true
+            settings.aggressiveCleanup = true
+        } else if memoryMB > 300 {
+            settings.enableMemoryOptimization = true
+        }
+
         return settings
     }
+
+    /// Legacy method for backward compatibility
+    public func getBatteryOptimizedSettings() -> [String: Any] {
+        let adaptiveSettings = getAdaptivePerformanceSettings()
+        return [
+            "preferFasterModel": adaptiveSettings.preferFasterModel,
+            "reducedMonitoringFrequency": adaptiveSettings.reducedMonitoringFrequency,
+            "enablePowerSaving": adaptiveSettings.enablePowerSaving
+        ]
+    }
     
+    // MARK: - Adaptive Performance Management
+
+    /// Apply adaptive optimizations based on current system conditions
+    public func applyAdaptiveOptimizations() {
+        let settings = getAdaptivePerformanceSettings()
+
+        // Apply model optimization
+        if settings.preferFasterModel {
+            suggestModelDowngrade()
+        }
+
+        // Apply memory optimization
+        if settings.enableMemoryOptimization {
+            optimizeMemoryUsage(aggressive: settings.aggressiveCleanup)
+        }
+
+        // Apply CPU throttling
+        if settings.enableCPUThrottling {
+            enableCPUThrottling()
+        }
+
+        // Apply thermal throttling
+        if settings.enableThermalThrottling {
+            enableThermalThrottling()
+        }
+
+        Self.logger.info("Applied adaptive optimizations: \(settings)")
+    }
+
+    private func suggestModelDowngrade() {
+        guard let suggestedModel = getRecommendedModelDowngrade() else { return }
+
+        Self.logger.info("Suggesting model downgrade to: \(suggestedModel)")
+
+        // Notify the core system about the recommendation
+        NotificationCenter.default.post(
+            name: .performanceOptimizationRecommended,
+            object: nil,
+            userInfo: ["recommendedModel": suggestedModel, "reason": "system_performance"]
+        )
+    }
+
+    private func optimizeMemoryUsage(aggressive: Bool) {
+        Self.logger.info("Optimizing memory usage (aggressive: \(aggressive))")
+
+        // Request memory cleanup from various components
+        NotificationCenter.default.post(
+            name: .memoryOptimizationRequested,
+            object: nil,
+            userInfo: ["aggressive": aggressive]
+        )
+    }
+
+    private func enableCPUThrottling() {
+        Self.logger.info("Enabling CPU throttling due to high CPU usage")
+
+        NotificationCenter.default.post(
+            name: .cpuThrottlingEnabled,
+            object: nil,
+            userInfo: ["cpuUsage": cpuUsage]
+        )
+    }
+
+    private func enableThermalThrottling() {
+        Self.logger.info("Enabling thermal throttling due to thermal state: \(thermalState.rawValue)")
+
+        NotificationCenter.default.post(
+            name: .thermalThrottlingEnabled,
+            object: nil,
+            userInfo: ["thermalState": thermalState.rawValue]
+        )
+    }
+
     // MARK: - Logging
     
     private func logPerformanceMetrics() {
@@ -608,4 +736,53 @@ extension ProcessInfo.ThermalState {
             return "unknown"
         }
     }
+}
+
+// MARK: - Adaptive Settings
+
+/// Comprehensive adaptive performance settings for system optimization
+public struct AdaptiveSettings: CustomStringConvertible {
+    // Model optimization
+    public var preferFasterModel: Bool = false
+    public var reducedQuality: Bool = false
+
+    // Resource management
+    public var enablePowerSaving: Bool = false
+    public var enableMemoryOptimization: Bool = false
+    public var enableCPUThrottling: Bool = false
+    public var enableThermalThrottling: Bool = false
+
+    // Operational limits
+    public var maxConcurrentOperations: Int = 4
+    public var reducedMonitoringFrequency: Bool = false
+    public var aggressiveCleanup: Bool = false
+
+    // Performance thresholds
+    public var cpuThreshold: Double = 80.0
+    public var memoryThreshold: Double = 400.0 // MB
+    public var batteryThreshold: Float = 0.3
+
+    public var description: String {
+        return """
+        AdaptiveSettings(
+            preferFasterModel: \(preferFasterModel),
+            reducedQuality: \(reducedQuality),
+            enablePowerSaving: \(enablePowerSaving),
+            enableMemoryOptimization: \(enableMemoryOptimization),
+            enableCPUThrottling: \(enableCPUThrottling),
+            enableThermalThrottling: \(enableThermalThrottling),
+            maxConcurrentOperations: \(maxConcurrentOperations),
+            aggressiveCleanup: \(aggressiveCleanup)
+        )
+        """
+    }
+}
+
+// MARK: - Notification Extensions
+
+extension Notification.Name {
+    static let performanceOptimizationRecommended = Notification.Name("performanceOptimizationRecommended")
+    static let memoryOptimizationRequested = Notification.Name("memoryOptimizationRequested")
+    static let cpuThrottlingEnabled = Notification.Name("cpuThrottlingEnabled")
+    static let thermalThrottlingEnabled = Notification.Name("thermalThrottlingEnabled")
 }
