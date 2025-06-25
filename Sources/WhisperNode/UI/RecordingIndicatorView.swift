@@ -136,6 +136,8 @@ public struct RecordingIndicatorView: View {
             return .blue
         case .processing:
             return .blue
+        case .completed:
+            return .green
         case .error:
             return .red
         }
@@ -148,10 +150,12 @@ public struct RecordingIndicatorView: View {
             baseOpacity = 0.7
         case .recording, .processing:
             baseOpacity = 0.85
+        case .completed:
+            baseOpacity = 0.8
         case .error:
             baseOpacity = 0.7
         }
-        
+
         // High contrast mode support - use 90% opacity as per T19 requirements
         return differentiateWithoutColor ? Self.highContrastOpacity : baseOpacity
     }
@@ -167,6 +171,8 @@ public struct RecordingIndicatorView: View {
             Image(systemName: "mic.fill")
         case .processing:
             Image(systemName: "waveform")
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
         }
@@ -197,6 +203,8 @@ public struct RecordingIndicatorView: View {
             return "Recording in progress"
         case .processing:
             return "Processing audio"
+        case .completed:
+            return "Text insertion completed"
         case .error:
             return "Recording error occurred"
         }
@@ -281,7 +289,20 @@ public struct RecordingIndicatorView: View {
             withAnimation(.linear(duration: processingRotationDuration).repeatForever(autoreverses: false)) {
                 rotationAngle = .degrees(360)
             }
-            
+
+        case .completed:
+            rotationAngle = .zero
+            // Brief success pulse animation
+            withAnimation(.easeInOut(duration: 0.2)) {
+                pulseScale = 1.15
+            }
+            // Return to normal size after pulse
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    pulseScale = 1.0
+                }
+            }
+
         case .error:
             pulseScale = 1.0
             rotationAngle = .zero
@@ -300,6 +321,7 @@ public enum RecordingState: Equatable {
     case idle
     case recording
     case processing
+    case completed
     case error
 }
 

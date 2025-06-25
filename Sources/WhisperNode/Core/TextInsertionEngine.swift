@@ -3,6 +3,30 @@ import CoreGraphics
 import AppKit
 import os.log
 
+/// Errors that can occur during text insertion
+public enum TextInsertionError: Error, LocalizedError {
+    case allMethodsFailed
+    case characterInsertionFailed
+    case pasteboardInsertionFailed
+    case typingSimulationFailed
+    case accessibilityPermissionDenied
+
+    public var errorDescription: String? {
+        switch self {
+        case .allMethodsFailed:
+            return "All text insertion methods failed"
+        case .characterInsertionFailed:
+            return "Character-by-character insertion failed"
+        case .pasteboardInsertionFailed:
+            return "Pasteboard insertion failed"
+        case .typingSimulationFailed:
+            return "Typing simulation failed"
+        case .accessibilityPermissionDenied:
+            return "Accessibility permissions required for text insertion"
+        }
+    }
+}
+
 /// Text insertion engine using CGEvent keyboard simulation
 ///
 /// Provides system-level text insertion at the current cursor position with smart formatting
@@ -159,21 +183,32 @@ public actor TextInsertionEngine {
     /// await engine.insertText("hello world. this is a test!")
     /// // Result: "Hello world. This is a test!"
     /// ```
-    public func insertText(_ text: String) async {
+    public func insertText(_ text: String) async throws {
         Self.logger.info("Inserting text: \(text.prefix(50))...")
-        
+
         let formattedText = applySmartFormatting(text)
-        
+
         // Attempt character-by-character insertion first
         let success = await insertCharacterByCharacter(formattedText)
-        
+
         if !success {
             // Fallback to pasteboard method for complex characters
             Self.logger.warning("Character insertion failed, using pasteboard fallback")
-            await insertViaPasteboard(formattedText)
+            let pasteboardSuccess = await insertViaPasteboard(formattedText)
+
+            if !pasteboardSuccess {
+                // Final fallback: try typing simulation
+                Self.logger.warning("Pasteboard insertion failed, using typing simulation fallback")
+                let typingSuccess = await insertViaTypingSimulation(formattedText)
+
+                if !typingSuccess {
+                    Self.logger.error("All text insertion methods failed")
+                    throw TextInsertionError.allMethodsFailed
+                }
+            }
         }
-        
-        Self.logger.info("Text insertion completed")
+
+        Self.logger.info("Text insertion completed successfully")
     }
     
     /// Insert text character by character using CGEvents
@@ -229,25 +264,35 @@ public actor TextInsertionEngine {
     }
     
     /// Fallback method using pasteboard for complex Unicode characters
-    private func insertViaPasteboard(_ text: String) async {
-        await MainActor.run {
+    private func insertViaPasteboard(_ text: String) async -> Bool {
+        return await MainActor.run {
             let pasteboard = NSPasteboard.general
             let previousContents = pasteboard.string(forType: .string)
-            
+
             // Set text to pasteboard
             pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
-            
+            let pasteboardSet = pasteboard.setString(text, forType: .string)
+
+            guard pasteboardSet else {
+                Self.logger.error("Failed to set text to pasteboard")
+                return false
+            }
+
             // Simulate Cmd+V
             let cmdVKeyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true) // V key
             let cmdVKeyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: false)
-            
-            cmdVKeyDown?.flags = .maskCommand
-            cmdVKeyUp?.flags = .maskCommand
-            
-            cmdVKeyDown?.post(tap: .cghidEventTap)
-            cmdVKeyUp?.post(tap: .cghidEventTap)
-            
+
+            guard let keyDown = cmdVKeyDown, let keyUp = cmdVKeyUp else {
+                Self.logger.error("Failed to create paste key events")
+                return false
+            }
+
+            keyDown.flags = .maskCommand
+            keyUp.flags = .maskCommand
+
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+
             // Restore previous clipboard contents after a delay
             Task {
                 try? await Task.sleep(nanoseconds: Self.pasteboardRestoreDelay)
@@ -260,9 +305,93 @@ public actor TextInsertionEngine {
                     }
                 }
             }
+
+            Self.logger.debug("Pasteboard insertion completed")
+            return true
         }
     }
-    
+
+    /// Final fallback method using slower typing simulation
+    ///
+    /// This method provides a more reliable but slower alternative when both
+    /// character-by-character and pasteboard methods fail. It uses a different
+    /// approach with longer delays and more robust error checking.
+    ///
+    /// - Parameter text: The text to insert
+    /// - Returns: `true` if insertion succeeded, `false` otherwise
+    private func insertViaTypingSimulation(_ text: String) async -> Bool {
+        Self.logger.info("Using typing simulation fallback for text insertion")
+
+        var successCount = 0
+        let totalCharacters = text.count
+
+        // Use longer delays for more reliable insertion
+        let simulationDelay: UInt64 = 5_000_000 // 5ms between characters
+
+        for character in text {
+            // Try multiple approaches for each character
+            var characterInserted = false
+
+            // First try: Standard CGEvent approach with longer delay
+            if await insertCharacter(character) {
+                characterInserted = true
+            } else {
+                // Second try: Simple pasteboard approach for single character
+                if await insertSingleCharacterViaPasteboard(character) {
+                    characterInserted = true
+                } else {
+                    Self.logger.warning("Failed to insert character '\(character)' via typing simulation")
+                    break
+                }
+            }
+
+            if characterInserted {
+                successCount += 1
+                // Longer delay for typing simulation
+                try? await Task.sleep(nanoseconds: simulationDelay)
+            }
+        }
+
+        let success = successCount == totalCharacters
+        Self.logger.info("Typing simulation completed: \(successCount)/\(totalCharacters) characters inserted")
+        return success
+    }
+
+    /// Insert a single character via pasteboard as final fallback
+    ///
+    /// - Parameter character: The character to insert
+    /// - Returns: `true` if insertion succeeded, `false` otherwise
+    private func insertSingleCharacterViaPasteboard(_ character: Character) async -> Bool {
+        return await MainActor.run {
+            let pasteboard = NSPasteboard.general
+            let characterString = String(character)
+
+            // Set single character to pasteboard
+            pasteboard.clearContents()
+            let success = pasteboard.setString(characterString, forType: .string)
+
+            guard success else {
+                return false
+            }
+
+            // Simulate Cmd+V for single character
+            let cmdVKeyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true)
+            let cmdVKeyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: false)
+
+            guard let keyDown = cmdVKeyDown, let keyUp = cmdVKeyUp else {
+                return false
+            }
+
+            keyDown.flags = .maskCommand
+            keyUp.flags = .maskCommand
+
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+
+            return true
+        }
+    }
+
     /// Apply smart formatting to text
     private func applySmartFormatting(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)

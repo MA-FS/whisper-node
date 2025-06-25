@@ -19,6 +19,8 @@ public class MenuBarManager: ObservableObject {
     public enum AppState {
         case normal
         case recording
+        case processing
+        case completed
         case error
         case permissionRequired
     }
@@ -81,6 +83,27 @@ public class MenuBarManager: ObservableObject {
         currentState = state
         updateMenuBarIcon()
         Self.logger.debug("Menu bar state updated to: \(String(describing: state))")
+    }
+
+    /// Update menu bar to show processing state
+    /// - Parameter isProcessing: Whether processing is active
+    public func updateProcessingState(_ isProcessing: Bool) {
+        if isProcessing {
+            updateState(.processing)
+        } else {
+            updateState(.normal)
+        }
+    }
+
+    /// Show completion state briefly then return to normal
+    /// - Parameter duration: How long to show completion state (default: 0.5 seconds)
+    public func showCompletionState(duration: TimeInterval = 0.5) {
+        updateState(.completed)
+
+        // Return to normal state after duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.updateState(.normal)
+        }
     }
     
     /// Toggle visibility of the Dock icon
@@ -244,6 +267,16 @@ public class MenuBarManager: ObservableObject {
         case .recording:
             image.isTemplate = false
             if let tintedImage = tintImage(image, with: .systemBlue) {
+                return tintedImage
+            }
+        case .processing:
+            image.isTemplate = false
+            if let tintedImage = tintImage(image, with: .systemPurple) {
+                return tintedImage
+            }
+        case .completed:
+            image.isTemplate = false
+            if let tintedImage = tintImage(image, with: .systemGreen) {
                 return tintedImage
             }
         case .error:
