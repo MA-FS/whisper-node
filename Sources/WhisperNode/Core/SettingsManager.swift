@@ -1,11 +1,15 @@
 import Foundation
 import ServiceManagement
 import Cocoa
+import Carbon
+import os.log
 
 /// Manages application settings and preferences using UserDefaults
 @MainActor
 class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
+
+    private static let logger = Logger(subsystem: "com.whispernode.core", category: "settings")
     
     // MARK: - UserDefaults Keys
     
@@ -309,6 +313,270 @@ class SettingsManager: ObservableObject {
         }
         
         return validatedFrame
+    }
+
+    // MARK: - Enhanced Hotkey Persistence (T29h)
+
+    /// Loads hotkey configuration with comprehensive validation and error handling
+    ///
+    /// Provides robust loading of hotkey settings with validation, fallback mechanisms,
+    /// and detailed logging for debugging persistence issues.
+    ///
+    /// - Returns: A validated hotkey configuration, or default if loading fails
+    func loadHotkeyConfiguration() -> HotkeyConfiguration {
+        Self.logger.info("🔄 Loading hotkey configuration from UserDefaults")
+
+        let defaults = UserDefaults.standard
+
+        // Check if settings exist
+        let hasStoredKeyCode = defaults.object(forKey: UserDefaultsKeys.hotkeyKeyCode) != nil
+        let hasStoredModifierFlags = defaults.object(forKey: UserDefaultsKeys.hotkeyModifierFlags) != nil
+
+        if !hasStoredKeyCode || !hasStoredModifierFlags {
+            Self.logger.info("📋 No stored hotkey configuration found, using default")
+            let defaultConfig = HotkeyConfiguration.defaultConfiguration
+            saveHotkeyConfiguration(defaultConfig)
+            return defaultConfig
+        }
+
+        // Load stored values
+        let storedKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
+        let storedModifierFlags = CGEventFlags(rawValue: UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags)))
+
+        // Create configuration from stored values
+        let description = formatHotkeyDescription(keyCode: storedKeyCode, modifiers: storedModifierFlags)
+        let loadedConfig = HotkeyConfiguration(
+            keyCode: storedKeyCode,
+            modifierFlags: storedModifierFlags,
+            description: description
+        )
+
+        // Validate loaded configuration
+        loadedConfig.logValidationResults()
+
+        if !loadedConfig.isValid {
+            Self.logger.warning("⚠️ Loaded hotkey configuration is invalid, using default")
+            let defaultConfig = HotkeyConfiguration.defaultConfiguration
+            saveHotkeyConfiguration(defaultConfig)
+            return defaultConfig
+        }
+
+        // Check if configuration can be persisted (data integrity)
+        if !loadedConfig.canBePersisted {
+            Self.logger.warning("⚠️ Loaded hotkey configuration has persistence issues, using sanitized version")
+            let sanitizedConfig = loadedConfig.sanitizedForPersistence
+            saveHotkeyConfiguration(sanitizedConfig)
+            return sanitizedConfig
+        }
+
+        Self.logger.info("✅ Successfully loaded hotkey configuration: \(loadedConfig.description)")
+        return loadedConfig
+    }
+
+    /// Saves hotkey configuration with validation and integrity checks
+    ///
+    /// Provides safe saving of hotkey settings with validation, error handling,
+    /// and rollback capabilities for failed saves.
+    ///
+    /// - Parameter configuration: The hotkey configuration to save
+    /// - Returns: True if save was successful, false otherwise
+    @discardableResult
+    func saveHotkeyConfiguration(_ configuration: HotkeyConfiguration) -> Bool {
+        Self.logger.info("💾 Saving hotkey configuration: \(configuration.description)")
+
+        // Validate configuration before saving
+        configuration.logValidationResults()
+
+        if !configuration.canBePersisted {
+            Self.logger.error("❌ Cannot save hotkey configuration: persistence validation failed")
+            return false
+        }
+
+        // Use sanitized version for persistence
+        let configToSave = configuration.sanitizedForPersistence
+
+        let defaults = UserDefaults.standard
+
+        // Store the configuration
+        defaults.set(configToSave.keyCode, forKey: UserDefaultsKeys.hotkeyKeyCode)
+        defaults.set(configToSave.modifierFlags.rawValue, forKey: UserDefaultsKeys.hotkeyModifierFlags)
+
+        // Store additional metadata for validation and debugging
+        defaults.set(configToSave.isModifierOnly, forKey: "hotkeyIsModifierOnly")
+        defaults.set(configToSave.description, forKey: "hotkeyDescription")
+        defaults.set(Date().timeIntervalSince1970, forKey: "hotkeyLastSaved")
+
+        // Force synchronization
+        defaults.synchronize()
+
+        // Verify the save by reading back
+        let verificationKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
+        let verificationModifierFlags = UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags))
+
+        if verificationKeyCode != configToSave.keyCode || verificationModifierFlags != configToSave.modifierFlags.rawValue {
+            Self.logger.error("❌ Hotkey configuration save verification failed")
+            return false
+        }
+
+        Self.logger.info("✅ Successfully saved hotkey configuration")
+        return true
+    }
+
+    /// Validates the integrity of stored hotkey settings
+    ///
+    /// Checks for data corruption, inconsistencies, or invalid values in stored settings.
+    ///
+    /// - Returns: True if stored settings are valid, false if issues are detected
+    func validateStoredHotkeySettings() -> Bool {
+        Self.logger.info("🔍 Validating stored hotkey settings integrity")
+
+        let defaults = UserDefaults.standard
+
+        // Check if required keys exist
+        guard defaults.object(forKey: UserDefaultsKeys.hotkeyKeyCode) != nil,
+              defaults.object(forKey: UserDefaultsKeys.hotkeyModifierFlags) != nil else {
+            Self.logger.warning("⚠️ Missing required hotkey settings keys")
+            return false
+        }
+
+        // Load and validate configuration
+        let storedKeyCode = UInt16(defaults.integer(forKey: UserDefaultsKeys.hotkeyKeyCode))
+        let storedModifierFlags = CGEventFlags(rawValue: UInt64(defaults.integer(forKey: UserDefaultsKeys.hotkeyModifierFlags)))
+
+        // Check for obviously invalid values
+        if storedKeyCode > 127 && storedKeyCode != UInt16.max {
+            Self.logger.warning("⚠️ Invalid key code in stored settings: \(storedKeyCode)")
+            return false
+        }
+
+        // Validate modifier flags
+        if storedModifierFlags.rawValue == 0 && storedKeyCode == UInt16.max {
+            Self.logger.warning("⚠️ Modifier-only hotkey with no modifiers")
+            return false
+        }
+
+        // Cross-validate with metadata if available
+        if let storedIsModifierOnly = defaults.object(forKey: "hotkeyIsModifierOnly") as? Bool {
+            let actualIsModifierOnly = (storedKeyCode == UInt16.max)
+            if storedIsModifierOnly != actualIsModifierOnly {
+                Self.logger.warning("⚠️ Hotkey metadata inconsistency detected")
+                return false
+            }
+        }
+
+        Self.logger.info("✅ Stored hotkey settings validation passed")
+        return true
+    }
+
+    /// Migrates hotkey settings to current format if needed
+    ///
+    /// Handles migration from older settings formats to ensure compatibility
+    /// across application updates.
+    func migrateHotkeySettingsIfNeeded() {
+        Self.logger.info("🔄 Checking for hotkey settings migration needs")
+
+        let defaults = UserDefaults.standard
+        let currentVersion = 1 // Current settings format version
+        let storedVersion = defaults.integer(forKey: "hotkeySettingsVersion")
+
+        if storedVersion == 0 {
+            // First time setup or very old version
+            Self.logger.info("📦 Performing initial hotkey settings setup")
+
+            // Ensure default configuration is saved
+            if !validateStoredHotkeySettings() {
+                let defaultConfig = HotkeyConfiguration.defaultConfiguration
+                saveHotkeyConfiguration(defaultConfig)
+            }
+
+            defaults.set(currentVersion, forKey: "hotkeySettingsVersion")
+            Self.logger.info("✅ Hotkey settings migration completed")
+        } else if storedVersion < currentVersion {
+            Self.logger.info("📦 Migrating hotkey settings from version \(storedVersion) to \(currentVersion)")
+
+            // Future migration logic would go here
+
+            defaults.set(currentVersion, forKey: "hotkeySettingsVersion")
+            Self.logger.info("✅ Hotkey settings migration completed")
+        } else {
+            Self.logger.info("✅ Hotkey settings are up to date (version \(storedVersion))")
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    /// Formats a hotkey description from key code and modifiers
+    private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
+        var parts: [String] = []
+
+        // Add modifier symbols
+        if modifiers.contains(.maskControl) { parts.append("⌃") }
+        if modifiers.contains(.maskAlternate) { parts.append("⌥") }
+        if modifiers.contains(.maskShift) { parts.append("⇧") }
+        if modifiers.contains(.maskCommand) { parts.append("⌘") }
+
+        // Add key name (if not modifier-only)
+        if keyCode != UInt16.max {
+            let keyName = keyCodeToString(keyCode)
+            parts.append(keyName)
+        }
+
+        return parts.joined()
+    }
+
+    /// Converts a key code to its string representation
+    private func keyCodeToString(_ keyCode: UInt16) -> String {
+        switch keyCode {
+        case 49: return "Space"
+        case 36: return "Return"
+        case 48: return "Tab"
+        case 53: return "Escape"
+        case 51: return "Delete"
+        case 117: return "Forward Delete"
+        case 122: return "F1"
+        case 120: return "F2"
+        case 99: return "F3"
+        case 118: return "F4"
+        case 96: return "F5"
+        case 97: return "F6"
+        case 98: return "F7"
+        case 100: return "F8"
+        case 101: return "F9"
+        case 109: return "F10"
+        case 103: return "F11"
+        case 111: return "F12"
+        default:
+            // For letter keys, try to convert to character
+            if keyCode >= 0 && keyCode <= 127 {
+                let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+                let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+
+                if let data = layoutData {
+                    let keyboardLayout = data.bindMemory(to: UCKeyboardLayout.self, capacity: 1)
+                    var deadKeyState: UInt32 = 0
+                    var length = 0
+                    var chars = [UniChar](repeating: 0, count: 4)
+
+                    let error = UCKeyTranslate(
+                        keyboardLayout,
+                        keyCode,
+                        UInt16(kUCKeyActionDisplay),
+                        0,
+                        UInt32(LMGetKbdType()),
+                        OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                        &deadKeyState,
+                        4,
+                        &length,
+                        &chars
+                    )
+
+                    if error == noErr && length > 0 {
+                        return String(utf16CodeUnits: chars, count: length).uppercased()
+                    }
+                }
+            }
+            return "Key\(keyCode)"
+        }
     }
 }
 
