@@ -161,3 +161,26 @@ ai-review-temp.md
 .vscode/settings.json
 .vscode/launch.json
 .idea/workspace.xml
+
+# CLaude
+.setup-claude-code-mcp.sh
+.claude/
+claude.json
+claude.log
+claude-*
+claude_*
+claude*
+*claude*
+*claude
+*claude*
+*claude_*
+*claude-
+*claude_
+*claude__
+*claude___
+*claude____
+*claude_____
+*claude______
+*claude_______
+*claude________
+*claude_________
