@@ -53,6 +53,7 @@ Whisper Node is a blazingly fast, resource-light macOS utility that converts spe
 - **Git**: Conventional commits with task prefixes (TXX:)
 - **Branches**: feature/tXX-description, bugfix/issue-description
 - **Testing**: Unit tests for all core logic, integration tests for system compatibility
+- **Code Verification**: MANDATORY use of Context7 MCP to verify correct implementation patterns, API usage, and framework-specific conventions before committing code
 
 ### Important Constraints & Decisions
 - **Privacy First**: 100% offline operation, no network calls, no telemetry

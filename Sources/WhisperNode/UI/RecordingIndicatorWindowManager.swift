@@ -255,7 +255,12 @@ extension RecordingIndicatorWindowManager {
     public func showProcessing(progress: Double) {
         showIndicator(state: .processing, progress: max(0.0, min(1.0, progress)))
     }
-    
+
+    /// Show indicator for completion state
+    public func showCompletion() {
+        showIndicator(state: .completed)
+    }
+
     /// Show indicator for error state
     public func showError() {
         showIndicator(state: .error)

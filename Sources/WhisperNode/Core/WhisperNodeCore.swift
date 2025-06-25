@@ -523,52 +523,178 @@ public class WhisperNodeCore: ObservableObject {
     /// Converts raw audio data to float samples, simulates progress updates on the processing indicator, and performs asynchronous transcription. On success, hides the indicator and logs the result; on failure, displays an error indicator briefly before hiding it. Performance warnings are logged if high resource usage is detected.
     public func processAudioData(_ audioData: Data) async {
         guard let engine = whisperEngine else { return }
-        
+
+        Self.logger.info("Starting audio data processing")
+
         // Convert Data to Float array for whisper processing
         let audioSamples = audioData.withUnsafeBytes { buffer in
             Array(buffer.bindMemory(to: Float.self))
         }
-        
-        // Show processing state immediately (real progress updates should come from whisper engine)
+
+        // Show processing state immediately
         await MainActor.run {
             indicatorManager.updateState(.processing, progress: 0.0)
+            menuBarManager.updateProcessingState(true)
         }
-        
-        // Perform transcription
-        let result = await engine.transcribe(audioData: audioSamples)
-        
-        if result.success {
-            Self.logger.info("Transcription completed: \(result.text)")
-            
-            // Hide indicator after successful transcription
-            await MainActor.run {
-                indicatorManager.hideIndicator()
+
+        do {
+            // Perform transcription
+            let result = await engine.transcribe(audioData: audioSamples)
+
+            if result.success {
+                Self.logger.info("Transcription completed: '\(result.text)'")
+
+                // Update processing progress
+                await MainActor.run {
+                    indicatorManager.updateState(.processing, progress: 0.8)
+                }
+
+                // Insert text with proper timing and validation
+                await insertTranscribedText(result.text)
+
+                // Show completion state
+                await MainActor.run {
+                    indicatorManager.showCompletion()
+                    menuBarManager.showCompletionState()
+                }
+
+                // Hide indicator after brief completion display
+                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                await MainActor.run {
+                    indicatorManager.hideIndicator()
+                }
+
+                // Check for performance warnings
+                if let metrics = result.metrics, metrics.isDowngradeNeeded {
+                    Self.logger.warning("High CPU usage detected, model downgrade recommended")
+                }
+            } else {
+                Self.logger.error("Transcription failed: \(result.error ?? "Unknown error")")
+                await handleTranscriptionFailure(result.error)
             }
-            
-            // Insert transcribed text at cursor position
-            await textInsertionEngine.insertText(result.text)
-            
-            // Haptic feedback for successful text insertion
-            await MainActor.run {
-                HapticManager.shared.textInserted()
+        } catch {
+            Self.logger.error("Audio processing failed: \(error)")
+            await handleTranscriptionFailure(error.localizedDescription)
+        }
+    }
+
+    /// Insert transcribed text with proper timing and validation
+    ///
+    /// This method ensures reliable text insertion by:
+    /// - Validating target application readiness
+    /// - Adding appropriate timing delays
+    /// - Providing fallback mechanisms
+    /// - Giving clear user feedback
+    ///
+    /// - Parameter text: The transcribed text to insert
+    private func insertTranscribedText(_ text: String) async {
+        guard !text.isEmpty else {
+            Self.logger.warning("Empty transcription text, skipping insertion")
+            return
+        }
+
+        Self.logger.info("Inserting transcribed text: '\(text)'")
+
+        // Ensure we're on the main thread for UI operations
+        await MainActor.run {
+            // Verify target application is ready
+            guard let targetApp = ApplicationUtils.getFrontmostApplication() else {
+                Self.logger.warning("No frontmost application found")
+                Task {
+                    await self.showInsertionError("No active application found")
+                }
+                return
             }
-            
-            // Check for performance warnings
-            if let metrics = result.metrics, metrics.isDowngradeNeeded {
-                Self.logger.warning("High CPU usage detected, model downgrade recommended")
+
+            Self.logger.info("Target application: \(targetApp.localizedName ?? "Unknown")")
+
+            // Check if the application supports reliable text insertion
+            if !ApplicationUtils.supportsReliableTextInsertion(targetApp) {
+                Self.logger.warning("Target application may not support reliable text insertion")
+                // Continue anyway but log the warning
             }
-        } else {
-            Self.logger.error("Transcription failed: \(result.error ?? "Unknown error")")
-            
-            // Handle transcription failure with error manager (silent failure with red orb flash)
-            await MainActor.run {
-                errorManager.handleTranscriptionFailure()
-                // Haptic feedback for transcription error
-                HapticManager.shared.errorOccurred()
+
+            // Get application-specific insertion delay
+            let insertionDelay = ApplicationUtils.getRecommendedInsertionDelay(for: targetApp)
+
+            // Add delay to ensure application is ready
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(insertionDelay * 1_000_000_000))
+                await self?.performTextInsertion(text, targetApp: targetApp)
             }
         }
     }
-    
+
+    /// Perform the actual text insertion with error handling
+    ///
+    /// - Parameters:
+    ///   - text: The text to insert
+    ///   - targetApp: The target application
+    private func performTextInsertion(_ text: String, targetApp: NSRunningApplication) async {
+        do {
+            // Ensure application focus
+            await ApplicationUtils.ensureApplicationFocus(targetApp)
+
+            // Final readiness check
+            let isReady = await MainActor.run {
+                ApplicationUtils.isReadyForTextInsertion()
+            }
+
+            if !isReady {
+                Self.logger.warning("Target application not ready for text insertion")
+                await showInsertionError("Target application not ready")
+                return
+            }
+
+            // Attempt text insertion
+            try await textInsertionEngine.insertText(text)
+            Self.logger.info("Text insertion successful")
+
+            // Provide success feedback
+            await MainActor.run {
+                HapticManager.shared.textInserted()
+            }
+
+        } catch {
+            Self.logger.error("Text insertion failed: \(error)")
+            await showInsertionError("Failed to insert text")
+        }
+    }
+
+    /// Handle transcription failure with appropriate user feedback
+    ///
+    /// - Parameter error: The error message or nil
+    private func handleTranscriptionFailure(_ error: String?) async {
+        await MainActor.run {
+            errorManager.handleTranscriptionFailure()
+            // Reset menu bar state
+            menuBarManager.updateProcessingState(false)
+            // Haptic feedback for transcription error
+            HapticManager.shared.errorOccurred()
+        }
+    }
+
+    /// Show text insertion error with visual feedback
+    ///
+    /// - Parameter message: The error message to log
+    private func showInsertionError(_ message: String) async {
+        Self.logger.error("Text insertion error: \(message)")
+
+        await MainActor.run {
+            // Show error state briefly
+            indicatorManager.showError()
+
+            // Haptic feedback for error
+            HapticManager.shared.errorOccurred()
+        }
+
+        // Hide error indicator after brief display
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        await MainActor.run {
+            indicatorManager.hideIndicator()
+        }
+    }
+
     /// Updates the recording indicator based on current voice activity and recording state.
     ///
     /// Shows the recording indicator when voice is detected during recording, or shows the idle indicator if recording is active but no voice is detected.
