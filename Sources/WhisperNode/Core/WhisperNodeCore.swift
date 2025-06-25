@@ -618,10 +618,9 @@ public class WhisperNodeCore: ObservableObject {
             let insertionDelay = ApplicationUtils.getRecommendedInsertionDelay(for: targetApp)
 
             // Add delay to ensure application is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + insertionDelay) { [weak self] in
-                Task {
-                    await self?.performTextInsertion(text, targetApp: targetApp)
-                }
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(insertionDelay * 1_000_000_000))
+                await self?.performTextInsertion(text, targetApp: targetApp)
             }
         }
     }
@@ -634,9 +633,7 @@ public class WhisperNodeCore: ObservableObject {
     private func performTextInsertion(_ text: String, targetApp: NSRunningApplication) async {
         do {
             // Ensure application focus
-            await MainActor.run {
-                ApplicationUtils.ensureApplicationFocus(targetApp)
-            }
+            await ApplicationUtils.ensureApplicationFocus(targetApp)
 
             // Final readiness check
             let isReady = await MainActor.run {

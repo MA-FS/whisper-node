@@ -27,7 +27,57 @@ import OSLog
 @MainActor
 public class ApplicationUtils {
     private static let logger = Logger(subsystem: "com.whispernode.utils", category: "application")
+
+    // MARK: - Configuration
+
+    /// Application-specific insertion delay configuration
+    private static let applicationDelayConfiguration: [String: TimeInterval] = [
+        "com.microsoft.Word": 0.15,
+        "com.adobe.Photoshop": 0.2,
+        "com.apple.Terminal": 0.05,
+        "com.google.Chrome": 0.1,
+        "com.apple.Safari": 0.1,
+        "com.microsoft.Excel": 0.12,
+        "com.microsoft.PowerPoint": 0.12,
+        "com.adobe.Illustrator": 0.18,
+        "com.adobe.InDesign": 0.18,
+        "com.jetbrains.intellij": 0.08,
+        "com.apple.dt.Xcode": 0.08
+    ]
+
+    /// Default insertion delay for unknown applications
+    private static let defaultInsertionDelay: TimeInterval = 0.1
+
+    /// Applications known to have text insertion issues
+    private static let problematicApplications: Set<String> = [
+        "com.1password.1password7",
+        "com.apple.keychainaccess",
+        "com.vmware.fusion",
+        "com.parallels.desktop",
+        "com.microsoft.rdc.macos",
+        "com.teamviewer.TeamViewer"
+    ]
     
+    // MARK: - Accessibility Permissions
+
+    /// Check if accessibility permissions are granted
+    ///
+    /// Validates that the application has the necessary accessibility permissions
+    /// to interact with other applications and detect text fields.
+    ///
+    /// - Returns: `true` if accessibility permissions are granted, `false` otherwise
+    public static func hasAccessibilityPermissions() -> Bool {
+        let trusted = AXIsProcessTrustedWithOptions([
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue(): false
+        ] as CFDictionary)
+
+        if !trusted {
+            logger.warning("Accessibility permissions not granted")
+        }
+
+        return trusted
+    }
+
     // MARK: - Application Detection
     
     /// Get the currently frontmost (active) application
@@ -57,6 +107,11 @@ public class ApplicationUtils {
     /// - Returns: `true` if a text input field is focused, `false` otherwise
     /// - Note: Requires accessibility permissions to function properly
     public static func isTextFieldActive() -> Bool {
+        guard hasAccessibilityPermissions() else {
+            logger.warning("Accessibility permissions not granted - cannot check text field status")
+            return false
+        }
+
         logger.debug("Checking for active text field")
         
         // Get the system-wide focused element
@@ -102,17 +157,17 @@ public class ApplicationUtils {
     ///
     /// - Parameter app: The application to ensure focus for
     /// - Note: This method includes a brief delay to allow activation to complete
-    public static func ensureApplicationFocus(_ app: NSRunningApplication) {
+    public static func ensureApplicationFocus(_ app: NSRunningApplication) async {
         logger.info("Ensuring focus for application: \(app.localizedName ?? "Unknown")")
-        
+
         if !app.isActive {
             logger.debug("Application not active, activating...")
             app.activate(options: [])
-            
+
             // Small delay to allow activation to complete
             // This is critical for reliable text insertion
-            Thread.sleep(forTimeInterval: 0.05)
-            
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
             logger.debug("Application activation completed")
         } else {
             logger.debug("Application already active")
@@ -186,22 +241,10 @@ public class ApplicationUtils {
     /// - Returns: Recommended delay in seconds before text insertion
     public static func getRecommendedInsertionDelay(for app: NSRunningApplication) -> TimeInterval {
         guard let bundleId = app.bundleIdentifier else {
-            return 0.1 // Default delay
+            return defaultInsertionDelay
         }
-        
-        // Application-specific delays based on testing
-        switch bundleId {
-        case "com.microsoft.Word":
-            return 0.15 // Word needs extra time for focus
-        case "com.adobe.Photoshop":
-            return 0.2  // Photoshop text tools are slow to activate
-        case "com.apple.Terminal":
-            return 0.05 // Terminal is very responsive
-        case "com.google.Chrome", "com.apple.Safari":
-            return 0.1  // Browsers are generally responsive
-        default:
-            return 0.1  // Safe default for most applications
-        }
+
+        return applicationDelayConfiguration[bundleId] ?? defaultInsertionDelay
     }
     
     /// Check if the application supports reliable text insertion
@@ -215,15 +258,7 @@ public class ApplicationUtils {
         guard let bundleId = app.bundleIdentifier else {
             return true // Assume support for unknown apps
         }
-        
-        // Known problematic applications
-        let problematicApps = [
-            "com.1password.1password7",     // Password manager blocks insertion
-            "com.apple.keychainaccess",     // Keychain blocks insertion
-            "com.vmware.fusion",            // VM apps can be unreliable
-            "com.parallels.desktop"         // VM apps can be unreliable
-        ]
-        
-        return !problematicApps.contains(bundleId)
+
+        return !problematicApplications.contains(bundleId)
     }
 }

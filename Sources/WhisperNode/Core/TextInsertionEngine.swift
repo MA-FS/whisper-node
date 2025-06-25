@@ -102,10 +102,14 @@ public enum TextInsertionError: Error, LocalizedError {
 /// - Warning: Performance may degrade with very long text (>1000 characters)
 public actor TextInsertionEngine {
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "text-insertion")
-    
+
     // Timing constants
     private static let characterInsertionDelay: UInt64 = 1_000_000 // 1ms between characters
     private static let pasteboardRestoreDelay: UInt64 = 100_000_000 // 100ms delay before pasteboard restore
+
+    // Rate limiting
+    private static let maxEventsPerSecond: Double = 100
+    private var lastEventTime: CFAbsoluteTime = 0
     
     /// Key code mapping for common characters
     private let keyCodeMap: [Character: CGKeyCode] = [
@@ -147,6 +151,28 @@ public actor TextInsertionEngine {
     /// The engine is configured for optimal performance with Apple Silicon Macs and requires
     /// accessibility permissions to function properly.
     public init() {}
+
+    // MARK: - Rate Limiting
+
+    /// Check if we should rate limit the current event
+    ///
+    /// Prevents system abuse by limiting the rate of CGEvent posting
+    /// to a maximum of 100 events per second.
+    ///
+    /// - Returns: `true` if the event should be rate limited, `false` otherwise
+    private func shouldRateLimit() -> Bool {
+        let now = CFAbsoluteTimeGetCurrent()
+        let timeDiff = now - lastEventTime
+        let minInterval = 1.0 / Self.maxEventsPerSecond
+
+        if timeDiff < minInterval {
+            Self.logger.warning("Rate limiting CGEvent posting - too many events")
+            return true
+        }
+
+        lastEventTime = now
+        return false
+    }
     
     /// Insert text at the current cursor position with smart formatting
     /// 
@@ -232,8 +258,14 @@ public actor TextInsertionEngine {
     
     /// Insert a single character using CGEvent
     private func insertCharacter(_ character: Character) async -> Bool {
+        // Check rate limiting first
+        if shouldRateLimit() {
+            Self.logger.warning("Rate limiting prevented character insertion")
+            return false
+        }
+
         let lowercaseChar = Character(character.lowercased())
-        
+
         guard let keyCode = keyCodeMap[lowercaseChar] else {
             Self.logger.debug("No key code mapping for character: '\(character)'")
             return false

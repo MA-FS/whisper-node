@@ -40,6 +40,8 @@ public struct RecordingIndicatorView: View {
     private let recordingPulseDuration: Double = 1.2
     private let processingRotationDuration: Double = 2.0
     private let defaultAnimationDuration: Double = 0.3
+    private let completionPulseDuration: Double = 0.2
+    private let completionReturnDuration: Double = 0.2
     
     // Accessibility constants
     private static let highContrastOpacity: Double = 0.9
@@ -293,12 +295,12 @@ public struct RecordingIndicatorView: View {
         case .completed:
             rotationAngle = .zero
             // Brief success pulse animation
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.easeInOut(duration: completionPulseDuration)) {
                 pulseScale = 1.15
             }
             // Return to normal size after pulse
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                withAnimation(.easeInOut(duration: 0.2)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + completionPulseDuration) {
+                withAnimation(.easeInOut(duration: completionReturnDuration)) {
                     pulseScale = 1.0
                 }
             }
