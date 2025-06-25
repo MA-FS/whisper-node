@@ -199,7 +199,24 @@ class SystemConfigDetector {
             }
         }
         
-        let availableMemory = kerr == KERN_SUCCESS ? totalMemory - UInt64(info.resident_size) : totalMemory / 2
+        // Get available memory using host_statistics64
+        var vmStats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
+        let kernResult = withUnsafeMutablePointer(to: &vmStats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+
+        let availableMemory: UInt64
+        if kernResult == KERN_SUCCESS {
+            let pageSize = UInt64(vm_page_size)
+            let freeMemory = UInt64(vmStats.free_count) * pageSize
+            let inactiveMemory = UInt64(vmStats.inactive_count) * pageSize
+            availableMemory = freeMemory + inactiveMemory
+        } else {
+            availableMemory = totalMemory / 2
+        }
         
         // Determine memory pressure (simplified)
         let usageRatio = Double(totalMemory - availableMemory) / Double(totalMemory)
@@ -240,11 +257,18 @@ class SystemConfigDetector {
     static func validateTestEnvironment() -> Bool {
         // Check accessibility permissions
         let hasAccessibilityPermissions = AXIsProcessTrusted()
-        
+
         // Check if running in test environment
         let isTestEnvironment = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-        
-        return hasAccessibilityPermissions || isTestEnvironment
+
+        // For CI environments, check if running in automated test mode
+        let isCIEnvironment = ProcessInfo.processInfo.environment["CI"] != nil ||
+                             ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil ||
+                             ProcessInfo.processInfo.environment["JENKINS_URL"] != nil
+
+        let accessibilityOK = hasAccessibilityPermissions || isCIEnvironment
+
+        return accessibilityOK || isTestEnvironment
     }
     
     // MARK: - Helper Methods
@@ -306,8 +330,39 @@ class SystemConfigDetector {
     }
     
     private static func getCurrentCPULoad() -> Double {
-        // Simplified CPU load detection
-        return 0.1 // Return 10% as placeholder
+        var cpuInfo: processor_info_array_t!
+        var numCpuInfo: mach_msg_type_number_t = 0
+        var numCpus: natural_t = 0
+
+        let result = host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &numCpus, &cpuInfo, &numCpuInfo)
+
+        guard result == KERN_SUCCESS else {
+            return 0.0
+        }
+
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vm_size_t(numCpuInfo * UInt32(MemoryLayout<integer_t>.size)))
+        }
+
+        var totalUser: UInt32 = 0
+        var totalSystem: UInt32 = 0
+        var totalIdle: UInt32 = 0
+        var totalNice: UInt32 = 0
+
+        for i in 0..<Int(numCpus) {
+            let cpuLoadInfo = cpuInfo.advanced(by: i * Int(CPU_STATE_MAX)).withMemoryRebound(to: UInt32.self, capacity: Int(CPU_STATE_MAX)) { $0 }
+
+            totalUser += cpuLoadInfo[Int(CPU_STATE_USER)]
+            totalSystem += cpuLoadInfo[Int(CPU_STATE_SYSTEM)]
+            totalIdle += cpuLoadInfo[Int(CPU_STATE_IDLE)]
+            totalNice += cpuLoadInfo[Int(CPU_STATE_NICE)]
+        }
+
+        let totalTicks = totalUser + totalSystem + totalIdle + totalNice
+        guard totalTicks > 0 else { return 0.0 }
+
+        let activeTicks = totalUser + totalSystem + totalNice
+        return (Double(activeTicks) / Double(totalTicks)) * 100.0
     }
     
     private static func logSystemInfo(_ info: SystemInfo) {

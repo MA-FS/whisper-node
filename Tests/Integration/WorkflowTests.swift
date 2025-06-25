@@ -113,7 +113,11 @@ class WorkflowTests: XCTestCase {
             
             // Brief pause between dictations
             if i < dictationCount - 1 {
-                Thread.sleep(forTimeInterval: interval)
+                let delayExpectation = XCTestExpectation(description: "Delay between dictations")
+                DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+                    delayExpectation.fulfill()
+                }
+                wait(for: [delayExpectation], timeout: interval + 1.0)
             }
         }
         
@@ -186,7 +190,11 @@ class WorkflowTests: XCTestCase {
             }
             
             // Pause between email parts
-            Thread.sleep(forTimeInterval: 0.5)
+            let emailDelayExpectation = XCTestExpectation(description: "Delay between email parts")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                emailDelayExpectation.fulfill()
+            }
+            wait(for: [emailDelayExpectation], timeout: 1.0)
         }
         
         wait(for: [expectation], timeout: testTimeout)
@@ -225,7 +233,11 @@ class WorkflowTests: XCTestCase {
                 }
             }
             
-            Thread.sleep(forTimeInterval: 0.3)
+            let codeDelayExpectation = XCTestExpectation(description: "Delay between code comments")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                codeDelayExpectation.fulfill()
+            }
+            wait(for: [codeDelayExpectation], timeout: 1.0)
         }
         
         wait(for: [expectation], timeout: testTimeout)
@@ -274,7 +286,11 @@ class WorkflowTests: XCTestCase {
             }
             
             // Realistic pause between notes
-            Thread.sleep(forTimeInterval: 0.8)
+            let notesDelayExpectation = XCTestExpectation(description: "Delay between meeting notes")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                notesDelayExpectation.fulfill()
+            }
+            wait(for: [notesDelayExpectation], timeout: 1.5)
         }
         
         wait(for: [expectation], timeout: testTimeout)
@@ -299,7 +315,11 @@ class WorkflowTests: XCTestCase {
         testHarness.audioEngine.stopCapture()
         
         // Try to recover with new workflow
-        Thread.sleep(forTimeInterval: 0.5)
+        let recoveryDelayExpectation = XCTestExpectation(description: "Recovery delay")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            recoveryDelayExpectation.fulfill()
+        }
+        wait(for: [recoveryDelayExpectation], timeout: 1.0)
         
         testHarness.simulateHotkeyPress(.controlOption)
         

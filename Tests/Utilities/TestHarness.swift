@@ -225,8 +225,13 @@ class MockTranscriptionEngine {
         // Timeout handling
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
             if self.pendingCompletion != nil {
+                let timeoutResult = TranscriptionResult(
+                    text: "",
+                    confidence: 0.0,
+                    duration: 0.0
+                )
+                self.pendingCompletion?(timeoutResult)
                 self.pendingCompletion = nil
-                // Could call completion with error result if needed
             }
         }
     }

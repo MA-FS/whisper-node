@@ -28,6 +28,7 @@ class PerformanceMeasurement {
     
     private var measurements: [String: TimeInterval] = [:]
     private var resourceSnapshots: [ResourceSnapshot] = []
+    private var resourceMonitoringTimer: Timer?
     
     // MARK: - Performance Metrics
     
@@ -136,7 +137,7 @@ class PerformanceMeasurement {
     
     private func startResourceMonitoring() {
         // Start periodic resource monitoring
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
+        resourceMonitoringTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
             guard let self = self, self.isActive else {
                 timer.invalidate()
                 return
@@ -144,9 +145,10 @@ class PerformanceMeasurement {
             self.captureResourceSnapshot()
         }
     }
-    
+
     private func stopResourceMonitoring() {
-        // Resource monitoring will stop automatically when isActive becomes false
+        resourceMonitoringTimer?.invalidate()
+        resourceMonitoringTimer = nil
     }
     
     private func captureResourceSnapshot() {
@@ -184,20 +186,36 @@ class PerformanceMeasurement {
     }
     
     private func getCurrentCPUUsage() -> Double {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
-        
-        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                task_info(mach_task_self_,
-                         task_flavor_t(MACH_TASK_BASIC_INFO),
-                         $0,
-                         &count)
+        var threadList: thread_act_array_t?
+        var threadCount: mach_msg_type_number_t = 0
+
+        let result = task_threads(mach_task_self_, &threadList, &threadCount)
+        guard result == KERN_SUCCESS, let threads = threadList else {
+            return 0.0
+        }
+
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: threads), vm_size_t(threadCount * UInt32(MemoryLayout<thread_t>.size)))
+        }
+
+        var totalCPUUsage: Double = 0.0
+
+        for i in 0..<Int(threadCount) {
+            var threadInfo = thread_basic_info()
+            var threadInfoCount = mach_msg_type_number_t(THREAD_INFO_MAX)
+
+            let infoResult = withUnsafeMutablePointer(to: &threadInfo) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                    thread_info(threads[i], thread_flavor_t(THREAD_BASIC_INFO), $0, &threadInfoCount)
+                }
+            }
+
+            if infoResult == KERN_SUCCESS {
+                totalCPUUsage += Double(threadInfo.cpu_usage) / Double(TH_USAGE_SCALE) * 100.0
             }
         }
-        
-        // Simplified CPU usage calculation
-        return kerr == KERN_SUCCESS ? 10.0 : 0.0 // Placeholder
+
+        return totalCPUUsage
     }
     
     private func getActiveThreadCount() -> Int {
@@ -276,29 +294,50 @@ class PerformanceMeasurement {
     }
     
     // MARK: - Performance Requirements Validation
-    
-    func validatePerformanceRequirements(_ metrics: PerformanceMetrics) -> ValidationResult {
+
+    struct PerformanceThresholds {
+        let maxTotalLatency: TimeInterval
+        let maxHotkeyLatency: TimeInterval
+        let maxMemoryUsage: Double
+        let maxCPUUsage: Double
+
+        static let `default` = PerformanceThresholds(
+            maxTotalLatency: 3.0,
+            maxHotkeyLatency: 0.1,
+            maxMemoryUsage: 100.0,
+            maxCPUUsage: 150.0
+        )
+
+        static let relaxed = PerformanceThresholds(
+            maxTotalLatency: 5.0,
+            maxHotkeyLatency: 0.2,
+            maxMemoryUsage: 150.0,
+            maxCPUUsage: 200.0
+        )
+    }
+
+    func validatePerformanceRequirements(_ metrics: PerformanceMetrics, thresholds: PerformanceThresholds = .default) -> ValidationResult {
         var issues: [String] = []
-        
+
         // Check latency requirements
-        if metrics.totalLatency > 3.0 {
-            issues.append("Total latency (\(String(format: "%.2f", metrics.totalLatency))s) exceeds 3.0s requirement")
+        if metrics.totalLatency > thresholds.maxTotalLatency {
+            issues.append("Total latency (\(String(format: "%.2f", metrics.totalLatency))s) exceeds \(String(format: "%.1f", thresholds.maxTotalLatency))s requirement")
         }
-        
-        if metrics.hotkeyToAudioLatency > 0.1 {
-            issues.append("Hotkey to audio latency (\(String(format: "%.3f", metrics.hotkeyToAudioLatency))s) exceeds 100ms requirement")
+
+        if metrics.hotkeyToAudioLatency > thresholds.maxHotkeyLatency {
+            issues.append("Hotkey to audio latency (\(String(format: "%.3f", metrics.hotkeyToAudioLatency))s) exceeds \(String(format: "%.0f", thresholds.maxHotkeyLatency * 1000))ms requirement")
         }
-        
+
         // Check memory requirements
-        if metrics.peakMemoryUsage > 100.0 {
-            issues.append("Peak memory usage (\(String(format: "%.2f", metrics.peakMemoryUsage)) MB) exceeds 100MB requirement")
+        if metrics.peakMemoryUsage > thresholds.maxMemoryUsage {
+            issues.append("Peak memory usage (\(String(format: "%.2f", metrics.peakMemoryUsage)) MB) exceeds \(String(format: "%.0f", thresholds.maxMemoryUsage))MB requirement")
         }
-        
+
         // Check CPU requirements
-        if metrics.peakCPUUsage > 150.0 {
-            issues.append("Peak CPU usage (\(String(format: "%.2f", metrics.peakCPUUsage))%) exceeds 150% requirement")
+        if metrics.peakCPUUsage > thresholds.maxCPUUsage {
+            issues.append("Peak CPU usage (\(String(format: "%.2f", metrics.peakCPUUsage))%) exceeds \(String(format: "%.0f", thresholds.maxCPUUsage))% requirement")
         }
-        
+
         return ValidationResult(
             passed: issues.isEmpty,
             issues: issues,

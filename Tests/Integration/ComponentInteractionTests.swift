@@ -165,7 +165,12 @@ class ComponentInteractionTests: XCTestCase {
                 }
             }
             
-            Thread.sleep(forTimeInterval: 0.5)
+            // Add a small delay using DispatchQueue if needed
+            let delayExpectation = XCTestExpectation(description: "Delay between tests")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                delayExpectation.fulfill()
+            }
+            wait(for: [delayExpectation], timeout: 1.0)
         }
         
         wait(for: [expectation], timeout: testTimeout)

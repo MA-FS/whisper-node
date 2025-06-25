@@ -150,13 +150,39 @@ The framework validates all performance requirements:
 
 The integration tests are designed to run in CI/CD environments:
 
+### GitHub Actions Example
 ```yaml
-- name: Run Integration Tests
-  run: |
-    swift test --filter SystemIntegrationTests
-    swift test --filter IntegrationPerformanceTests
-  env:
-    INTEGRATION_TEST_MODE: true
+name: Integration Tests
+on: [push, pull_request]
+jobs:
+  integration-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Integration Tests
+        run: |
+          swift test --filter SystemIntegrationTests
+          swift test --filter IntegrationPerformanceTests
+        env:
+          CI: true
+          INTEGRATION_TEST_MODE: true
+```
+
+### Jenkins Example
+```groovy
+pipeline {
+    agent { label 'macos' }
+    stages {
+        stage('Integration Tests') {
+            steps {
+                sh '''
+                    export CI=true
+                    swift test --filter IntegrationTestSuite
+                '''
+            }
+        }
+    }
+}
 ```
 
 ## Troubleshooting
