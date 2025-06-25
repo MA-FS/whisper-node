@@ -69,13 +69,24 @@ public class GlobalHotkeyManager: ObservableObject {
     
     // MARK: - Initialization
     public init() {
-        // Load hotkey configuration from SettingsManager
+        Self.logger.info("🚀 Initializing GlobalHotkeyManager with enhanced persistence")
+
+        // Migrate settings if needed (T29h enhancement)
+        settingsManager.migrateHotkeySettingsIfNeeded()
+
+        // Validate stored settings integrity
+        let settingsValid = settingsManager.validateStoredHotkeySettings()
+        if !settingsValid {
+            Self.logger.warning("⚠️ Stored hotkey settings validation failed, will use defaults")
+        }
+
+        // Load hotkey configuration with enhanced validation
         loadHotkeyFromSettings()
-        
+
         // Set up settings synchronization
         setupSettingsObservation()
-        
-        Self.logger.info("GlobalHotkeyManager initialized")
+
+        Self.logger.info("✅ GlobalHotkeyManager initialized with hotkey: \(self.currentHotkey.description)")
     }
     
     deinit {
@@ -95,17 +106,12 @@ public class GlobalHotkeyManager: ObservableObject {
     // MARK: - Settings Integration
     
     private func loadHotkeyFromSettings() {
-        let keyCode = settingsManager.hotkeyKeyCode
-        let modifierFlags = CGEventFlags(rawValue: settingsManager.hotkeyModifierFlags)
-        let description = formatHotkeyDescription(keyCode: keyCode, modifiers: modifierFlags)
-        
-        currentHotkey = HotkeyConfiguration(
-            keyCode: keyCode,
-            modifierFlags: modifierFlags,
-            description: description
-        )
-        
-        Self.logger.info("📋 Loaded hotkey from settings: keyCode=\(keyCode), modifiers=\(modifierFlags.rawValue), description='\(description)'")
+        Self.logger.info("🔄 Loading hotkey configuration using enhanced persistence")
+
+        // Use enhanced loading with validation and error handling
+        currentHotkey = settingsManager.loadHotkeyConfiguration()
+
+        Self.logger.info("📋 Loaded hotkey configuration: \(self.currentHotkey.description)")
     }
     
     private func setupSettingsObservation() {
@@ -122,10 +128,14 @@ public class GlobalHotkeyManager: ObservableObject {
     }
     
     private func saveHotkeyToSettings() {
-        settingsManager.hotkeyKeyCode = currentHotkey.keyCode
-        settingsManager.hotkeyModifierFlags = currentHotkey.modifierFlags.rawValue
-        
-        Self.logger.info("💾 Saved hotkey to settings: keyCode=\(self.currentHotkey.keyCode), modifiers=\(self.currentHotkey.modifierFlags.rawValue), description='\(self.currentHotkey.description)'")
+        Self.logger.info("💾 Saving hotkey configuration using enhanced persistence")
+
+        // Use enhanced saving with validation and error handling
+        let success = settingsManager.saveHotkeyConfiguration(currentHotkey)
+
+        if !success {
+            Self.logger.error("❌ Failed to save hotkey configuration to settings")
+        }
     }
     
     private func formatHotkeyDescription(keyCode: UInt16, modifiers: CGEventFlags) -> String {
@@ -267,36 +277,101 @@ public class GlobalHotkeyManager: ObservableObject {
         Self.logger.info("Stopped listening for global hotkeys")
     }
     
-    /// Update the current hotkey configuration
+    /// Update the current hotkey configuration with enhanced validation and rollback support
     ///
     /// Changes the hotkey that triggers voice recording. The new configuration
-    /// is validated against known system shortcuts to prevent conflicts.
+    /// is validated comprehensively and can be rolled back if the update fails.
     ///
     /// - Parameter configuration: The new hotkey configuration to use
+    /// - Returns: True if update was successful, false if it failed and was rolled back
     /// - Note: If a conflict is detected, the change is rejected and alternatives are suggested via delegate
-    @MainActor public func updateHotkey(_ configuration: HotkeyConfiguration) {
+    @MainActor @discardableResult public func updateHotkey(_ configuration: HotkeyConfiguration) -> Bool {
+        Self.logger.info("🔄 Updating hotkey configuration to: \(configuration.description)")
+
+        // Store previous configuration for rollback
+        let previousConfiguration = currentHotkey
         let wasListening = isListening
-        
+
+        // Stop listening during update
         if wasListening {
             stopListening()
         }
-        
-        // Validate hotkey for conflicts
-        if let conflict = detectHotkeyConflicts(configuration) {
-            Self.logger.warning("Hotkey conflict detected: \(conflict.description)")
-            delegate?.hotkeyManager(self, didDetectConflict: conflict, suggestedAlternatives: generateAlternatives(for: configuration))
-            return
+
+        // Comprehensive validation using the extension
+        if !configuration.isValid {
+            Self.logger.warning("❌ Hotkey configuration validation failed:")
+            for issue in configuration.validationIssues {
+                Self.logger.warning("  - \(issue)")
+            }
+
+            // Restart listening with previous configuration
+            if wasListening {
+                startListening()
+            }
+            return false
         }
-        
+
+        // Check for system conflicts
+        if let conflict = detectHotkeyConflicts(configuration) {
+            Self.logger.warning("⚠️ Hotkey conflict detected: \(conflict.description)")
+            delegate?.hotkeyManager(self, didDetectConflict: conflict, suggestedAlternatives: generateAlternatives(for: configuration))
+
+            // Restart listening with previous configuration
+            if wasListening {
+                startListening()
+            }
+            return false
+        }
+
+        // Apply the new configuration
         currentHotkey = configuration
-        
-        // Save to persistent settings
-        saveHotkeyToSettings()
-        
-        Self.logger.info("Updated hotkey configuration: \(configuration.description)")
-        
+
+        // Save to persistent settings with validation
+        let saveSuccess = settingsManager.saveHotkeyConfiguration(configuration)
+        if !saveSuccess {
+            Self.logger.error("❌ Failed to save hotkey configuration, rolling back")
+
+            // Rollback to previous configuration
+            currentHotkey = previousConfiguration
+
+            // Restart listening with previous configuration
+            if wasListening {
+                startListening()
+            }
+            return false
+        }
+
+        Self.logger.info("✅ Successfully updated hotkey configuration: \(configuration.description)")
+
+        // Restart listening with new configuration
         if wasListening {
             startListening()
+        }
+
+        return true
+    }
+
+    /// Rollback to the previous hotkey configuration
+    ///
+    /// Restores the previously working hotkey configuration in case of issues.
+    /// This method is useful for error recovery scenarios.
+    @MainActor public func rollbackToPreviousConfiguration() {
+        Self.logger.info("🔄 Rolling back to previous hotkey configuration")
+
+        // Try to load the last known good configuration from settings
+        let loadedConfig = settingsManager.loadHotkeyConfiguration()
+
+        if loadedConfig != currentHotkey {
+            Self.logger.info("📋 Restoring hotkey configuration from settings: \(loadedConfig.description)")
+            currentHotkey = loadedConfig
+
+            // Restart listening if needed
+            if isListening {
+                stopListening()
+                startListening()
+            }
+        } else {
+            Self.logger.info("✅ Current configuration matches stored configuration, no rollback needed")
         }
     }
     
@@ -798,56 +873,9 @@ public class GlobalHotkeyManager: ObservableObject {
     /// - Parameter configuration: The hotkey configuration to validate
     /// - Returns: Array of validation issues found (empty if valid)
     public func validateHotkeyConfiguration(_ configuration: HotkeyConfiguration) -> [String] {
-        var issues: [String] = []
-
-        // Validate key code
-        if configuration.keyCode != UInt16.max {
-            // Regular key combination validation
-            if configuration.keyCode > 127 {
-                issues.append("Invalid key code: \(configuration.keyCode) (should be 0-127)")
-            }
-
-            // Check for modifier requirements
-            let cleanModifiers = configuration.modifierFlags.cleanedModifierFlags()
-            if cleanModifiers.rawValue == 0 {
-                issues.append("Regular key combinations should include modifier keys")
-            }
-        } else {
-            // Modifier-only combination validation
-            let cleanModifiers = configuration.modifierFlags.cleanedModifierFlags()
-            if cleanModifiers.rawValue == 0 {
-                issues.append("Modifier-only hotkeys must specify at least one modifier")
-            }
-
-            // Check for single modifier (usually not recommended)
-            let modifierCount = [
-                cleanModifiers.contains(.maskCommand),
-                cleanModifiers.contains(.maskControl),
-                cleanModifiers.contains(.maskAlternate),
-                cleanModifiers.contains(.maskShift)
-            ].filter { $0 }.count
-
-            if modifierCount < 2 {
-                issues.append("Single modifier hotkeys may conflict with system shortcuts")
-            }
-        }
-
-        // Check for known problematic combinations
-        let problematicCombinations: [(keyCode: UInt16, modifiers: CGEventFlags, reason: String)] = [
-            (48, .maskCommand, "Cmd+Tab conflicts with app switcher"),
-            (49, .maskCommand, "Cmd+Space conflicts with Spotlight"),
-            (53, .maskCommand, "Cmd+Esc conflicts with force quit"),
-            (36, .maskCommand, "Cmd+Return may conflict with system shortcuts")
-        ]
-
-        for combo in problematicCombinations {
-            if configuration.keyCode == combo.keyCode &&
-               configuration.modifierFlags.contains(combo.modifiers) {
-                issues.append(combo.reason)
-            }
-        }
-
-        return issues
+        // Delegate to the comprehensive validation in the HotkeyConfiguration extension
+        // This eliminates duplicate validation logic and ensures consistency
+        return configuration.validationIssues
     }
 
     /// Performs comprehensive diagnostics on the current hotkey system
