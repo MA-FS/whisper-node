@@ -1,6 +1,8 @@
 import XCTest
 import os.log
+#if canImport(WhisperNode)
 @testable import WhisperNode
+#endif
 
 /// End-to-End Workflow Tests for WhisperNode
 ///
@@ -23,7 +25,7 @@ class WorkflowTests: XCTestCase {
     private var testHarness: TestHarness!
     private var performanceMeasurement: PerformanceMeasurement!
     
-    private let testTimeout: TimeInterval = 15.0
+    private let testTimeout: TimeInterval = TestConstants.defaultTimeout
     
     // MARK: - Setup and Teardown
     

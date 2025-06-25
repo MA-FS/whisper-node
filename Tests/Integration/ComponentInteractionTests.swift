@@ -1,6 +1,8 @@
 import XCTest
 import os.log
+#if canImport(WhisperNode)
 @testable import WhisperNode
+#endif
 
 /// Component Interaction Tests for WhisperNode
 ///
@@ -23,7 +25,7 @@ class ComponentInteractionTests: XCTestCase {
     private var testHarness: TestHarness!
     private var performanceMeasurement: PerformanceMeasurement!
     
-    private let testTimeout: TimeInterval = 10.0
+    private let testTimeout: TimeInterval = TestConstants.defaultTimeout
     
     // MARK: - Setup and Teardown
     

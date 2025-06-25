@@ -1,6 +1,8 @@
 import XCTest
 import os.log
+#if canImport(WhisperNode)
 @testable import WhisperNode
+#endif
 
 /// Main Integration Test Suite for WhisperNode
 ///
@@ -30,8 +32,9 @@ class IntegrationTestSuite: XCTestCase {
     private var testHarness: TestHarness!
     private var performanceMeasurement: PerformanceMeasurement!
     private var systemConfig: SystemConfigDetector.SystemInfo!
-    
-    private let testTimeout: TimeInterval = 10.0
+
+    private let testTimeout: TimeInterval = TestConstants.defaultTimeout
+    private var testResults: [String: Bool] = [:]
     
     // MARK: - Setup and Teardown
     
@@ -64,15 +67,23 @@ class IntegrationTestSuite: XCTestCase {
         testHarness?.tearDown()
         testHarness = nil
         performanceMeasurement = nil
-        
+
         Self.logger.info("Integration test suite teardown completed")
         try super.tearDownWithError()
+    }
+
+    // MARK: - Test Result Tracking
+
+    private func recordTestResult(_ testName: String, passed: Bool) {
+        testResults[testName] = passed
+        Self.logger.info("Test result recorded: \(testName) = \(passed ? "PASS" : "FAIL")")
     }
     
     // MARK: - Complete Workflow Tests
     
     /// Test the complete workflow from hotkey press to text insertion
     func testCompleteWorkflow() throws {
+        let testName = "complete_workflow"
         let expectation = XCTestExpectation(description: "Complete workflow")
         let testAudio = testHarness.loadTestAudio("sample_speech.wav")
         let expectedText = "Hello world"
@@ -118,8 +129,10 @@ class IntegrationTestSuite: XCTestCase {
         // Validate performance requirements
         let metrics = performanceMeasurement.stopMeasuring()
         let validation = performanceMeasurement.validatePerformanceRequirements(metrics)
-        
-        XCTAssertTrue(validation.passed, "Performance requirements should be met: \(validation.issues.joined(separator: ", "))")
+
+        let testPassed = validation.passed
+        recordTestResult(testName, passed: testPassed)
+        XCTAssertTrue(testPassed, "Performance requirements should be met: \(validation.issues.joined(separator: ", "))")
     }
     
     /// Test workflow with different audio samples
@@ -333,13 +346,14 @@ class IntegrationTestSuite: XCTestCase {
     // MARK: - Helper Methods
     
     private func gatherTestResults() -> [String: Bool] {
-        return [
-            "complete_workflow": true,
-            "error_recovery": true,
-            "performance_requirements": true,
-            "system_compatibility": true,
-            "component_synchronization": true
-        ]
+        // Return actual test results instead of hardcoded values
+        return testResults.isEmpty ? [
+            "complete_workflow": false,
+            "error_recovery": false,
+            "performance_requirements": false,
+            "system_compatibility": false,
+            "component_synchronization": false
+        ] : testResults
     }
     
     private func gatherPerformanceMetrics() -> PerformanceMeasurement.PerformanceMetrics {

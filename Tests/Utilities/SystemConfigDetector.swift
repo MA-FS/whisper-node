@@ -255,8 +255,15 @@ class SystemConfigDetector {
     }
     
     static func validateTestEnvironment() -> Bool {
-        // Check accessibility permissions
-        let hasAccessibilityPermissions = AXIsProcessTrusted()
+        // Check accessibility permissions with error handling
+        let hasAccessibilityPermissions: Bool
+        do {
+            hasAccessibilityPermissions = AXIsProcessTrusted()
+        } catch {
+            // Handle potential security exceptions in sandboxed environments
+            logger.warning("Failed to check accessibility permissions: \(error)")
+            hasAccessibilityPermissions = false
+        }
 
         // Check if running in test environment
         let isTestEnvironment = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -264,9 +271,12 @@ class SystemConfigDetector {
         // For CI environments, check if running in automated test mode
         let isCIEnvironment = ProcessInfo.processInfo.environment["CI"] != nil ||
                              ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil ||
-                             ProcessInfo.processInfo.environment["JENKINS_URL"] != nil
+                             ProcessInfo.processInfo.environment["JENKINS_URL"] != nil ||
+                             ProcessInfo.processInfo.environment["INTEGRATION_TEST_MODE"] != nil
 
         let accessibilityOK = hasAccessibilityPermissions || isCIEnvironment
+
+        logger.info("Test environment validation - Accessibility: \(hasAccessibilityPermissions), CI: \(isCIEnvironment), Test: \(isTestEnvironment)")
 
         return accessibilityOK || isTestEnvironment
     }

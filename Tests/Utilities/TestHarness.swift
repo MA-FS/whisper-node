@@ -1,7 +1,19 @@
 import XCTest
 import Foundation
 import AVFoundation
+#if canImport(WhisperNode)
 @testable import WhisperNode
+#endif
+
+// MARK: - Test Constants
+
+struct TestConstants {
+    static let defaultTimeout: TimeInterval = 15.0
+    static let shortTimeout: TimeInterval = 5.0
+    static let longTimeout: TimeInterval = 30.0
+    static let audioSampleRate: Float = 16000.0
+    static let defaultTestFrequency: Float = 440.0
+}
 
 /// Test Harness for Integration Testing
 ///
@@ -105,8 +117,8 @@ class TestHarness {
         return testAudioSamples[name] ?? generateSampleAudio(duration: 1.0)
     }
     
-    func generateSampleAudio(duration: TimeInterval, frequency: Float = 440.0) -> [Float] {
-        let sampleRate: Float = 16000.0
+    func generateSampleAudio(duration: TimeInterval, frequency: Float = TestConstants.defaultTestFrequency) -> [Float] {
+        let sampleRate: Float = TestConstants.audioSampleRate
         let sampleCount = Int(duration * TimeInterval(sampleRate))
         var samples: [Float] = []
         
@@ -133,7 +145,7 @@ class TestHarness {
         audioEngine.injectAudioData(audioData)
     }
     
-    func waitForTranscription(timeout: TimeInterval = 5.0, completion: @escaping (TranscriptionResult) -> Void) {
+    func waitForTranscription(timeout: TimeInterval = TestConstants.shortTimeout, completion: @escaping (TranscriptionResult) -> Void) {
         transcriptionEngine.waitForResult(timeout: timeout, completion: completion)
     }
     
@@ -172,9 +184,37 @@ class TestHarness {
     }
 }
 
+// MARK: - Protocol Interfaces
+
+protocol AudioCaptureEngine {
+    var isCapturing: Bool { get }
+    func startCapture()
+    func stopCapture()
+    func injectAudioData(_ data: [Float])
+    func getCapturedAudio() -> [Float]
+    func clearCapturedAudio()
+}
+
+protocol TranscriptionEngine {
+    var lastResult: TranscriptionResult? { get }
+    func transcribe(_ audioData: [Float]) -> TranscriptionResult
+    func waitForResult(timeout: TimeInterval, completion: @escaping (TranscriptionResult) -> Void)
+}
+
+protocol TextInsertionEngine {
+    var lastInsertedText: String? { get }
+    func insertText(_ text: String) -> Bool
+    func clearHistory()
+}
+
+protocol HotkeyManager {
+    func simulateKeyPress(_ combination: HotkeyCombination)
+    func simulateKeyRelease(_ combination: HotkeyCombination)
+}
+
 // MARK: - Mock Components
 
-class MockAudioCaptureEngine {
+class MockAudioCaptureEngine: AudioCaptureEngine {
     private(set) var isCapturing = false
     private var capturedAudio: [Float] = []
     
@@ -199,7 +239,7 @@ class MockAudioCaptureEngine {
     }
 }
 
-class MockTranscriptionEngine {
+class MockTranscriptionEngine: TranscriptionEngine {
     private(set) var lastResult: TranscriptionResult?
     private var pendingCompletion: ((TranscriptionResult) -> Void)?
     
@@ -237,7 +277,7 @@ class MockTranscriptionEngine {
     }
 }
 
-class MockTextInsertionEngine {
+class MockTextInsertionEngine: TextInsertionEngine {
     private(set) var lastInsertedText: String?
     private(set) var insertionHistory: [String] = []
     
@@ -253,7 +293,7 @@ class MockTextInsertionEngine {
     }
 }
 
-class MockGlobalHotkeyManager {
+class MockGlobalHotkeyManager: HotkeyManager {
     private(set) var lastPressedCombination: HotkeyCombination?
     private(set) var lastReleasedCombination: HotkeyCombination?
     
