@@ -80,7 +80,7 @@ public struct RecordingIndicatorView: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
         .accessibilityValue(accessibilityValue)
-        .accessibilityTraits(accessibilityTraits)
+        .accessibilityAddTraits(accessibilityTraits)
         .onChange(of: state) { newState in
             updateAnimationsForState(newState)
         }
@@ -210,8 +210,8 @@ public struct RecordingIndicatorView: View {
                 .fill(Color.green.opacity(particleOpacity))
                 .frame(width: 4, height: 4)
                 .offset(
-                    x: cos(Double(index) * .pi / 4) * (orbSize / 2 + 15),
-                    y: sin(Double(index) * .pi / 4) * (orbSize / 2 + 15)
+                    x: cos(Double(index) * .pi / 4) * (Double(orbSize) / 2 + 15),
+                    y: sin(Double(index) * .pi / 4) * (Double(orbSize) / 2 + 15)
                 )
                 .scaleEffect(particleOpacity)
         }
@@ -222,9 +222,6 @@ public struct RecordingIndicatorView: View {
             .font(.system(size: 24, weight: .medium))
             .foregroundColor(.primary)
             .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
-    }
-        .allowsHitTesting(false) // Allow clicks to pass through
-        .ignoresSafeArea(.all)
     }
     
     // MARK: - State Colors

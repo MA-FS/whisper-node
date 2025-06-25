@@ -34,7 +34,7 @@ public class HelpSystem: NSObject, ObservableObject {
     
     // MARK: - Logger
     
-    private static let logger = Logger(subsystem: "com.whispernode.help", category: "system")
+    static let logger = Logger(subsystem: "com.whispernode.help", category: "system")
     
     // MARK: - Published Properties
     
@@ -134,8 +134,9 @@ public class HelpSystem: NSObject, ObservableObject {
     }
     
     // MARK: - Initialization
-    
-    private init() {
+
+    private override init() {
+        super.init()
         Self.logger.info("HelpSystem initialized")
     }
     
@@ -152,7 +153,13 @@ public class HelpSystem: NSObject, ObservableObject {
         preferredEdge: NSRectEdge = .maxY
     ) {
         Self.logger.info("Showing help for context: \(context.rawValue)")
-        
+
+        // Clean up any existing popover
+        if let existingPopover = helpPopover {
+            existingPopover.close()
+            helpPopover = nil
+        }
+
         currentHelpContext = context
         
         // Create help content view
@@ -258,6 +265,10 @@ public class HelpSystem: NSObject, ObservableObject {
     }
     
     private func showHelpWindow<Content: View>(with content: Content, title: String) {
+        // Close any existing help window
+        helpWindow?.close()
+        helpWindow = nil
+
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
             styleMask: [.titled, .closable, .resizable],
@@ -668,7 +679,11 @@ struct TroubleshootingView: View {
         case .microphoneNotWorking:
             return [
                 ("Check Microphone Permissions", "Ensure WhisperNode has microphone access in System Preferences", {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                        NSWorkspace.shared.open(url)
+                    } else {
+                        HelpSystem.logger.error("Failed to create microphone preferences URL")
+                    }
                 }, "Open System Preferences"),
                 ("Test Microphone", "Use the built-in test recording to verify your microphone works", {
                     PreferencesWindowManager.shared.showPreferences()
@@ -678,7 +693,11 @@ struct TroubleshootingView: View {
         case .hotkeyNotResponding:
             return [
                 ("Check Accessibility Permissions", "WhisperNode needs accessibility access for global hotkeys", {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    } else {
+                        HelpSystem.logger.error("Failed to create accessibility preferences URL")
+                    }
                 }, "Open System Preferences"),
                 ("Try Different Hotkey", "Some key combinations may conflict with other apps", {
                     PreferencesWindowManager.shared.showPreferences()

@@ -398,7 +398,7 @@ public class PerformanceMonitor: ObservableObject {
     }
 
     private func enableThermalThrottling() {
-        Self.logger.info("Enabling thermal throttling due to thermal state: \(thermalState.rawValue)")
+        Self.logger.info("Enabling thermal throttling due to thermal state: \(self.thermalState.rawValue)")
 
         NotificationCenter.default.post(
             name: .thermalThrottlingEnabled,

@@ -69,6 +69,9 @@ public class WhisperNodeCore: ObservableObject {
     private var permissionMonitorTimer: Timer?
     private var lastAccessibilityPermissionStatus = false
     private var appActivationObserver: NSObjectProtocol?
+
+    // Adaptive optimization timer
+    private var adaptiveOptimizationTimer: Timer?
     
     // Performance monitoring properties for backward compatibility
     public var memoryUsage: UInt64 {
@@ -89,6 +92,10 @@ public class WhisperNodeCore: ObservableObject {
         // Clean up permission monitoring resources
         permissionMonitorTimer?.invalidate()
         permissionMonitorTimer = nil
+
+        // Clean up adaptive optimization timer
+        adaptiveOptimizationTimer?.invalidate()
+        adaptiveOptimizationTimer = nil
 
         if let observer = appActivationObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -175,7 +182,9 @@ public class WhisperNodeCore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handlePerformanceOptimizationRecommendation(notification)
+            Task { @MainActor in
+                self?.handlePerformanceOptimizationRecommendation(notification)
+            }
         }
 
         // Listen for memory optimization requests
@@ -184,7 +193,9 @@ public class WhisperNodeCore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleMemoryOptimizationRequest(notification)
+            Task { @MainActor in
+                self?.handleMemoryOptimizationRequest(notification)
+            }
         }
 
         // Listen for CPU throttling requests
@@ -193,7 +204,9 @@ public class WhisperNodeCore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleCPUThrottlingRequest(notification)
+            Task { @MainActor in
+                self?.handleCPUThrottlingRequest(notification)
+            }
         }
 
         // Listen for thermal throttling requests
@@ -202,11 +215,13 @@ public class WhisperNodeCore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleThermalThrottlingRequest(notification)
+            Task { @MainActor in
+                self?.handleThermalThrottlingRequest(notification)
+            }
         }
 
         // Start periodic adaptive optimization checks
-        Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+        adaptiveOptimizationTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.performAdaptiveOptimization()
             }
@@ -1233,13 +1248,19 @@ extension WhisperNodeCore {
     private func performMemoryCleanup(aggressive: Bool) {
         Self.logger.info("Performing memory cleanup (aggressive: \(aggressive))")
 
-        // Clean up audio buffers
-        audioEngine.stopCapture()
+        // Clean up audio buffers only if not recording
+        if !isRecording {
+            audioEngine.stopCapture()
+        } else {
+            Self.logger.info("Skipping audio engine cleanup - recording in progress")
+        }
 
         // Clean up whisper engine cache if aggressive
         if aggressive {
-            // Force memory cleanup by reloading the model
-            loadModel(currentModel)
+            // Only reload model if not recording
+            if !isRecording {
+                loadModel(currentModel)
+            }
         }
 
         // Force garbage collection

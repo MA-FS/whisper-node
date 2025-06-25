@@ -720,7 +720,7 @@ extension ErrorHandlingManager {
 
         case .accessibilityPermissionDenied:
             // Check if accessibility permissions were granted
-            if !AXIsProcessTrusted() {
+            if !PermissionHelper.shared.checkPermissionsQuietly() {
                 throw WhisperNodeError.accessibilityPermissionDenied
             }
 
@@ -751,7 +751,7 @@ extension ErrorHandlingManager {
 
     private func showVisualErrorFeedback(_ error: WhisperNodeError, duration: TimeInterval) {
         // Show error state in recording indicator
-        let indicatorManager = RecordingIndicatorWindowManager()
+        let indicatorManager = WhisperNodeCore.shared.indicatorManager
         indicatorManager.showIndicator(state: .error)
 
         if duration > 0 {
@@ -874,23 +874,31 @@ extension ErrorHandlingManager {
 
 // MARK: - WhisperNodeError Extensions
 
-extension WhisperNodeError {
+extension ErrorHandlingManager.WhisperNodeError {
     var analyticsKey: String {
         switch self {
         case .microphoneAccessDenied:
             return "microphone_access_denied"
         case .accessibilityPermissionDenied:
             return "accessibility_permission_denied"
+        case .audioCaptureFailure:
+            return "audio_capture_failure"
         case .transcriptionFailed:
             return "transcription_failed"
         case .modelDownloadFailed:
             return "model_download_failed"
         case .hotkeyConflict:
             return "hotkey_conflict"
-        case .systemError:
-            return "system_error"
+        case .hotkeySystemError:
+            return "hotkey_system_error"
+        case .insufficientDiskSpace:
+            return "insufficient_disk_space"
         case .networkConnectionFailed:
             return "network_connection_failed"
+        case .modelCorrupted:
+            return "model_corrupted"
+        case .systemResourcesExhausted:
+            return "system_resources_exhausted"
         }
     }
 
@@ -900,16 +908,24 @@ extension WhisperNodeError {
             return "WhisperNode needs microphone access to transcribe your voice. Please grant permission in System Preferences."
         case .accessibilityPermissionDenied:
             return "WhisperNode needs accessibility permission to detect global hotkeys. Please grant permission in System Preferences."
+        case .audioCaptureFailure(let details):
+            return "Failed to capture audio from your microphone. Please check your audio settings and try again. Details: \(details)"
         case .transcriptionFailed:
             return "Unable to transcribe the audio. Please try speaking more clearly or check your microphone."
         case .modelDownloadFailed(let details):
             return "Failed to download the AI model. Please check your internet connection. Details: \(details)"
         case .hotkeyConflict(let details):
             return "The selected hotkey conflicts with another application. Please choose a different combination. Details: \(details)"
-        case .systemError(let details):
-            return "A system error occurred. Please try restarting WhisperNode. Details: \(details)"
+        case .hotkeySystemError(let details):
+            return "A hotkey system error occurred. Please try restarting WhisperNode. Details: \(details)"
+        case .insufficientDiskSpace:
+            return "Insufficient disk space to complete the operation. Please free up some space and try again."
         case .networkConnectionFailed:
             return "Unable to connect to the internet. Please check your network connection."
+        case .modelCorrupted(let details):
+            return "The speech recognition model appears to be corrupted. Please re-download the model. Details: \(details)"
+        case .systemResourcesExhausted:
+            return "System resources are exhausted. Please close other applications and try again."
         }
     }
 
@@ -919,16 +935,24 @@ extension WhisperNodeError {
             return "Microphone Access Required"
         case .accessibilityPermissionDenied:
             return "Accessibility Permission Required"
+        case .audioCaptureFailure:
+            return "Audio Capture Failed"
         case .transcriptionFailed:
             return "Transcription Failed"
         case .modelDownloadFailed:
             return "Download Failed"
         case .hotkeyConflict:
             return "Hotkey Conflict"
-        case .systemError:
-            return "System Error"
+        case .hotkeySystemError:
+            return "Hotkey System Error"
+        case .insufficientDiskSpace:
+            return "Insufficient Disk Space"
         case .networkConnectionFailed:
             return "Network Error"
+        case .modelCorrupted:
+            return "Model Corrupted"
+        case .systemResourcesExhausted:
+            return "System Resources Exhausted"
         }
     }
 }
