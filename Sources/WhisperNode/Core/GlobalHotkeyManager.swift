@@ -297,11 +297,10 @@ public class GlobalHotkeyManager: ObservableObject {
             stopListening()
         }
 
-        // Comprehensive validation
-        let validationIssues = validateHotkeyConfiguration(configuration)
-        if !validationIssues.isEmpty {
+        // Comprehensive validation using the extension
+        if !configuration.isValid {
             Self.logger.warning("❌ Hotkey configuration validation failed:")
-            for issue in validationIssues {
+            for issue in configuration.validationIssues {
                 Self.logger.warning("  - \(issue)")
             }
 
@@ -874,56 +873,9 @@ public class GlobalHotkeyManager: ObservableObject {
     /// - Parameter configuration: The hotkey configuration to validate
     /// - Returns: Array of validation issues found (empty if valid)
     public func validateHotkeyConfiguration(_ configuration: HotkeyConfiguration) -> [String] {
-        var issues: [String] = []
-
-        // Validate key code
-        if configuration.keyCode != UInt16.max {
-            // Regular key combination validation
-            if configuration.keyCode > 127 {
-                issues.append("Invalid key code: \(configuration.keyCode) (should be 0-127)")
-            }
-
-            // Check for modifier requirements
-            let cleanModifiers = configuration.modifierFlags.cleanedModifierFlags()
-            if cleanModifiers.rawValue == 0 {
-                issues.append("Regular key combinations should include modifier keys")
-            }
-        } else {
-            // Modifier-only combination validation
-            let cleanModifiers = configuration.modifierFlags.cleanedModifierFlags()
-            if cleanModifiers.rawValue == 0 {
-                issues.append("Modifier-only hotkeys must specify at least one modifier")
-            }
-
-            // Check for single modifier (usually not recommended)
-            let modifierCount = [
-                cleanModifiers.contains(.maskCommand),
-                cleanModifiers.contains(.maskControl),
-                cleanModifiers.contains(.maskAlternate),
-                cleanModifiers.contains(.maskShift)
-            ].filter { $0 }.count
-
-            if modifierCount < 2 {
-                issues.append("Single modifier hotkeys may conflict with system shortcuts")
-            }
-        }
-
-        // Check for known problematic combinations
-        let problematicCombinations: [(keyCode: UInt16, modifiers: CGEventFlags, reason: String)] = [
-            (48, .maskCommand, "Cmd+Tab conflicts with app switcher"),
-            (49, .maskCommand, "Cmd+Space conflicts with Spotlight"),
-            (53, .maskCommand, "Cmd+Esc conflicts with force quit"),
-            (36, .maskCommand, "Cmd+Return may conflict with system shortcuts")
-        ]
-
-        for combo in problematicCombinations {
-            if configuration.keyCode == combo.keyCode &&
-               configuration.modifierFlags.contains(combo.modifiers) {
-                issues.append(combo.reason)
-            }
-        }
-
-        return issues
+        // Delegate to the comprehensive validation in the HotkeyConfiguration extension
+        // This eliminates duplicate validation logic and ensures consistency
+        return configuration.validationIssues
     }
 
     /// Performs comprehensive diagnostics on the current hotkey system

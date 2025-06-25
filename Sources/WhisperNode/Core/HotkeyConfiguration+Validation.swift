@@ -125,7 +125,11 @@ extension HotkeyConfiguration {
             (12, .maskCommand, "Cmd+Q may quit applications unexpectedly"),
             (13, .maskCommand, "Cmd+W may close windows unexpectedly"),
             (48, .maskCommand, "Cmd+Tab conflicts with app switcher"),
-            (36, .maskCommand, "Cmd+Return may conflict with system shortcuts")
+            (36, .maskCommand, "Cmd+Return may conflict with system shortcuts"),
+            (6, .maskCommand, "Cmd+Z conflicts with undo"),
+            (7, .maskCommand, "Cmd+X conflicts with cut"),
+            (8, .maskCommand, "Cmd+C conflicts with copy"),
+            (9, .maskCommand, "Cmd+V conflicts with paste")
         ]
         
         for combination in dangerousCombinations {
@@ -169,10 +173,7 @@ extension HotkeyConfiguration {
             return false
         }
         
-        // Ensure modifier flags are within valid range
-        if modifierFlags.rawValue > UInt64.max {
-            return false
-        }
+
         
         return true
     }
@@ -297,7 +298,7 @@ private func keyCodeToString(_ keyCode: UInt16) -> String {
                 &chars
             )
 
-            if error == noErr && length > 0 {
+            if error == noErr && length > 0 && length <= chars.count {
                 return String(utf16CodeUnits: chars, count: length).uppercased()
             }
         }
