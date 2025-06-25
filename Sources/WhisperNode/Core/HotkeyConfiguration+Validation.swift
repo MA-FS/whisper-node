@@ -46,14 +46,7 @@ extension HotkeyConfiguration {
     
     /// Description of any system conflict, if present
     public var systemConflictDescription: String? {
-        let systemShortcuts: [(keyCode: UInt16, modifiers: CGEventFlags, description: String)] = [
-            (48, .maskCommand, "Cmd+Tab (App Switcher)"),
-            (53, .maskCommand, "Cmd+Esc (Force Quit)"),
-            (49, .maskCommand, "Cmd+Space (Spotlight)"),
-            (49, [.maskControl, .maskCommand], "Ctrl+Cmd+Space (Character Viewer)"),
-            (12, .maskCommand, "Cmd+Q (Quit Application)"),
-            (13, .maskCommand, "Cmd+W (Close Window)")
-        ]
+        let systemShortcuts = Self.loadSystemShortcuts()
         
         for shortcut in systemShortcuts {
             if keyCode == shortcut.keyCode && modifierFlags == shortcut.modifiers {
@@ -72,10 +65,10 @@ extension HotkeyConfiguration {
         // Must have at least one modifier
         let cleanModifiers = modifierFlags.cleanedModifierFlags()
         if cleanModifiers.rawValue == 0 {
-            issues.append("Modifier-only hotkeys must specify at least one modifier")
+            issues.append("Modifier-only hotkeys must specify at least one modifier.")
             return issues
         }
-        
+
         // Count active modifiers
         let modifierCount = [
             cleanModifiers.contains(.maskCommand),
@@ -83,19 +76,19 @@ extension HotkeyConfiguration {
             cleanModifiers.contains(.maskAlternate),
             cleanModifiers.contains(.maskShift)
         ].filter { $0 }.count
-        
+
         // Recommend at least 2 modifiers to avoid conflicts
         if modifierCount < 2 {
-            issues.append("Single modifier hotkeys may conflict with system shortcuts (recommended: 2+ modifiers)")
+            issues.append("Single modifier hotkeys may conflict with system shortcuts (recommended: 2+ modifiers).")
         }
-        
+
         // Warn about potentially problematic single modifiers
         if modifierCount == 1 {
             if cleanModifiers.contains(.maskCommand) {
-                issues.append("Command-only modifier may interfere with system shortcuts")
+                issues.append("Command-only modifier may interfere with system shortcuts.")
             }
             if cleanModifiers.contains(.maskControl) {
-                issues.append("Control-only modifier may interfere with text editing shortcuts")
+                issues.append("Control-only modifier may interfere with text editing shortcuts.")
             }
         }
         
@@ -107,13 +100,13 @@ extension HotkeyConfiguration {
         
         // Validate key code range
         if keyCode > 127 {
-            issues.append("Invalid key code: \(keyCode) (should be 0-127)")
+            issues.append("Invalid key code: \(keyCode) (should be 0-127).")
         }
-        
+
         // Check for modifier requirements
         let cleanModifiers = modifierFlags.cleanedModifierFlags()
         if cleanModifiers.rawValue == 0 && !isFunctionKey(keyCode) && !isSpecialKey(keyCode) {
-            issues.append("Regular key combinations should include modifier keys")
+            issues.append("Regular key combinations should include modifier keys.")
         }
         
         return issues
@@ -124,7 +117,7 @@ extension HotkeyConfiguration {
         
         // Check for escape key
         if keyCode == 53 { // Escape key
-            issues.append("Escape key is not recommended for hotkeys")
+            issues.append("Escape key is not recommended for hotkeys.")
         }
         
         // Check for dangerous system shortcuts
@@ -208,7 +201,7 @@ extension HotkeyConfiguration {
     }
     
     // MARK: - Logging Support
-    
+
     /// Logs validation results for debugging
     public func logValidationResults() {
         if isValid {
@@ -219,6 +212,21 @@ extension HotkeyConfiguration {
                 Self.logger.warning("  - \(issue)")
             }
         }
+    }
+
+    // MARK: - System Shortcuts Management
+
+    /// Loads system shortcuts with future extensibility for configuration
+    private static func loadSystemShortcuts() -> [(keyCode: UInt16, modifiers: CGEventFlags, description: String)] {
+        // Current hardcoded shortcuts - future versions could load from system APIs or configuration
+        return [
+            (48, .maskCommand, "Cmd+Tab (App Switcher)"),
+            (53, .maskCommand, "Cmd+Esc (Force Quit)"),
+            (49, .maskCommand, "Cmd+Space (Spotlight)"),
+            (49, [.maskControl, .maskCommand], "Ctrl+Cmd+Space (Character Viewer)"),
+            (12, .maskCommand, "Cmd+Q (Quit Application)"),
+            (13, .maskCommand, "Cmd+W (Close Window)")
+        ]
     }
 }
 
@@ -263,33 +271,34 @@ private func keyCodeToString(_ keyCode: UInt16) -> String {
     case 103: return "F11"
     case 111: return "F12"
     default:
-        // For letter keys, try to convert to character
+        // For letter keys, try to convert to character with proper memory management
         if keyCode >= 0 && keyCode <= 127 {
             let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-            let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
-            
-            if let data = layoutData {
-                let keyboardLayout = data.bindMemory(to: UCKeyboardLayout.self, capacity: 1)
-                var deadKeyState: UInt32 = 0
-                var length = 0
-                var chars = [UniChar](repeating: 0, count: 4)
-                
-                let error = UCKeyTranslate(
-                    keyboardLayout,
-                    keyCode,
-                    UInt16(kUCKeyActionDisplay),
-                    0,
-                    UInt32(LMGetKbdType()),
-                    OptionBits(kUCKeyTranslateNoDeadKeysBit),
-                    &deadKeyState,
-                    4,
-                    &length,
-                    &chars
-                )
-                
-                if error == noErr && length > 0 {
-                    return String(utf16CodeUnits: chars, count: length).uppercased()
-                }
+
+            guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+                return "Key\(keyCode)"
+            }
+
+            let keyboardLayout = layoutData.bindMemory(to: UCKeyboardLayout.self, capacity: 1)
+            var deadKeyState: UInt32 = 0
+            var length = 0
+            var chars = [UniChar](repeating: 0, count: 4)
+
+            let error = UCKeyTranslate(
+                keyboardLayout,
+                keyCode,
+                UInt16(kUCKeyActionDisplay),
+                0,
+                UInt32(LMGetKbdType()),
+                OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                &deadKeyState,
+                4,
+                &length,
+                &chars
+            )
+
+            if error == noErr && length > 0 {
+                return String(utf16CodeUnits: chars, count: length).uppercased()
             }
         }
         return "Key\(keyCode)"
