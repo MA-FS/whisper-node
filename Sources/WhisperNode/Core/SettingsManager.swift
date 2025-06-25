@@ -471,6 +471,40 @@ class SettingsManager: ObservableObject {
         return true
     }
 
+    /// Rolls back to a previous valid hotkey configuration
+    ///
+    /// Provides safe rollback functionality with validation to ensure the rollback
+    /// configuration is valid before applying it.
+    ///
+    /// - Parameter configuration: The configuration to rollback to
+    /// - Returns: True if rollback was successful, false otherwise
+    @discardableResult
+    func rollbackHotkeyConfiguration(_ configuration: HotkeyConfiguration) -> Bool {
+        Self.logger.info("🔄 Rolling back hotkey configuration: \(configuration.description)")
+
+        // Validate rollback configuration before applying
+        if !isConfigurationValid(configuration) {
+            Self.logger.error("❌ Cannot rollback: rollback configuration is invalid")
+            return false
+        }
+
+        // Ensure rollback configuration can be persisted
+        if !configuration.canBePersisted {
+            Self.logger.error("❌ Cannot rollback: rollback configuration cannot be persisted")
+            return false
+        }
+
+        // Apply the rollback
+        let success = saveHotkeyConfiguration(configuration)
+        if success {
+            Self.logger.info("✅ Successfully rolled back hotkey configuration")
+        } else {
+            Self.logger.error("❌ Failed to rollback hotkey configuration")
+        }
+
+        return success
+    }
+
     /// Migrates hotkey settings to current format if needed
     ///
     /// Handles migration from older settings formats to ensure compatibility

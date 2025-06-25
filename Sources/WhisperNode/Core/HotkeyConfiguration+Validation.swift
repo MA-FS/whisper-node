@@ -2,11 +2,36 @@ import Foundation
 import Carbon
 import os.log
 
+
+
 /// Validation extensions for HotkeyConfiguration
 ///
 /// Provides comprehensive validation, error checking, and utility methods
 /// for hotkey configurations to ensure robust persistence and runtime behavior.
 extension HotkeyConfiguration {
+
+    /// Configurable list of system shortcuts that should be avoided
+    ///
+    /// This list can be modified to add or remove system shortcuts based on
+    /// user preferences or system requirements.
+    static var systemShortcuts: [(keyCode: UInt16, modifiers: CGEventFlags, reason: String)] = [
+        (12, .maskCommand, "Cmd+Q may quit applications unexpectedly"),
+        (13, .maskCommand, "Cmd+W may close windows unexpectedly"),
+        (48, .maskCommand, "Cmd+Tab conflicts with app switcher"),
+        (36, .maskCommand, "Cmd+Return may conflict with system shortcuts"),
+        (6, .maskCommand, "Cmd+Z conflicts with undo"),
+        (7, .maskCommand, "Cmd+X conflicts with cut"),
+        (8, .maskCommand, "Cmd+C conflicts with copy"),
+        (9, .maskCommand, "Cmd+V conflicts with paste"),
+        (0, .maskCommand, "Cmd+A conflicts with select all"),
+        (1, .maskCommand, "Cmd+S conflicts with save"),
+        (15, .maskCommand, "Cmd+R conflicts with refresh"),
+        (17, .maskCommand, "Cmd+T conflicts with new tab"),
+        (31, .maskCommand, "Cmd+O conflicts with open"),
+        (45, .maskCommand, "Cmd+N conflicts with new"),
+        (3, .maskCommand, "Cmd+F conflicts with find"),
+        (5, .maskCommand, "Cmd+G conflicts with find next")
+    ]
     
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "hotkey-validation")
     
@@ -120,17 +145,8 @@ extension HotkeyConfiguration {
             issues.append("Escape key is not recommended for hotkeys.")
         }
         
-        // Check for dangerous system shortcuts
-        let dangerousCombinations: [(keyCode: UInt16, modifiers: CGEventFlags, reason: String)] = [
-            (12, .maskCommand, "Cmd+Q may quit applications unexpectedly"),
-            (13, .maskCommand, "Cmd+W may close windows unexpectedly"),
-            (48, .maskCommand, "Cmd+Tab conflicts with app switcher"),
-            (36, .maskCommand, "Cmd+Return may conflict with system shortcuts"),
-            (6, .maskCommand, "Cmd+Z conflicts with undo"),
-            (7, .maskCommand, "Cmd+X conflicts with cut"),
-            (8, .maskCommand, "Cmd+C conflicts with copy"),
-            (9, .maskCommand, "Cmd+V conflicts with paste")
-        ]
+        // Check for dangerous system shortcuts using configurable list
+        let dangerousCombinations = Self.systemShortcuts
         
         for combination in dangerousCombinations {
             if keyCode == combination.keyCode && modifierFlags.contains(combination.modifiers) {
@@ -298,9 +314,22 @@ private func keyCodeToString(_ keyCode: UInt16) -> String {
                 &chars
             )
 
-            if error == noErr && length > 0 && length <= chars.count {
-                return String(utf16CodeUnits: chars, count: length).uppercased()
+            // Enhanced error handling for Carbon API
+            guard error == noErr else {
+                // Log the specific error for debugging
+                os_log("UCKeyTranslate failed with error: %d", log: OSLog.default, type: .error, error)
+                return "Key\(keyCode)"
             }
+
+            guard length > 0 && length <= chars.count else {
+                // Log invalid length for debugging
+                os_log("UCKeyTranslate returned invalid length: %d", log: OSLog.default, type: .default, length)
+                return "Key\(keyCode)"
+            }
+
+            // Safely create string from characters
+            let result = String(utf16CodeUnits: chars, count: length).uppercased()
+            return result.isEmpty ? "Key\(keyCode)" : result
         }
         return "Key\(keyCode)"
     }
