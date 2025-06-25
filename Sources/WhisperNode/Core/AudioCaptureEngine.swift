@@ -117,7 +117,12 @@ public class AudioCaptureEngine: ObservableObject {
     
     /// Whether voice activity is currently detected
     @Published public private(set) var isVoiceDetected: Bool = false
-    
+
+    /// Convenience property to check if the engine is actively capturing audio
+    public var isCapturing: Bool {
+        return captureState == .recording
+    }
+
     /// Callback invoked when audio data is available (only when voice is detected)
     /// - Parameter data: Raw audio data as Float samples converted to Data
     public var onAudioDataAvailable: ((Data) -> Void)?
@@ -279,17 +284,28 @@ public class AudioCaptureEngine: ObservableObject {
     /// Stop audio capture and clean up resources
     ///
     /// Safely stops the audio engine and resets all state variables.
-    /// This method is safe to call multiple times.
+    /// This method is safe to call multiple times and includes enhanced error handling.
     public func stopCapture() {
         Task { @MainActor in
             Self.logger.info("Stopping audio capture...")
+
+            // Check current state before stopping
+            let wasRecording = (captureState == .recording)
             captureState = .stopping
 
             // Stop the audio engine
-            audioEngine.stop()
+            if audioEngine.isRunning {
+                audioEngine.stop()
+                Self.logger.debug("Audio engine stopped successfully")
+            } else {
+                Self.logger.debug("Audio engine was not running")
+            }
 
-            // Remove the input tap
-            audioEngine.inputNode.removeTap(onBus: 0)
+            // Remove the input tap safely
+            if wasRecording {
+                audioEngine.inputNode.removeTap(onBus: 0)
+                Self.logger.debug("Input tap removed")
+            }
 
             // Ensure all connections are disconnected to prevent any residual audio routing
             let mainMixerNode = audioEngine.mainMixerNode
@@ -299,11 +315,12 @@ public class AudioCaptureEngine: ObservableObject {
 
             Self.logger.debug("All audio connections disconnected")
 
+            // Reset state variables
             captureState = .idle
             inputLevel = 0.0
             isVoiceDetected = false
 
-            Self.logger.info("Audio capture stopped")
+            Self.logger.info("Audio capture stopped successfully")
         }
     }
     
@@ -659,6 +676,47 @@ public class AudioCaptureEngine: ObservableObject {
             onVoiceActivityChanged?(detected)
         }
     }
+
+    /// Provides comprehensive diagnostics about the audio engine state
+    ///
+    /// Returns detailed information about the current state of the audio capture engine,
+    /// including capture state, audio engine status, and configuration details.
+    /// Useful for debugging and state validation.
+    ///
+    /// - Returns: Dictionary containing diagnostic information
+    public func getDiagnostics() -> [String: Any] {
+        return [
+            "captureState": String(describing: self.captureState),
+            "audioEngineRunning": self.audioEngine.isRunning,
+            "inputLevel": self.inputLevel,
+            "isVoiceDetected": self.isVoiceDetected,
+            "isCapturing": self.isCapturing,
+            "inputFormat": self.audioEngine.inputNode.inputFormat(forBus: 0).description,
+            "sampleRate": self.audioEngine.inputNode.inputFormat(forBus: 0).sampleRate,
+            "channelCount": self.audioEngine.inputNode.inputFormat(forBus: 0).channelCount,
+            "hasCallbacks": [
+                "onAudioDataAvailable": self.onAudioDataAvailable != nil,
+                "onRawAudioDataAvailable": self.onRawAudioDataAvailable != nil,
+                "onVoiceActivityChanged": self.onVoiceActivityChanged != nil
+            ]
+        ]
+    }
+
+    /// Validates the current state of the audio engine
+    ///
+    /// Checks for consistency between the capture state and actual audio engine state.
+    /// Useful for detecting state synchronization issues.
+    ///
+    /// - Returns: `true` if the state is consistent, `false` otherwise
+    public func validateState() -> Bool {
+        let stateConsistent = (self.captureState == .recording) == self.audioEngine.isRunning
+
+        if !stateConsistent {
+            Self.logger.warning("Audio engine state inconsistency - captureState: \(String(describing: self.captureState)), engineRunning: \(self.audioEngine.isRunning)")
+        }
+
+        return stateConsistent
+    }
 }
 
 // MARK: - Supporting Classes
@@ -830,4 +888,5 @@ public class VoiceActivityDetector {
         vDSP_svesq(samples, 1, &sum, vDSP_Length(samples.count))
         return sqrt(sum / Float(samples.count))
     }
+
 }

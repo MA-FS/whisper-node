@@ -606,58 +606,52 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     ///
     /// Updates the recording state, displays the recording indicator, starts performance monitoring, and initiates audio capture. If audio capture fails to start, resets the recording state, hides the indicator, and stops monitoring.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didStartRecording isRecording: Bool) {
-        self.isRecording = isRecording
         Self.logger.info("🎤 Voice recording started - delegate callback received")
+
+        // Validate state consistency before proceeding
+        if !validateAudioEngineState() {
+            Self.logger.warning("State inconsistency detected during recording start")
+        }
+
+        // Update state first
+        self.isRecording = isRecording
         Self.logger.info("🔊 WhisperNodeCore delegate method called successfully")
-        
+
         // Haptic feedback for recording start
         HapticManager.shared.recordingStarted()
-        
+
         // Update menu bar state
         menuBarManager.updateState(.recording)
-        
+
         // Show visual indicator with enhanced logging
         Self.logger.info("🟢 Attempting to show recording indicator")
         indicatorManager.showRecording()
         Self.logger.info("✅ indicatorManager.showRecording() called")
-        
+
         // Verify indicator manager state
         Self.logger.info("📊 Indicator state - isVisible: \(self.indicatorManager.isVisible), currentState: \(String(describing: self.indicatorManager.currentState))")
-        
+
         // Performance monitoring is always active via PerformanceMonitor.shared
-        
-        // Start audio capture engine
-        Task {
+
+        // Start audio capture engine with enhanced error handling
+        Task { [weak self] in
             do {
-                try await audioEngine.startCapture()
+                try await self?.audioEngine.startCapture()
                 Self.logger.info("Audio capture started successfully")
+
+                // Validate state after successful start
+                await MainActor.run {
+                    if let self = self, !self.validateAudioEngineState() {
+                        Self.logger.warning("State mismatch after successful audio start")
+                    }
+                }
             } catch {
                 Self.logger.error("Failed to start audio capture: \(error.localizedDescription)")
-                
-                // Handle specific audio capture errors
-                if let captureError = error as? AudioCaptureEngine.CaptureError {
-                    switch captureError {
-                    case .permissionDenied:
-                        errorManager.handleMicrophoneAccessDenied()
-                    case .deviceNotAvailable:
-                        errorManager.handleError(.audioCaptureFailure("Audio device not available"))
-                    case .formatNotSupported:
-                        errorManager.handleError(.audioCaptureFailure("Audio format not supported"))
-                    case .bufferOverrun:
-                        errorManager.handleError(.audioCaptureFailure("Audio buffer overrun"))
-                    case .engineNotRunning:
-                        errorManager.handleError(.audioCaptureFailure("Audio engine not running"))
-                    }
-                } else {
-                    // Generic audio failure
-                    errorManager.handleError(.audioCaptureFailure("Unknown audio capture error"))
+
+                // Revert state on failure
+                await MainActor.run {
+                    self?.handleAudioStartFailure(error)
                 }
-                
-                self.isRecording = false
-                indicatorManager.hideIndicator()
-                // Haptic feedback for audio capture error
-                HapticManager.shared.errorOccurred()
-                // Performance monitoring continues in background
             }
         }
     }
@@ -668,53 +662,92 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     ///
     /// - Parameter duration: The duration of the completed voice recording, in seconds.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCompleteRecording duration: CFTimeInterval) {
-        isRecording = false
         Self.logger.info("Voice recording completed after \(duration)s")
-        
+
+        // Validate state consistency before proceeding
+        if !validateAudioEngineState() {
+            Self.logger.warning("State inconsistency detected during recording completion")
+        }
+
+        // Update state
+        isRecording = false
+
         // Haptic feedback for recording completion
         HapticManager.shared.recordingStopped()
-        
+
         // Update menu bar state back to normal
         menuBarManager.updateState(.normal)
-        
+
         // Show processing indicator after brief delay to avoid flicker
-        Task {
+        Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.processingStateDelay)
             await MainActor.run {
-                indicatorManager.showProcessing(progress: 0.0)
+                self?.indicatorManager.showProcessing(progress: 0.0)
             }
         }
-        
+
         // Performance monitoring continues in background
-        
-        // Stop audio capture
-        audioEngine.stopCapture()
-        Self.logger.info("Audio capture stopped")
-        
-        // The audio processing will be handled by the audioEngine callbacks
-        // which will trigger processAudioData() automatically
+
+        // Stop audio capture with state validation
+        Task { [weak self] in
+            // Note: stopCapture() is synchronous and doesn't throw
+            await MainActor.run {
+                self?.audioEngine.stopCapture()
+            }
+            Self.logger.info("Audio capture stopped successfully")
+
+            // Validate state after stop
+            await MainActor.run {
+                if let self = self, !self.validateAudioEngineState() {
+                    Self.logger.warning("State mismatch after audio stop")
+                }
+            }
+
+            // The audio processing will be handled by the audioEngine callbacks
+            // which will trigger processAudioData() automatically
+        }
     }
     
     /// Handles the cancellation of voice recording triggered by the hotkey manager.
     ///
     /// Resets the recording state, hides the recording indicator, stops performance monitoring, and halts audio capture.
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didCancelRecording reason: RecordingCancelReason) {
+        Self.logger.info("Voice recording cancelled - reason: \(String(describing: reason))")
+
+        // Validate state consistency before proceeding
+        if !validateAudioEngineState() {
+            Self.logger.warning("State inconsistency detected during recording cancellation")
+        }
+
+        // Update state
         isRecording = false
-        Self.logger.info("Voice recording cancelled")
-        
+
         // Haptic feedback for recording cancellation
         HapticManager.shared.recordingCancelled()
-        
+
         // Update menu bar state back to normal
         menuBarManager.updateState(.normal)
-        
+
         // Hide visual indicator
         indicatorManager.hideIndicator()
-        
+
         // Performance monitoring continues in background
-        
-        // Stop audio capture
-        audioEngine.stopCapture()
+
+        // Stop audio capture with state validation
+        Task { [weak self] in
+            // Note: stopCapture() is synchronous and doesn't throw
+            await MainActor.run {
+                self?.audioEngine.stopCapture()
+            }
+            Self.logger.info("Audio capture cancelled successfully")
+
+            // Validate state after cancellation
+            await MainActor.run {
+                if let self = self, !self.validateAudioEngineState() {
+                    Self.logger.warning("State mismatch after audio cancellation")
+                }
+            }
+        }
     }
     
     /// Handles errors from the global hotkey manager by logging the error and displaying an error indicator briefly.
@@ -755,8 +788,172 @@ extension WhisperNodeCore: GlobalHotkeyManagerDelegate {
     
     public func hotkeyManager(_ manager: GlobalHotkeyManager, didDetectConflict conflict: HotkeyConflict, suggestedAlternatives: [HotkeyConfiguration]) {
         Self.logger.warning("Hotkey conflict detected: \(conflict.description)")
-        
+
         // Handle hotkey conflict with non-blocking notification
         errorManager.handleHotkeyConflict(conflict.description)
+    }
+}
+
+// MARK: - Audio Engine Error Handling & State Management
+
+extension WhisperNodeCore {
+
+    /// Handles audio engine start failures with comprehensive error recovery
+    ///
+    /// Reverts all state changes, provides user feedback, and ensures clean system state
+    /// - Parameter error: The error that occurred during audio engine start
+    private func handleAudioStartFailure(_ error: Error) {
+        Self.logger.error("Audio start failure: \(error)")
+
+        // Revert state to ensure consistency
+        isRecording = false
+        menuBarManager.updateState(.normal)
+        indicatorManager.hideIndicator()
+
+        // Handle specific audio capture errors with appropriate user feedback
+        if let captureError = error as? AudioCaptureEngine.CaptureError {
+            switch captureError {
+            case .permissionDenied:
+                errorManager.handleMicrophoneAccessDenied()
+            case .deviceNotAvailable:
+                errorManager.handleError(.audioCaptureFailure("Audio device not available"))
+            case .formatNotSupported:
+                errorManager.handleError(.audioCaptureFailure("Audio format not supported"))
+            case .bufferOverrun:
+                errorManager.handleError(.audioCaptureFailure("Audio buffer overrun"))
+            case .engineNotRunning:
+                errorManager.handleError(.audioCaptureFailure("Audio engine not running"))
+            }
+        } else {
+            // Generic audio failure
+            errorManager.handleError(.audioCaptureFailure("Failed to start audio capture: \(error.localizedDescription)"))
+        }
+
+        // Provide haptic feedback for error
+        HapticManager.shared.errorOccurred()
+
+        // Validate final state
+        if !validateAudioEngineState() {
+            Self.logger.error("State still inconsistent after error handling")
+        }
+    }
+
+    /// Handles audio engine stop failures during recording completion
+    ///
+    /// Ensures clean state and provides appropriate error feedback
+    /// - Parameter error: The error that occurred during audio engine stop
+    private func handleAudioStopFailure(_ error: Error) {
+        Self.logger.error("Audio stop failure: \(error)")
+
+        // Ensure clean state regardless of stop failure
+        isRecording = false
+        menuBarManager.updateState(.normal)
+        indicatorManager.hideIndicator()
+
+        // Show error to user
+        errorManager.handleError(.audioCaptureFailure("Failed to stop audio capture: \(error.localizedDescription)"))
+
+        // Validate final state
+        if !validateAudioEngineState() {
+            Self.logger.error("State still inconsistent after stop failure handling")
+        }
+    }
+
+    /// Handles audio engine cancellation failures
+    ///
+    /// Ensures clean state but avoids showing errors to user (cancellation should be silent)
+    /// - Parameter error: The error that occurred during audio engine cancellation
+    private func handleAudioCancelFailure(_ error: Error) {
+        Self.logger.error("Audio cancel failure: \(error)")
+
+        // Ensure clean state regardless of cancellation error
+        isRecording = false
+        menuBarManager.updateState(.normal)
+        indicatorManager.hideIndicator()
+
+        // Log error but don't show to user (cancellation should be silent)
+        // Only log for debugging purposes
+
+        // Validate final state
+        if !validateAudioEngineState() {
+            Self.logger.error("State still inconsistent after cancel failure handling")
+        }
+    }
+
+    /// Validates that UI state matches audio engine state
+    ///
+    /// Detects and attempts to correct state inconsistencies between the core recording state
+    /// and the actual audio engine state. This helps prevent silent failures where the UI
+    /// shows recording but no audio is being captured.
+    ///
+    /// - Returns: `true` if states are consistent, `false` if inconsistencies were detected
+    private func validateAudioEngineState() -> Bool {
+        let engineIsRecording = audioEngine.isCapturing
+        let coreIsRecording = isRecording
+
+        // First validate the audio engine's internal state
+        let audioEngineStateValid = audioEngine.validateState()
+        if !audioEngineStateValid {
+            Self.logger.warning("Audio engine internal state is inconsistent")
+        }
+
+        if engineIsRecording != coreIsRecording {
+            Self.logger.warning("State mismatch detected - Engine recording: \(engineIsRecording), Core recording: \(coreIsRecording)")
+
+            // Log detailed diagnostics for debugging
+            let diagnostics = audioEngine.getDiagnostics()
+            Self.logger.debug("Audio engine diagnostics: \(diagnostics)")
+
+            // Attempt to synchronize states
+            if engineIsRecording && !coreIsRecording {
+                // Engine is capturing but core thinks it's not - stop engine
+                Self.logger.info("Stopping orphaned audio engine")
+                audioEngine.stopCapture()
+            } else if !engineIsRecording && coreIsRecording {
+                // Core thinks it's recording but engine is not - update core state
+                Self.logger.info("Correcting core state to match engine")
+                isRecording = false
+                menuBarManager.updateState(.normal)
+                indicatorManager.hideIndicator()
+            }
+
+            return false
+        }
+
+        return audioEngineStateValid
+    }
+
+    /// Provides comprehensive diagnostics for the entire recording system
+    ///
+    /// Returns detailed information about all components involved in the recording pipeline,
+    /// including core state, audio engine state, UI state, and system configuration.
+    /// Useful for debugging complex state synchronization issues.
+    ///
+    /// - Returns: Dictionary containing comprehensive diagnostic information
+    public func getRecordingSystemDiagnostics() -> [String: Any] {
+        let audioEngineDiagnostics = audioEngine.getDiagnostics()
+
+        return [
+            "coreState": [
+                "isRecording": isRecording,
+                "stateValidation": validateAudioEngineState()
+            ],
+            "audioEngine": audioEngineDiagnostics,
+            "ui": [
+                "indicatorVisible": indicatorManager.isVisible,
+                "indicatorState": String(describing: indicatorManager.currentState),
+                "menuBarState": String(describing: menuBarManager.currentState)
+            ],
+            "system": [
+                "timestamp": Date().timeIntervalSince1970,
+                "performanceSnapshot": [
+                    "cpuUsage": performanceMonitor.getCurrentSnapshot().cpuUsage,
+                    "memoryUsageMB": performanceMonitor.getCurrentSnapshot().memoryUsageMB,
+                    "batteryLevel": performanceMonitor.getCurrentSnapshot().batteryLevel,
+                    "isOnBattery": performanceMonitor.getCurrentSnapshot().isOnBattery,
+                    "isThrottling": performanceMonitor.getCurrentSnapshot().isThrottling
+                ]
+            ]
+        ]
     }
 }
