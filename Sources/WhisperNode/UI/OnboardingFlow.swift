@@ -184,19 +184,88 @@ enum OnboardingStep: CaseIterable {
 struct OnboardingProgressBar: View {
     let currentStep: Int
     let totalSteps: Int
-    
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var containerWidth: CGFloat = 0
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             HStack {
                 Text("Step \(currentStep + 1) of \(totalSteps)")
                     .font(.caption)
+                    .fontWeight(.medium)
                     .foregroundColor(.secondary)
                 Spacer()
+                Text("\(Int((Double(currentStep + 1) / Double(totalSteps)) * 100))% Complete")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.blue)
             }
-            
-            ProgressView(value: Double(currentStep + 1), total: Double(totalSteps))
-                .progressViewStyle(LinearProgressViewStyle())
+
+            // Enhanced progress bar with smooth animations
+            ZStack(alignment: .leading) {
+                // Background track
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 8)
+                    .background(
+                        GeometryReader { geometry in
+                            Color.clear.onAppear {
+                                containerWidth = geometry.size.width
+                            }
+                            .onChange(of: geometry.size.width) { newWidth in
+                                containerWidth = newWidth
+                            }
+                        }
+                    )
+
+                // Progress fill with gradient
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [.blue, .blue.opacity(0.8)]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: progressWidth, height: 8)
+                    .animation(
+                        reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.8),
+                        value: currentStep
+                    )
+
+                // Step indicators
+                HStack {
+                    ForEach(0..<totalSteps, id: \.self) { step in
+                        Circle()
+                            .fill(step <= currentStep ? Color.blue : Color.gray.opacity(0.3))
+                            .frame(width: 12, height: 12)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: 2)
+                                    .opacity(step <= currentStep ? 1 : 0)
+                            )
+                            .scaleEffect(step == currentStep ? 1.2 : 1.0)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.4, dampingFraction: 0.7),
+                                value: currentStep
+                            )
+
+                        if step < totalSteps - 1 {
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.horizontal, 6)
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progress: Step \(currentStep + 1) of \(totalSteps)")
+        .accessibilityValue("\(Int((Double(currentStep + 1) / Double(totalSteps)) * 100)) percent complete")
+    }
+
+    private var progressWidth: CGFloat {
+        let progress = Double(currentStep + 1) / Double(totalSteps)
+        return CGFloat(progress) * containerWidth
     }
 }
 
@@ -204,51 +273,150 @@ struct OnboardingProgressBar: View {
 
 struct WelcomeStep: View {
     let onNext: () -> Void
-    
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var animationPhase = 0
+
     var body: some View {
         VStack(spacing: 30) {
             Spacer()
-            
-            VStack(spacing: 20) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 64))
-                    .foregroundColor(.blue)
-                
-                VStack(spacing: 12) {
+
+            VStack(spacing: 25) {
+                // Enhanced app icon with glow effect
+                ZStack {
+                    // Glow background
+                    Circle()
+                        .fill(Color.blue.opacity(0.2))
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 20)
+                        .scaleEffect(animationPhase == 0 ? 0.8 : 1.2)
+                        .animation(
+                            reduceMotion ? .none : .easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                            value: animationPhase
+                        )
+
+                    // Main icon
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 64, weight: .medium))
+                        .foregroundColor(.blue)
+                        .scaleEffect(animationPhase == 0 ? 1.0 : 1.1)
+                        .animation(
+                            reduceMotion ? .none : .easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                            value: animationPhase
+                        )
+                }
+
+                VStack(spacing: 16) {
                     Text("Welcome to Whisper Node")
                         .font(.largeTitle)
                         .fontWeight(.bold)
-                    
+                        .multilineTextAlignment(.center)
+
                     Text("Blazingly fast, private speech-to-text")
                         .font(.title2)
                         .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Text("Transform your voice into text instantly, with complete privacy and offline processing.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 8)
                 }
-                
-                VStack(spacing: 8) {
-                    FeatureRow(icon: "lock.fill", text: "100% offline processing")
-                    FeatureRow(icon: "bolt.fill", text: "Lightning-fast transcription")
-                    FeatureRow(icon: "keyboard", text: "Press-and-hold activation")
-                    FeatureRow(icon: "brain.head.profile", text: "Advanced AI models")
+
+                // Enhanced feature showcase
+                VStack(spacing: 12) {
+                    EnhancedFeatureRow(
+                        icon: "lock.shield.fill",
+                        text: "100% Private & Offline",
+                        description: "Your voice never leaves your device"
+                    )
+                    EnhancedFeatureRow(
+                        icon: "bolt.fill",
+                        text: "Lightning Fast",
+                        description: "Instant transcription with AI acceleration"
+                    )
+                    EnhancedFeatureRow(
+                        icon: "keyboard.badge.ellipsis",
+                        text: "Global Hotkeys",
+                        description: "Activate from anywhere with a key press"
+                    )
+                    EnhancedFeatureRow(
+                        icon: "brain.head.profile",
+                        text: "Advanced AI Models",
+                        description: "State-of-the-art speech recognition"
+                    )
                 }
                 .padding(.top, 20)
+                .padding(.horizontal, 20)
             }
-            
+
             Spacer()
-            
-            HStack {
-                Spacer()
-                Button("Get Started") {
-                    onNext()
+
+            // Enhanced call-to-action
+            VStack(spacing: 12) {
+                Button(action: onNext) {
+                    HStack {
+                        Text("Get Started")
+                            .fontWeight(.semibold)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .accessibilityLabel("Get started with onboarding")
                 .accessibilityHint("Begin the setup process for Whisper Node")
+
+                Text("Setup takes less than 2 minutes")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(.horizontal, 40)
             .padding(.bottom, 40)
         }
         .padding(.horizontal, 40)
+        .onAppear {
+            if !reduceMotion {
+                animationPhase = 1
+            }
+        }
+    }
+}
+
+struct EnhancedFeatureRow: View {
+    let icon: String
+    let text: String
+    let description: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            // Icon with background
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.1))
+                    .frame(width: 40, height: 40)
+
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.blue)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(text)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+
+                Text(description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -774,7 +942,7 @@ struct HotkeySetupStep: View {
     let onBack: () -> Void
     
     @StateObject private var settings = SettingsManager.shared
-    @StateObject private var hotkeyManager = GlobalHotkeyManager.shared
+    @StateObject private var core = WhisperNodeCore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isRecording = false
     @State private var recordedHotkeyDescription: String = ""
@@ -804,7 +972,7 @@ struct HotkeySetupStep: View {
                 Text("Current Hotkey:")
                     .font(.headline)
                 
-                Text(isRecording ? "Press your hotkey combination..." : hotkeyManager.currentHotkey.description)
+                Text(isRecording ? "Press your hotkey combination..." : core.hotkeyManager.currentHotkey.description)
                     .font(.title2)
                     .fontWeight(.semibold)
                     .padding()
@@ -863,13 +1031,13 @@ struct HotkeySetupStep: View {
         .padding(.horizontal, 40)
         .onAppear {
             // Initialize with current hotkey description
-            recordedHotkeyDescription = hotkeyManager.currentHotkey.description
+            recordedHotkeyDescription = core.hotkeyManager.currentHotkey.description
         }
     }
     
     private func startHotkeyRecording() {
         isRecording = true
-        hotkeyManager.isRecording = true
+        core.hotkeyManager.isRecording = true
         
         // Start capturing key events using NSEvent monitoring
         HotkeyRecorder.shared.startRecording(
@@ -911,18 +1079,18 @@ struct HotkeySetupStep: View {
     
     private func stopHotkeyRecording(with configuration: HotkeyConfiguration? = nil) {
         isRecording = false
-        hotkeyManager.isRecording = false
-        
+        core.hotkeyManager.isRecording = false
+
         // Stop the hotkey recorder
         HotkeyRecorder.shared.stopRecording()
-        
+
         // If we captured a valid hotkey, update the hotkey manager
         if let config = configuration {
-            hotkeyManager.updateHotkey(config)
+            core.hotkeyManager.updateHotkey(config)
             recordedHotkeyDescription = config.description
         } else {
             // Reset to previous state if no hotkey was captured
-            recordedHotkeyDescription = hotkeyManager.currentHotkey.description
+            recordedHotkeyDescription = core.hotkeyManager.currentHotkey.description
         }
     }
     

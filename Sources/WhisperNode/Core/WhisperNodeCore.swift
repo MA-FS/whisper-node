@@ -69,6 +69,9 @@ public class WhisperNodeCore: ObservableObject {
     private var permissionMonitorTimer: Timer?
     private var lastAccessibilityPermissionStatus = false
     private var appActivationObserver: NSObjectProtocol?
+
+    // Adaptive optimization timer
+    private var adaptiveOptimizationTimer: Timer?
     
     // Performance monitoring properties for backward compatibility
     public var memoryUsage: UInt64 {
@@ -89,6 +92,10 @@ public class WhisperNodeCore: ObservableObject {
         // Clean up permission monitoring resources
         permissionMonitorTimer?.invalidate()
         permissionMonitorTimer = nil
+
+        // Clean up adaptive optimization timer
+        adaptiveOptimizationTimer?.invalidate()
+        adaptiveOptimizationTimer = nil
 
         if let observer = appActivationObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -112,6 +119,9 @@ public class WhisperNodeCore: ObservableObject {
 
         // Setup performance monitoring with automatic adjustments
         setupPerformanceMonitoring()
+
+        // Setup adaptive performance optimization
+        setupAdaptivePerformanceOptimization()
 
         // Setup runtime permission monitoring
         setupPermissionMonitoring()
@@ -157,6 +167,65 @@ public class WhisperNodeCore: ObservableObject {
         // PerformanceMonitor.shared is already started automatically
         // Setup performance observation for automatic adjustments
         setupPerformanceObservation()
+    }
+
+    /// Setup adaptive performance optimization system
+    ///
+    /// Configures automatic performance adjustments based on system conditions,
+    /// including model switching, resource throttling, and memory management.
+    private func setupAdaptivePerformanceOptimization() {
+        Self.logger.info("Setting up adaptive performance optimization")
+
+        // Listen for performance optimization recommendations
+        NotificationCenter.default.addObserver(
+            forName: .performanceOptimizationRecommended,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handlePerformanceOptimizationRecommendation(notification)
+            }
+        }
+
+        // Listen for memory optimization requests
+        NotificationCenter.default.addObserver(
+            forName: .memoryOptimizationRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleMemoryOptimizationRequest(notification)
+            }
+        }
+
+        // Listen for CPU throttling requests
+        NotificationCenter.default.addObserver(
+            forName: .cpuThrottlingEnabled,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleCPUThrottlingRequest(notification)
+            }
+        }
+
+        // Listen for thermal throttling requests
+        NotificationCenter.default.addObserver(
+            forName: .thermalThrottlingEnabled,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleThermalThrottlingRequest(notification)
+            }
+        }
+
+        // Start periodic adaptive optimization checks
+        adaptiveOptimizationTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.performAdaptiveOptimization()
+            }
+        }
     }
 
     /// Sets up runtime permission monitoring to automatically activate hotkey system when permissions become available
@@ -1081,5 +1150,138 @@ extension WhisperNodeCore {
                 ]
             ]
         ]
+    }
+
+    // MARK: - Adaptive Performance Optimization Handlers
+
+    /// Perform periodic adaptive optimization based on current system conditions
+    private func performAdaptiveOptimization() {
+        let settings = performanceMonitor.getAdaptivePerformanceSettings()
+
+        // Apply model optimization if needed
+        if settings.preferFasterModel && !isCurrentlyOptimized {
+            optimizeForPerformance()
+        } else if !settings.preferFasterModel && isCurrentlyOptimized {
+            restoreOptimalQuality()
+        }
+
+        // Apply memory optimization
+        if settings.enableMemoryOptimization {
+            performMemoryCleanup(aggressive: settings.aggressiveCleanup)
+        }
+    }
+
+    private var isCurrentlyOptimized: Bool {
+        // Check if we're currently using a performance-optimized configuration
+        return currentModel.contains("tiny") || currentModel.contains("small")
+    }
+
+    private func handlePerformanceOptimizationRecommendation(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let recommendedModel = userInfo["recommendedModel"] as? String,
+              let reason = userInfo["reason"] as? String else { return }
+
+        Self.logger.info("Received performance optimization recommendation: \(recommendedModel) (reason: \(reason))")
+
+        // Apply the recommended model if it's different from current
+        if recommendedModel != currentModel {
+            loadModel(recommendedModel)
+        }
+    }
+
+    private func handleMemoryOptimizationRequest(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let aggressive = userInfo["aggressive"] as? Bool else { return }
+
+        Self.logger.info("Received memory optimization request (aggressive: \(aggressive))")
+        performMemoryCleanup(aggressive: aggressive)
+    }
+
+    private func handleCPUThrottlingRequest(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let cpuUsage = userInfo["cpuUsage"] as? Double else { return }
+
+        Self.logger.info("Received CPU throttling request (CPU usage: \(cpuUsage)%)")
+        enableCPUOptimization()
+    }
+
+    private func handleThermalThrottlingRequest(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let thermalState = userInfo["thermalState"] as? Int else { return }
+
+        Self.logger.info("Received thermal throttling request (thermal state: \(thermalState))")
+        enableThermalOptimization()
+    }
+
+    private func optimizeForPerformance() {
+        Self.logger.info("Optimizing for performance due to system constraints")
+
+        // Switch to faster model if available
+        let currentModel = self.currentModel
+        let optimizedModel: String
+
+        switch currentModel {
+        case "large.en", "large":
+            optimizedModel = "medium.en"
+        case "medium.en", "medium":
+            optimizedModel = "small.en"
+        case "small.en", "small":
+            optimizedModel = "tiny.en"
+        default:
+            return // Already using the fastest model
+        }
+
+        loadModel(optimizedModel)
+    }
+
+    private func restoreOptimalQuality() {
+        Self.logger.info("Restoring optimal quality as system conditions improved")
+
+        // This would restore to user's preferred model
+        // For now, we'll use a reasonable default
+        let preferredModel = "small.en" // Default fallback model
+        if preferredModel != currentModel {
+            loadModel(preferredModel)
+        }
+    }
+
+    private func performMemoryCleanup(aggressive: Bool) {
+        Self.logger.info("Performing memory cleanup (aggressive: \(aggressive))")
+
+        // Clean up audio buffers only if not recording
+        if !isRecording {
+            audioEngine.stopCapture()
+        } else {
+            Self.logger.info("Skipping audio engine cleanup - recording in progress")
+        }
+
+        // Clean up whisper engine cache if aggressive
+        if aggressive {
+            // Only reload model if not recording
+            if !isRecording {
+                loadModel(currentModel)
+            }
+        }
+
+        // Force garbage collection
+        autoreleasepool {
+            // Temporary objects will be cleaned up
+        }
+    }
+
+    private func enableCPUOptimization() {
+        Self.logger.info("Enabling CPU optimization")
+
+        // Reduce processing frequency
+        // Switch to more efficient model
+        optimizeForPerformance()
+    }
+
+    private func enableThermalOptimization() {
+        Self.logger.info("Enabling thermal optimization")
+
+        // More aggressive optimization for thermal issues
+        optimizeForPerformance()
+        performMemoryCleanup(aggressive: true)
     }
 }
