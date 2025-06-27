@@ -62,11 +62,154 @@ final class AudioCaptureEngineTests: XCTestCase {
     func testSetPreferredInputDevice() throws {
         // Test setting nil device
         XCTAssertNoThrow(try audioEngine.setPreferredInputDevice(nil))
-        
+
         // Test setting a valid device ID (simplified for macOS)
         #if os(macOS)
         XCTAssertNoThrow(try audioEngine.setPreferredInputDevice(0))
         #endif
+    }
+
+    // MARK: - Enhanced Audio System Tests
+
+    func testEnhancedPermissionRequest() async {
+        let result = await audioEngine.requestPermissionWithGuidance()
+
+        // Result should have valid properties
+        XCTAssertNotNil(result.status, "Result should have status")
+        XCTAssertNotNil(result.userMessage, "Result should have user message")
+
+        // Basic permission request should match enhanced result
+        let basicResult = await audioEngine.requestPermission()
+        XCTAssertEqual(basicResult, result.status.allowsCapture, "Basic and enhanced results should match")
+    }
+
+    func testEnhancedInputDevices() {
+        let basicDevices = audioEngine.getAvailableInputDevices()
+        let enhancedDevices = audioEngine.getEnhancedInputDevices()
+
+        // Enhanced devices should provide more information
+        XCTAssertEqual(basicDevices.count, enhancedDevices.count, "Device counts should match")
+
+        for enhancedDevice in enhancedDevices {
+            XCTAssertFalse(enhancedDevice.name.isEmpty, "Enhanced device should have name")
+            XCTAssertFalse(enhancedDevice.manufacturer.isEmpty, "Enhanced device should have manufacturer")
+            XCTAssertFalse(enhancedDevice.sampleRates.isEmpty, "Enhanced device should have sample rates")
+            XCTAssertFalse(enhancedDevice.channelCounts.isEmpty, "Enhanced device should have channel counts")
+        }
+    }
+
+    func testRecommendedSpeechDevice() {
+        let recommendedDevice = audioEngine.getRecommendedSpeechDevice()
+
+        if let device = recommendedDevice {
+            // Recommended device should be valid for speech recognition
+            XCTAssertTrue(audioEngine.validateDeviceForSpeechRecognition(device.id), "Recommended device should be valid for speech")
+            XCTAssertTrue(device.hasInput, "Recommended device should have input")
+            XCTAssertTrue(device.isConnected, "Recommended device should be connected")
+        }
+    }
+
+    func testDeviceValidationForSpeechRecognition() {
+        let devices = audioEngine.getEnhancedInputDevices()
+
+        for device in devices {
+            let isValid = audioEngine.validateDeviceForSpeechRecognition(device.id)
+
+            if isValid {
+                // Valid devices should meet speech recognition requirements
+                XCTAssertTrue(device.hasInput, "Valid speech device should have input")
+                XCTAssertTrue(device.isConnected, "Valid speech device should be connected")
+                XCTAssertTrue(device.sampleRates.contains { $0 >= 16000 }, "Valid speech device should support 16kHz+")
+                XCTAssertTrue(device.channelCounts.contains { $0 >= 1 }, "Valid speech device should support mono")
+            }
+        }
+
+        // Test with invalid device ID
+        let invalidResult = audioEngine.validateDeviceForSpeechRecognition(99999)
+        XCTAssertFalse(invalidResult, "Invalid device should not be valid for speech recognition")
+    }
+
+    func testEnhancedPreferredInputDevice() throws {
+        let devices = audioEngine.getEnhancedInputDevices()
+
+        if let firstDevice = devices.first {
+            // Test setting enhanced preferred device
+            XCTAssertNoThrow(try audioEngine.setEnhancedPreferredInputDevice(firstDevice.id))
+        }
+
+        // Test setting nil device
+        XCTAssertNoThrow(try audioEngine.setEnhancedPreferredInputDevice(nil))
+
+        // Test setting invalid device
+        XCTAssertThrowsError(try audioEngine.setEnhancedPreferredInputDevice(99999)) { error in
+            XCTAssertTrue(error is AudioDeviceManager.DeviceError)
+        }
+    }
+
+    func testEnhancedPermissionStatus() {
+        let enhancedStatus = audioEngine.getEnhancedPermissionStatus()
+        let basicStatus = audioEngine.checkPermissionStatus()
+
+        // Status should be consistent
+        switch enhancedStatus {
+        case .granted:
+            XCTAssertEqual(basicStatus, .granted, "Enhanced granted should match basic granted")
+        case .denied, .restricted:
+            XCTAssertEqual(basicStatus, .denied, "Enhanced denied/restricted should match basic denied")
+        case .notDetermined, .temporarilyUnavailable:
+            XCTAssertEqual(basicStatus, .undetermined, "Enhanced undetermined should match basic undetermined")
+        }
+    }
+
+    func testMicrophoneAccessValidation() async {
+        let isAccessible = await audioEngine.validateMicrophoneAccess()
+        let permissionStatus = audioEngine.getEnhancedPermissionStatus()
+
+        // Access should be consistent with permission status
+        if permissionStatus != .granted {
+            XCTAssertFalse(isAccessible, "Access should be false if permission not granted")
+        }
+    }
+
+    func testAudioSystemHealth() async {
+        let isHealthy = audioEngine.isAudioSystemHealthy()
+
+        // Should return boolean
+        XCTAssertTrue(isHealthy || !isHealthy, "Should return boolean result")
+
+        // If unhealthy, there should be specific reasons
+        if !isHealthy {
+            // Run diagnostics to see what's wrong
+            let report = await audioEngine.runAudioDiagnostics()
+            let failedChecks = report.results.filter { !$0.passed }
+            XCTAssertFalse(failedChecks.isEmpty, "If system is unhealthy, there should be failed checks")
+        }
+    }
+
+    func testAudioDiagnostics() async {
+        let report = await audioEngine.runAudioDiagnostics()
+
+        // Validate report structure
+        XCTAssertNotNil(report.timestamp, "Report should have timestamp")
+        XCTAssertNotNil(report.overallHealth, "Report should have overall health")
+        XCTAssertFalse(report.results.isEmpty, "Report should have diagnostic results")
+        XCTAssertNotNil(report.performanceMetrics, "Report should have performance metrics")
+        XCTAssertNotNil(report.systemInfo, "Report should have system info")
+        XCTAssertNotNil(report.recommendations, "Report should have recommendations")
+    }
+
+    func testPerformanceMetrics() {
+        let metrics = audioEngine.getPerformanceMetrics()
+
+        // Validate metrics structure
+        XCTAssertGreaterThanOrEqual(metrics.audioLatency, 0, "Audio latency should be non-negative")
+        XCTAssertGreaterThanOrEqual(metrics.bufferUtilization, 0, "Buffer utilization should be non-negative")
+        XCTAssertLessThanOrEqual(metrics.bufferUtilization, 1, "Buffer utilization should not exceed 100%")
+        XCTAssertGreaterThanOrEqual(metrics.cpuUsage, 0, "CPU usage should be non-negative")
+        XCTAssertGreaterThanOrEqual(metrics.memoryUsage, 0, "Memory usage should be non-negative")
+        XCTAssertGreaterThan(metrics.sampleRate, 0, "Sample rate should be positive")
+        XCTAssertGreaterThan(metrics.channelCount, 0, "Channel count should be positive")
+        XCTAssertGreaterThanOrEqual(metrics.droppedSamples, 0, "Dropped samples should be non-negative")
     }
     
     // MARK: - Capture State Tests
