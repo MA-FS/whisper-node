@@ -35,7 +35,7 @@ public enum OverallHealth: String, Codable {
 public struct SystemHealth {
     public var components: [AppComponent: ComponentHealth] = [:]
     public var systemResources: ComponentHealth = ComponentHealth(
-        component: .audioSystem, // Generic placeholder
+        component: .systemResources,
         isHealthy: true,
         issues: [],
         metrics: [:],
@@ -155,17 +155,15 @@ public struct SystemMetrics: Codable {
     public let diskUsage: Double
     public let audioLatency: Double
     public let transcriptionLatency: Double
-    public let networkLatency: Double
     public let componentStatus: [String: Bool] // Simplified for Codable
     
-    public init(timestamp: Date = Date(), cpuUsage: Double = 0, memoryUsage: Double = 0, diskUsage: Double = 0, audioLatency: Double = 0, transcriptionLatency: Double = 0, networkLatency: Double = 0, componentStatus: [AppComponent: Bool] = [:]) {
+    public init(timestamp: Date = Date(), cpuUsage: Double = 0, memoryUsage: Double = 0, diskUsage: Double = 0, audioLatency: Double = 0, transcriptionLatency: Double = 0, componentStatus: [AppComponent: Bool] = [:]) {
         self.timestamp = timestamp
         self.cpuUsage = cpuUsage
         self.memoryUsage = memoryUsage
         self.diskUsage = diskUsage
         self.audioLatency = audioLatency
         self.transcriptionLatency = transcriptionLatency
-        self.networkLatency = networkLatency
         self.componentStatus = componentStatus.reduce(into: [String: Bool]()) { result, pair in
             result[pair.key.rawValue] = pair.value
         }
@@ -217,7 +215,6 @@ public enum MetricType: String, CaseIterable, Codable {
     case diskUsage = "disk_usage"
     case audioLatency = "audio_latency"
     case transcriptionLatency = "transcription_latency"
-    case networkLatency = "network_latency"
     
     public var displayName: String {
         switch self {
@@ -231,8 +228,6 @@ public enum MetricType: String, CaseIterable, Codable {
             return "Audio Latency"
         case .transcriptionLatency:
             return "Transcription Latency"
-        case .networkLatency:
-            return "Network Latency"
         }
     }
     
@@ -240,7 +235,7 @@ public enum MetricType: String, CaseIterable, Codable {
         switch self {
         case .cpuUsage, .memoryUsage, .diskUsage:
             return "%"
-        case .audioLatency, .transcriptionLatency, .networkLatency:
+        case .audioLatency, .transcriptionLatency:
             return "ms"
         }
     }

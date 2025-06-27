@@ -154,7 +154,6 @@ public class SystemHealthMonitor: ObservableObject {
             diskUsage: await getDiskUsage(),
             audioLatency: await getAudioLatency(),
             transcriptionLatency: await getTranscriptionLatency(),
-            networkLatency: await getNetworkLatency(),
             componentStatus: await getComponentStatus()
         )
         
@@ -329,8 +328,6 @@ public class SystemHealthMonitor: ObservableObject {
             return metrics.audioLatency < resolveThreshold
         case .transcriptionLatency:
             return metrics.transcriptionLatency < resolveThreshold
-        case .networkLatency:
-            return metrics.networkLatency < resolveThreshold
         }
     }
     
@@ -354,34 +351,52 @@ public class SystemHealthMonitor: ObservableObject {
     // MARK: - Metrics Collection Methods
     
     private func getCPUUsage() async -> Double {
-        // Simplified CPU usage - would use actual system APIs
-        return Double.random(in: 10...30)
+        // Use actual CPU monitoring from existing PerformanceMonitor
+        return PerformanceMonitor.shared.cpuUsage
     }
-    
+
     private func getMemoryUsage() async -> Double {
-        // Simplified memory usage - would use actual system APIs
-        return Double.random(in: 40...60)
+        // Use actual memory monitoring - convert bytes to percentage
+        let memoryBytes = PerformanceMonitor.shared.memoryUsage
+        let totalMemory = ProcessInfo.processInfo.physicalMemory
+        return (Double(memoryBytes) / Double(totalMemory)) * 100.0
     }
-    
+
     private func getDiskUsage() async -> Double {
-        // Simplified disk usage - would use actual file system APIs
-        return Double.random(in: 50...70)
+        // Use actual disk monitoring - calculate from file system
+        do {
+            let homeURL = FileManager.default.homeDirectoryForCurrentUser
+            let resourceValues = try homeURL.resourceValues(forKeys: [
+                .volumeAvailableCapacityKey,
+                .volumeTotalCapacityKey
+            ])
+
+            guard let availableCapacity = resourceValues.volumeAvailableCapacity,
+                  let totalCapacity = resourceValues.volumeTotalCapacity else {
+                return 0.0
+            }
+
+            let usedCapacity = totalCapacity - availableCapacity
+            return (Double(usedCapacity) / Double(totalCapacity)) * 100.0
+
+        } catch {
+            return 0.0
+        }
     }
-    
+
     private func getAudioLatency() async -> Double {
-        // Would measure actual audio latency
-        return Double.random(in: 20...50)
+        // Get actual audio latency - for now return a reasonable default
+        // This would be enhanced to get actual latency from the audio system
+        return 25.0
     }
-    
+
     private func getTranscriptionLatency() async -> Double {
-        // Would measure actual transcription latency
-        return Double.random(in: 500...2000)
+        // Get actual transcription metrics - for now return a reasonable default
+        // This would be enhanced to track actual transcription timing
+        return 1500.0
     }
     
-    private func getNetworkLatency() async -> Double {
-        // Would measure actual network latency
-        return Double.random(in: 10...100)
-    }
+
     
     private func getComponentStatus() async -> [AppComponent: Bool] {
         return [

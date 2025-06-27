@@ -8,6 +8,7 @@ public enum AppComponent: String, CaseIterable, Codable {
     case audioSystem = "audio_system"
     case whisperEngine = "whisper_engine"
     case textInsertion = "text_insertion"
+    case systemResources = "system_resources"
     
     public var displayName: String {
         switch self {
@@ -19,6 +20,8 @@ public enum AppComponent: String, CaseIterable, Codable {
             return "Whisper Engine"
         case .textInsertion:
             return "Text Insertion"
+        case .systemResources:
+            return "System Resources"
         }
     }
     
@@ -32,6 +35,8 @@ public enum AppComponent: String, CaseIterable, Codable {
             return "Speech-to-text transcription"
         case .textInsertion:
             return "Text insertion into target applications"
+        case .systemResources:
+            return "System resource monitoring and management"
         }
     }
 }

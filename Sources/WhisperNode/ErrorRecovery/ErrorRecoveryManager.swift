@@ -153,7 +153,6 @@ public class ErrorRecoveryManager: ObservableObject {
             
         } catch {
             let duration = Date().timeIntervalSince(startTime)
-            let recoveryError = error as? RecoveryError ?? RecoveryError.validationFailed(error.localizedDescription)
             let appError = AppError.componentFailure("Recovery failed: \(error.localizedDescription)")
 
             let record = RecoveryRecord(

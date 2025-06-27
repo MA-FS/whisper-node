@@ -84,18 +84,24 @@ public class ComponentRecovery {
     private func reinitializeAudioEngine() async throws {
         let core = await WhisperNodeCore.shared
 
-        // For AudioCaptureEngine, we'll restart the capture process
-        // The internal AVAudioEngine will be handled by the AudioCaptureEngine
-        try await core.audioEngine.startCapture()
+        // Only start capture if we were previously recording
+        if await core.isRecording {
+            try await core.audioEngine.startCapture()
+        }
 
         Self.logger.info("Audio engine reinitialized successfully")
     }
     
     private func verifyAudioDeviceAvailability() async throws {
         let audioEngine = await WhisperNodeCore.shared.audioEngine
+        let wasRecording = await WhisperNodeCore.shared.isRecording
 
-        guard await audioEngine.isCapturing else {
-            throw RecoveryError.audioSystemRecoveryFailed("Audio engine failed to start capturing")
+        // Only verify capture if we expected to be recording
+        if wasRecording {
+            let isCapturing = await audioEngine.isCapturing
+            if !isCapturing {
+                throw RecoveryError.audioSystemRecoveryFailed("Audio engine failed to start capturing")
+            }
         }
 
         // Additional validation could be added here
@@ -124,12 +130,21 @@ public class ComponentRecovery {
     }
     
     private func testTranscriptionEngine() async throws {
-        // This would test the transcription engine with a sample
-        // For now, we'll just verify the model is loaded
+        // Verify model is loaded
         let core = await WhisperNodeCore.shared
         guard await core.isModelLoaded else {
             throw RecoveryError.transcriptionRecoveryFailed("Model failed to load")
         }
+
+        // For now, just verify the model is loaded
+        // A more comprehensive test would require access to the whisper engine
+        // which is currently private in WhisperNodeCore
+        Self.logger.info("Transcription engine test completed - model is loaded")
+    }
+
+    private func generateSilentAudioSample() -> [Float] {
+        // Generate 1 second of silence at 16kHz
+        return Array(repeating: 0.0, count: 16000)
     }
     
     // MARK: - Text Insertion Recovery
@@ -166,7 +181,7 @@ public class ComponentRecovery {
     /// Reset a specific component
     public func resetComponent(_ component: AppComponent) async throws {
         Self.logger.info("Resetting component: \(component.displayName)")
-        
+
         switch component {
         case .hotkeySystem:
             try await resetHotkeySystem()
@@ -176,6 +191,10 @@ public class ComponentRecovery {
             try await restartTranscriptionEngine()
         case .textInsertion:
             try await retryTextInsertion()
+        case .systemResources:
+            // System resources don't have a specific reset mechanism
+            // This would typically involve memory cleanup, cache clearing, etc.
+            Self.logger.info("System resources component reset completed")
         }
     }
     
@@ -241,6 +260,11 @@ public class ComponentRecovery {
             guard await TextInsertionEngine.shared.isAvailable else {
                 throw RecoveryError.validationFailed("Text insertion not available")
             }
+
+        case .systemResources:
+            // System resources validation could check memory/disk thresholds
+            // For now, we'll consider it always valid
+            break
         }
 
         Self.logger.info("Component validation successful: \(component.displayName)")

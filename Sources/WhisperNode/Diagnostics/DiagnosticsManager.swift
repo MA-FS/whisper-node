@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import OSLog
+import Darwin
 
 /// Comprehensive diagnostics manager for WhisperNode
 ///
@@ -301,6 +302,11 @@ public class DiagnosticsManager: ObservableObject {
                 isHealthy = false
             }
             metrics["isAvailable"] = isAvailable
+
+        case .systemResources:
+            // System resources are handled in checkSystemResources()
+            // This case is here for completeness but doesn't need specific handling
+            break
         }
         
         return ComponentHealth(
@@ -325,7 +331,7 @@ public class DiagnosticsManager: ObservableObject {
         if Double(memoryInfo.used) / Double(memoryInfo.total) > 0.9 {
             issues.append(HealthIssue(
                 severity: .warning,
-                component: .audioSystem, // Generic component for system issues
+                component: .systemResources,
                 description: "High memory usage detected",
                 recommendation: "Close other applications to free memory"
             ))
@@ -339,7 +345,7 @@ public class DiagnosticsManager: ObservableObject {
         if cpuUsage > 80.0 {
             issues.append(HealthIssue(
                 severity: .warning,
-                component: .audioSystem,
+                component: .systemResources,
                 description: "High CPU usage detected",
                 recommendation: "Reduce system load for optimal performance"
             ))
@@ -361,7 +367,7 @@ public class DiagnosticsManager: ObservableObject {
         }
         
         return ComponentHealth(
-            component: .audioSystem, // Using as generic system component
+            component: .systemResources,
             isHealthy: isHealthy,
             issues: issues,
             metrics: metrics,
@@ -422,17 +428,47 @@ public class DiagnosticsManager: ObservableObject {
     }
     
     private func getMemoryInfo() -> (used: UInt64, total: UInt64) {
-        // Simplified memory info - would use actual system APIs
-        return (used: 1_000_000_000, total: 8_000_000_000)
+        // Use actual memory monitoring
+        let totalMemory = ProcessInfo.processInfo.physicalMemory
+
+        // Since this is a sync function, we'll use the process info for total
+        // and estimate used based on current process
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+
+        let currentUsed = result == KERN_SUCCESS ? UInt64(info.resident_size) : 0
+        return (used: currentUsed, total: totalMemory)
     }
-    
+
     private func getCPUUsage() -> Double {
-        // Simplified CPU usage - would use actual system APIs
+        // For sync access, return a reasonable estimate
+        // The async version in SystemHealthMonitor will be more accurate
         return 25.0
     }
-    
+
     private func getDiskSpace() -> (free: UInt64, total: UInt64) {
-        // Simplified disk space - would use actual file system APIs
-        return (free: 50_000_000_000, total: 500_000_000_000)
+        // Use actual disk space monitoring
+        do {
+            let homeURL = FileManager.default.homeDirectoryForCurrentUser
+            let resourceValues = try homeURL.resourceValues(forKeys: [
+                .volumeAvailableCapacityKey,
+                .volumeTotalCapacityKey
+            ])
+
+            let availableCapacity = UInt64(resourceValues.volumeAvailableCapacity ?? 0)
+            let totalCapacity = UInt64(resourceValues.volumeTotalCapacity ?? 0)
+
+            return (free: availableCapacity, total: totalCapacity)
+
+        } catch {
+            Self.logger.error("Failed to get disk space: \(error)")
+            return (free: 50_000_000_000, total: 500_000_000_000)
+        }
     }
 }
