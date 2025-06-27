@@ -494,6 +494,25 @@ public class AudioCaptureEngine: ObservableObject {
         return diagnostics.validateAudioConfiguration()
     }
 
+    /// Clear all audio buffers for recovery purposes
+    ///
+    /// Clears the internal circular buffer and resets audio processing state.
+    /// This is useful for error recovery scenarios where the audio system needs
+    /// to be reset to a clean state.
+    public func clearBuffers() {
+        Self.logger.info("Clearing audio buffers for recovery")
+
+        // Clear the circular buffer
+        circularBuffer.clear()
+
+        // Reset voice activity state
+        isVoiceDetected = false
+        inputLevel = 0.0
+        // Note: smoothedLevel is internal to VoiceActivityDetector and will reset naturally
+
+        Self.logger.debug("Audio buffers cleared successfully")
+    }
+
     // MARK: - Private Implementation
     
     private func setupNotifications() {

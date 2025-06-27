@@ -43,6 +43,11 @@ public class GlobalHotkeyManager: ObservableObject {
     private var runLoopSource: CFRunLoopSource?
     private var isListening = false
 
+    /// Whether the hotkey manager is currently listening for hotkeys
+    public var isCurrentlyListening: Bool {
+        return isListening
+    }
+
     // Threading enhancements for T29f
     private var eventThread: EventProcessingThread?
     private let hotkeyState = ThreadSafeHotkeyState()
