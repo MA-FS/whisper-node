@@ -48,6 +48,17 @@ public class AudioCaptureEngine: ObservableObject {
     /// Logger for audio capture operations
     private static let logger = Logger(subsystem: "com.whispernode.audio", category: "AudioCaptureEngine")
 
+    // MARK: - Audio System Integration
+
+    /// Audio device manager for enhanced device handling
+    private let deviceManager = AudioDeviceManager.shared
+
+    /// Audio permission manager for enhanced permission handling
+    private let permissionManager = AudioPermissionManager.shared
+
+    /// Audio diagnostics for system validation
+    private let diagnostics = AudioDiagnostics.shared
+
     /// Time-based logging throttle properties
     private var lastLogTime: TimeInterval = 0
     private let logInterval: TimeInterval = 3.0
@@ -161,6 +172,7 @@ public class AudioCaptureEngine: ObservableObject {
         
         setupNotifications()
         setupBufferOverrunHandling()
+        setupAudioSystemIntegration()
     }
     
     deinit {
@@ -171,52 +183,38 @@ public class AudioCaptureEngine: ObservableObject {
     
     // MARK: - Public Interface
     
-    /// Request microphone permission from the user
-    /// 
-    /// This method handles platform-specific permission requests. On macOS,
-    /// permission is requested using AVCaptureDevice authorization.
-    /// 
+    /// Request microphone permission from the user with enhanced guidance
+    ///
+    /// Uses the enhanced AudioPermissionManager for better user experience
+    /// and comprehensive permission handling.
+    ///
     /// - Returns: True if permission is granted, false otherwise
     public func requestPermission() async -> Bool {
-        return await withCheckedContinuation { continuation in
-            #if os(macOS)
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                DispatchQueue.main.async {
-                    continuation.resume(returning: granted)
-                }
-            }
-            #else
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                DispatchQueue.main.async {
-                    continuation.resume(returning: granted)
-                }
-            }
-            #endif
-        }
+        let result = await permissionManager.requestPermissionWithGuidance()
+        return result.status.allowsCapture
+    }
+
+    /// Request microphone permission with detailed result information
+    ///
+    /// - Returns: Detailed permission result with guidance and recovery actions
+    public func requestPermissionWithGuidance() async -> AudioPermissionManager.PermissionResult {
+        return await permissionManager.requestPermissionWithGuidance()
     }
     
     /// Check the current microphone permission status
-    /// 
+    ///
+    /// Uses the enhanced AudioPermissionManager for comprehensive status checking.
+    ///
     /// - Returns: Current permission status without prompting the user
     public func checkPermissionStatus() -> PermissionStatus {
-        #if os(macOS)
-        // Use AVCaptureDevice authorization status for microphone
-        let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        switch status {
-        case .authorized: return .granted
-        case .denied, .restricted: return .denied
-        case .notDetermined: return .undetermined
-        @unknown default: return .undetermined
-        }
-        #else
-        let status = AVAudioSession.sharedInstance().recordPermission
-        switch status {
+        let enhancedStatus = permissionManager.checkPermissionStatus()
+
+        // Convert enhanced status to legacy format for compatibility
+        switch enhancedStatus {
         case .granted: return .granted
-        case .denied: return .denied
-        case .undetermined: return .undetermined
-        @unknown default: return .undetermined
+        case .denied, .restricted: return .denied
+        case .notDetermined, .temporarilyUnavailable: return .undetermined
         }
-        #endif
     }
     
     /// Start audio capture with voice activity detection
@@ -228,13 +226,14 @@ public class AudioCaptureEngine: ObservableObject {
     /// - Throws: `CaptureError.permissionDenied` if microphone access is denied
     /// - Throws: `CaptureError.engineNotRunning` if the audio engine fails to start
     public func startCapture() async throws {
-        Self.logger.info("Starting audio capture...")
+        Self.logger.info("Starting audio capture with enhanced validation...")
 
-        let permissionStatus = checkPermissionStatus()
-        Self.logger.debug("Permission status: \(String(describing: permissionStatus))")
+        // Enhanced permission validation
+        let permissionResult = await permissionManager.requestPermissionWithGuidance()
+        Self.logger.debug("Enhanced permission status: \(permissionResult.status.description)")
 
-        guard permissionStatus == .granted else {
-            Self.logger.error("Permission denied, cannot start capture")
+        guard permissionResult.status.allowsCapture else {
+            Self.logger.error("Permission denied, cannot start capture: \(permissionResult.userMessage ?? "Unknown reason")")
             updateCaptureState(.error(.permissionDenied))
             throw CaptureError.permissionDenied
         }
@@ -243,6 +242,12 @@ public class AudioCaptureEngine: ObservableObject {
         if captureState == .recording {
             Self.logger.debug("Already recording, skipping start")
             return
+        }
+
+        // Validate audio system configuration
+        let configurationValid = diagnostics.validateAudioConfiguration()
+        if !configurationValid {
+            Self.logger.warning("Audio configuration validation failed, proceeding with caution")
         }
 
         // Log available audio devices for debugging
@@ -421,7 +426,74 @@ public class AudioCaptureEngine: ObservableObject {
         // iOS implementation would go here
         #endif
     }
-    
+
+    // MARK: - Enhanced Audio System Methods
+
+    /// Run comprehensive audio system diagnostics
+    ///
+    /// - Returns: Detailed diagnostic report with recommendations
+    public func runAudioDiagnostics() async -> AudioDiagnostics.SystemDiagnosticReport {
+        return await diagnostics.runCompleteSystemCheck()
+    }
+
+    /// Get current audio performance metrics
+    ///
+    /// - Returns: Current performance metrics
+    public func getPerformanceMetrics() -> AudioDiagnostics.PerformanceMetrics {
+        return diagnostics.collectPerformanceMetrics()
+    }
+
+    /// Get available input devices with enhanced information
+    ///
+    /// - Returns: Array of detailed device information
+    public func getEnhancedInputDevices() -> [AudioDeviceManager.AudioDeviceInfo] {
+        return deviceManager.getAvailableInputDevices()
+    }
+
+    /// Get recommended device for speech recognition
+    ///
+    /// - Returns: Best available device for speech recognition
+    public func getRecommendedSpeechDevice() -> AudioDeviceManager.AudioDeviceInfo? {
+        return deviceManager.getRecommendedSpeechDevice()
+    }
+
+    /// Validate device compatibility for speech recognition
+    ///
+    /// - Parameter deviceID: Device ID to validate
+    /// - Returns: True if device is suitable for speech recognition
+    public func validateDeviceForSpeechRecognition(_ deviceID: AudioDeviceID) -> Bool {
+        return deviceManager.validateDeviceForSpeechRecognition(deviceID)
+    }
+
+    /// Set preferred input device with enhanced validation
+    ///
+    /// - Parameter deviceID: Device ID to set as preferred
+    /// - Throws: DeviceError if device cannot be set
+    public func setEnhancedPreferredInputDevice(_ deviceID: AudioDeviceID?) throws {
+        try deviceManager.setPreferredInputDevice(deviceID)
+    }
+
+    /// Get current permission status with enhanced information
+    ///
+    /// - Returns: Enhanced permission status
+    public func getEnhancedPermissionStatus() -> AudioPermissionManager.PermissionStatus {
+        return permissionManager.currentPermissionStatus
+    }
+
+    /// Validate microphone access
+    ///
+    /// - Returns: True if microphone can be accessed for recording
+    public func validateMicrophoneAccess() async -> Bool {
+        return await permissionManager.validateMicrophoneAccess()
+    }
+
+    /// Get audio system health status
+    ///
+    /// - Returns: True if audio system is healthy for speech recognition
+    public func isAudioSystemHealthy() -> Bool {
+        return diagnostics.validateAudioConfiguration()
+    }
+
     // MARK: - Private Implementation
     
     private func setupNotifications() {
@@ -512,52 +584,126 @@ public class AudioCaptureEngine: ObservableObject {
         }
     }
 
-    private func logAvailableAudioDevices() {
-        Self.logger.debug("=== Audio Device Information ===")
+    /// Setup audio system integration with enhanced utilities
+    private func setupAudioSystemIntegration() {
+        // Start device monitoring
+        deviceManager.startMonitoring()
 
-        #if os(macOS)
-        // Log available audio devices on macOS
-        var deviceID: AudioDeviceID = 0
-        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        let status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &dataSize,
-            &deviceID
-        )
-
-        if status == noErr {
-            Self.logger.debug("Default input device ID: \(deviceID)")
-
-            // Get device name
-            address.mSelector = kAudioDevicePropertyDeviceNameCFString
-            var deviceName: CFString?
-            dataSize = UInt32(MemoryLayout<CFString>.size)
-
-            let nameStatus = AudioObjectGetPropertyData(
-                deviceID,
-                &address,
-                0,
-                nil,
-                &dataSize,
-                &deviceName
-            )
-
-            if nameStatus == noErr, let name = deviceName {
-                Self.logger.debug("Default input device name: \(name)")
+        // Setup device change callbacks
+        deviceManager.onDeviceListChanged = { [weak self] devices in
+            Task { @MainActor in
+                self?.handleDeviceListChange(devices)
             }
-        } else {
-            Self.logger.error("Failed to get default input device: \(status)")
         }
-        #endif
+
+        deviceManager.onDefaultDeviceChanged = { [weak self] device in
+            Task { @MainActor in
+                self?.handleDefaultDeviceChange(device)
+            }
+        }
+
+        // Setup permission monitoring
+        permissionManager.startMonitoring()
+
+        permissionManager.onPermissionStatusChanged = { [weak self] status in
+            Task { @MainActor in
+                self?.handlePermissionStatusChange(status)
+            }
+        }
+
+        // Start performance monitoring for diagnostics
+        diagnostics.startPerformanceMonitoring()
+
+        Self.logger.info("Audio system integration setup complete")
+    }
+
+    /// Handle device list changes
+    private func handleDeviceListChange(_ devices: [AudioDeviceManager.AudioDeviceInfo]) {
+        Self.logger.info("Audio device list changed: \(devices.count) devices available")
+
+        // If currently recording and default device changed, may need to restart
+        if captureState == .recording {
+            Self.logger.debug("Device list changed during recording, validating current setup")
+            validateCurrentAudioSetup()
+        }
+    }
+
+    /// Handle default device changes
+    private func handleDefaultDeviceChange(_ device: AudioDeviceManager.AudioDeviceInfo?) {
+        if let device = device {
+            Self.logger.info("Default audio device changed to: \(device.name)")
+        } else {
+            Self.logger.warning("Default audio device removed")
+        }
+
+        // If currently recording, may need to restart with new device
+        if captureState == .recording {
+            Self.logger.info("Restarting audio capture due to default device change")
+            Task {
+                do {
+                    stopCapture()
+                    try await startCapture()
+                } catch {
+                    Self.logger.error("Failed to restart audio capture after device change: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Handle permission status changes
+    private func handlePermissionStatusChange(_ status: AudioPermissionManager.PermissionStatus) {
+        Self.logger.info("Audio permission status changed: \(status.description)")
+
+        if !status.allowsCapture && captureState == .recording {
+            Self.logger.warning("Permission revoked during recording, stopping capture")
+            stopCapture()
+            updateCaptureState(.error(.permissionDenied))
+        }
+    }
+
+    /// Validate current audio setup
+    private func validateCurrentAudioSetup() {
+        let isValid = diagnostics.validateAudioConfiguration()
+        if !isValid {
+            Self.logger.warning("Current audio setup validation failed")
+            // Could trigger a diagnostic report or user notification here
+        }
+    }
+
+    private func logAvailableAudioDevices() {
+        Self.logger.debug("=== Enhanced Audio Device Information ===")
+
+        let devices = deviceManager.getAvailableInputDevices()
+        let defaultDevice = deviceManager.defaultInputDevice
+
+        Self.logger.debug("Found \(devices.count) input device(s)")
+
+        if let defaultDevice = defaultDevice {
+            Self.logger.debug("Default device: \(defaultDevice.name) (ID: \(defaultDevice.id))")
+            Self.logger.debug("  - Manufacturer: \(defaultDevice.manufacturer)")
+            Self.logger.debug("  - Sample rates: \(defaultDevice.sampleRates)")
+            Self.logger.debug("  - Channels: \(defaultDevice.channelCounts)")
+            Self.logger.debug("  - Connected: \(defaultDevice.isConnected)")
+            Self.logger.debug("  - Speech compatible: \(self.deviceManager.validateDeviceForSpeechRecognition(defaultDevice.id))")
+        } else {
+            Self.logger.warning("No default input device found")
+        }
+
+        // Log all available devices
+        for device in devices {
+            let marker = device.isDefault ? "* " : "  "
+            Self.logger.debug("\(marker)\(device.name) (ID: \(device.id))")
+            Self.logger.debug("    - Manufacturer: \(device.manufacturer)")
+            Self.logger.debug("    - Connected: \(device.isConnected)")
+            Self.logger.debug("    - Speech compatible: \(self.deviceManager.validateDeviceForSpeechRecognition(device.id))")
+        }
+
+        // Log recommended device for speech recognition
+        if let recommended = deviceManager.getRecommendedSpeechDevice() {
+            Self.logger.debug("Recommended for speech: \(recommended.name)")
+        } else {
+            Self.logger.warning("No suitable device found for speech recognition")
+        }
 
         Self.logger.debug("=== End Audio Device Information ===")
     }
