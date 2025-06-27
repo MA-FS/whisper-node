@@ -173,7 +173,7 @@ public class ErrorGuidanceProvider {
                     ErrorAction(title: "Open System Preferences", type: .openSystemPreferences),
                     ErrorAction(title: "Try Again", type: .retry)
                 ],
-                helpUrl: "https://support.apple.com/guide/mac-help/control-access-to-your-microphone-on-mac-mchla1b1e1fe/mac"
+                helpUrl: nil // Offline compliance - no external URLs
             )
             
         case (.permissionDenied, .textInsertion):
@@ -184,7 +184,7 @@ public class ErrorGuidanceProvider {
                     ErrorAction(title: "Open Accessibility Settings", type: .openAccessibilitySettings),
                     ErrorAction(title: "Try Again", type: .retry)
                 ],
-                helpUrl: "https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac"
+                helpUrl: nil // Offline compliance - no external URLs
             )
             
         case (.audioDeviceUnavailable, .audioSystem):

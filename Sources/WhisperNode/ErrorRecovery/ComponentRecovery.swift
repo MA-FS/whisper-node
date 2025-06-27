@@ -273,8 +273,15 @@ public class ComponentRecovery {
             }
 
         case .audioSystem:
-            guard await WhisperNodeCore.shared.audioEngine.isCapturing else {
-                throw RecoveryError.validationFailed("Audio system not capturing")
+            let core = await WhisperNodeCore.shared
+            let isRecording = await core.isRecording
+            let isCapturing = await core.audioEngine.isCapturing
+
+            // Audio should only be capturing if we're recording
+            if isRecording && !isCapturing {
+                throw RecoveryError.validationFailed("Audio system not capturing during recording")
+            } else if !isRecording && isCapturing {
+                throw RecoveryError.validationFailed("Audio system capturing when not recording")
             }
 
         case .whisperEngine:

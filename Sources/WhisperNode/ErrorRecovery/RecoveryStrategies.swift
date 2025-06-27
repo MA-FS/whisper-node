@@ -345,6 +345,11 @@ extension RecoveryStrategy {
             .resetAudioSystem,
             .restartTranscriptionEngine,
             .retryTextInsertion,
+            .componentReset(.hotkeySystem),
+            .componentReset(.audioSystem),
+            .componentReset(.whisperEngine),
+            .componentReset(.textInsertion),
+            .componentReset(.systemResources),
             .fullSystemReset,
             .userGuidedRecovery,
             .gracefulDegradation
