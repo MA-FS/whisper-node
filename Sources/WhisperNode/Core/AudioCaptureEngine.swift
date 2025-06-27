@@ -699,12 +699,7 @@ public class AudioCaptureEngine: ObservableObject {
         }
     }
 
-    /// Legacy validation method for backward compatibility
-    private func validateCurrentAudioSetup() {
-        Task {
-            await validateCurrentAudioSetupWithRecovery()
-        }
-    }
+
 
     private func logAvailableAudioDevices() {
         Self.logger.debug("=== Enhanced Audio Device Information ===")
