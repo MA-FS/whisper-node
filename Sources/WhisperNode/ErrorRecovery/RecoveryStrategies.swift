@@ -160,10 +160,7 @@ public enum RecoveryStrategy: CaseIterable, Codable, Equatable, Hashable {
         case (.hotkeyConflict, .hotkeySystem),
              (.hotkeySystemError, .hotkeySystem):
             return .componentReset(.hotkeySystem)
-            
-        case (.networkConnectionFailed, _):
-            return .gracefulDegradation
-            
+
         case (.systemResourcesExhausted, _):
             return .gracefulDegradation
             

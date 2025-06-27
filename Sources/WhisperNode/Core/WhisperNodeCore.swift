@@ -477,19 +477,19 @@ public class WhisperNodeCore: ObservableObject {
         }
     }
 
-    /// Clear transcription state for recovery purposes
+    /// Clear audio buffers for recovery purposes
     ///
-    /// Clears any cached transcription state and prepares the engine for fresh operation.
-    /// This is useful for error recovery scenarios where the transcription system needs
+    /// Clears cached audio data and prepares the audio system for fresh operation.
+    /// This is useful for error recovery scenarios where the audio system needs
     /// to be reset to a clean state.
-    public func clearTranscriptionState() {
-        Self.logger.info("Clearing transcription state for recovery")
+    public func clearAudioBuffers() {
+        Self.logger.info("Clearing audio buffers for recovery")
 
         // Clear any cached audio data
         audioEngine.clearBuffers()
 
-        // Reset any transcription-related state
-        // The whisper engine itself will be reloaded by the recovery system
+        // Reset any audio-related state
+        // The whisper engine itself will be reloaded by the recovery system if needed
     }
     
     /// Get current performance metrics

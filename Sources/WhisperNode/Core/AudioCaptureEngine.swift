@@ -502,6 +502,11 @@ public class AudioCaptureEngine: ObservableObject {
     public func clearBuffers() {
         Self.logger.info("Clearing audio buffers for recovery")
 
+        // Validate state before clearing - warn if clearing during active recording
+        if isCapturing {
+            Self.logger.warning("Clearing buffers while audio capture is active - this may cause audio artifacts")
+        }
+
         // Clear the circular buffer
         circularBuffer.clear()
 

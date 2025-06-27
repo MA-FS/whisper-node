@@ -53,7 +53,6 @@ public enum AppError: Equatable, Codable, Hashable {
     case textInsertionFailed
     case hotkeyConflict(String)
     case hotkeySystemError(String)
-    case networkConnectionFailed
     case systemResourcesExhausted
     case componentFailure(String)
     
@@ -75,8 +74,6 @@ public enum AppError: Equatable, Codable, Hashable {
             return "Hotkey Conflict"
         case .hotkeySystemError:
             return "Hotkey System Error"
-        case .networkConnectionFailed:
-            return "Network Connection Failed"
         case .systemResourcesExhausted:
             return "System Resources Exhausted"
         case .componentFailure:
@@ -86,7 +83,7 @@ public enum AppError: Equatable, Codable, Hashable {
     
     public var isRecoverable: Bool {
         switch self {
-        case .audioDeviceUnavailable, .audioCaptureFailure, .transcriptionFailed, .modelLoadFailed, .textInsertionFailed, .hotkeySystemError, .networkConnectionFailed, .componentFailure:
+        case .audioDeviceUnavailable, .audioCaptureFailure, .transcriptionFailed, .modelLoadFailed, .textInsertionFailed, .hotkeySystemError, .componentFailure:
             return true
         case .permissionDenied, .hotkeyConflict, .systemResourcesExhausted:
             return false
@@ -99,7 +96,7 @@ public enum AppError: Equatable, Codable, Hashable {
             return .critical
         case .audioDeviceUnavailable, .modelLoadFailed, .hotkeyConflict, .hotkeySystemError, .componentFailure:
             return .warning
-        case .audioCaptureFailure, .transcriptionFailed, .textInsertionFailed, .networkConnectionFailed:
+        case .audioCaptureFailure, .transcriptionFailed, .textInsertionFailed:
             return .minor
         }
     }
@@ -138,7 +135,17 @@ public struct ErrorRecord: Identifiable, Codable {
         self.error = error
         self.component = component
         self.timestamp = timestamp
-        self.context = context.compactMapValues { "\($0)" } // Convert to String for Codable
+
+        // Sanitize context to prevent memory bloat
+        let maxContextLength = 1000
+        self.context = context.compactMapValues { value in
+            let stringValue = "\(value)"
+            if stringValue.count > maxContextLength {
+                return String(stringValue.prefix(maxContextLength)) + "... [truncated]"
+            }
+            return stringValue
+        }
+
         self.resolved = resolved
     }
     
@@ -277,8 +284,6 @@ extension AppError: LocalizedError {
             return "Hotkey conflict detected: \(details)"
         case .hotkeySystemError(let details):
             return "Hotkey system error: \(details)"
-        case .networkConnectionFailed:
-            return "Network connection failed"
         case .systemResourcesExhausted:
             return "System resources are exhausted"
         case .componentFailure(let component):
@@ -304,8 +309,6 @@ extension AppError: LocalizedError {
             return "Choose a different hotkey combination"
         case .hotkeySystemError:
             return "Restart the hotkey system"
-        case .networkConnectionFailed:
-            return "Check your internet connection"
         case .systemResourcesExhausted:
             return "Close other applications to free up resources"
         case .componentFailure:

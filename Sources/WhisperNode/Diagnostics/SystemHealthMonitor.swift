@@ -41,12 +41,17 @@ public class SystemHealthMonitor: ObservableObject {
     @Published public var performanceTrends: PerformanceTrends = PerformanceTrends()
     
     // MARK: - Private Properties
-    
-    private var monitoringTimer: Timer?
-    private var metricsHistory: [SystemMetrics] = []
-    private var thresholds: [MetricType: Double] = [:]
+
+    private var monitoringTimer: Timer? {
+        willSet {
+            monitoringTimer?.invalidate()
+        }
+    }
+    @MainActor private var metricsHistory: [SystemMetrics] = []
+    @MainActor private var thresholds: [MetricType: Double] = [:]
     private let maxHistorySize = 1000
-    private let monitoringInterval: TimeInterval = 5.0
+    private let monitoringInterval: TimeInterval = 60.0 // Increased from 5s to 60s for better performance
+    private var isTranscribing = false // Skip health checks during transcription
     
     // MARK: - Configuration
     
@@ -59,10 +64,15 @@ public class SystemHealthMonitor: ObservableObject {
     ]
     
     // MARK: - Initialization
-    
+
     private init() {
         Self.logger.info("SystemHealthMonitor initialized")
         setupDefaultThresholds()
+    }
+
+    deinit {
+        monitoringTimer?.invalidate()
+        monitoringTimer = nil
     }
     
     // MARK: - Public Interface
@@ -78,6 +88,12 @@ public class SystemHealthMonitor: ObservableObject {
         
         monitoringTimer = Timer.scheduledTimer(withTimeInterval: monitoringInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
+                // Skip health checks during active transcription to reduce performance impact
+                if self?.isTranscribing == true {
+                    Self.logger.debug("Skipping health check during transcription")
+                    return
+                }
+
                 await self?.collectMetrics()
             }
         }
@@ -90,8 +106,15 @@ public class SystemHealthMonitor: ObservableObject {
         monitoringTimer?.invalidate()
         monitoringTimer = nil
         isMonitoring = false
-        
+
         Self.logger.info("Stopped health monitoring")
+    }
+
+    /// Update transcription state to optimize health monitoring
+    ///
+    /// - Parameter transcribing: Whether transcription is currently active
+    public func setTranscriptionState(_ transcribing: Bool) {
+        isTranscribing = transcribing
     }
     
     /// Set threshold for a specific metric

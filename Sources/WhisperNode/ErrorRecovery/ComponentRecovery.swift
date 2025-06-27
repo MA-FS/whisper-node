@@ -25,7 +25,19 @@ import OSLog
 /// ```
 public class ComponentRecovery {
     private static let logger = Logger(subsystem: "com.whispernode.recovery", category: "component")
-    
+
+    // MARK: - State Capture for Rollback
+
+    private struct ComponentState {
+        let isRecording: Bool
+        let isCapturing: Bool
+        let isModelLoaded: Bool
+        let isListening: Bool
+        let timestamp: Date
+    }
+
+    private var capturedStates: [AppComponent: ComponentState] = [:]
+
     // MARK: - Permission Recovery
     
     /// Recover permission-related issues
@@ -116,8 +128,8 @@ public class ComponentRecovery {
 
         let core = await WhisperNodeCore.shared
 
-        // Clear any existing transcription state
-        await core.clearTranscriptionState()
+        // Clear any existing audio buffers
+        await core.clearAudioBuffers()
 
         // Reload the current model
         let currentModel = await core.currentModel
@@ -182,19 +194,33 @@ public class ComponentRecovery {
     public func resetComponent(_ component: AppComponent) async throws {
         Self.logger.info("Resetting component: \(component.displayName)")
 
-        switch component {
-        case .hotkeySystem:
-            try await resetHotkeySystem()
-        case .audioSystem:
-            try await resetAudioSystem()
-        case .whisperEngine:
-            try await restartTranscriptionEngine()
-        case .textInsertion:
-            try await retryTextInsertion()
-        case .systemResources:
-            // System resources don't have a specific reset mechanism
-            // This would typically involve memory cleanup, cache clearing, etc.
-            Self.logger.info("System resources component reset completed")
+        // Capture current state before recovery
+        try await captureComponentState(component)
+
+        do {
+            switch component {
+            case .hotkeySystem:
+                try await resetHotkeySystem()
+            case .audioSystem:
+                try await resetAudioSystem()
+            case .whisperEngine:
+                try await restartTranscriptionEngine()
+            case .textInsertion:
+                try await retryTextInsertion()
+            case .systemResources:
+                // System resources don't have a specific reset mechanism
+                // This would typically involve memory cleanup, cache clearing, etc.
+                Self.logger.info("System resources component reset completed")
+            }
+
+            // Validate the recovery was successful
+            try await validateComponent(component)
+
+        } catch {
+            // Recovery failed, attempt rollback
+            Self.logger.error("Component reset failed for \(component.displayName): \(error)")
+            try await rollbackComponent(component)
+            throw error
         }
     }
     
@@ -274,6 +300,82 @@ public class ComponentRecovery {
         for component in AppComponent.allCases {
             try await validateComponent(component)
         }
+    }
+
+    // MARK: - State Management for Rollback
+
+    /// Capture the current state of a component before recovery
+    private func captureComponentState(_ component: AppComponent) async throws {
+        Self.logger.info("Capturing state for component: \(component.displayName)")
+
+        let core = await WhisperNodeCore.shared
+
+        let state = ComponentState(
+            isRecording: await core.isRecording,
+            isCapturing: await core.audioEngine.isCapturing,
+            isModelLoaded: await core.isModelLoaded,
+            isListening: await core.hotkeyManager.isCurrentlyListening,
+            timestamp: Date()
+        )
+
+        capturedStates[component] = state
+        Self.logger.info("State captured for \(component.displayName)")
+    }
+
+    /// Attempt to rollback a component to its previous state
+    private func rollbackComponent(_ component: AppComponent) async throws {
+        guard let previousState = capturedStates[component] else {
+            Self.logger.warning("No previous state captured for \(component.displayName), cannot rollback")
+            return
+        }
+
+        Self.logger.info("Attempting rollback for component: \(component.displayName)")
+
+        let core = await WhisperNodeCore.shared
+
+        do {
+            switch component {
+            case .audioSystem:
+                // Restore audio capture state
+                let currentlyCapturing = await core.audioEngine.isCapturing
+                if previousState.isCapturing && !currentlyCapturing {
+                    try await core.audioEngine.startCapture()
+                } else if !previousState.isCapturing && currentlyCapturing {
+                    await core.audioEngine.stopCapture()
+                }
+
+            case .hotkeySystem:
+                // Restore hotkey listening state
+                let currentlyListening = await core.hotkeyManager.isCurrentlyListening
+                if previousState.isListening && !currentlyListening {
+                    await core.hotkeyManager.startListening()
+                } else if !previousState.isListening && currentlyListening {
+                    await core.hotkeyManager.stopListening()
+                }
+
+            case .whisperEngine:
+                // For transcription engine, we can't easily rollback model state
+                // Log the attempt but don't perform risky operations
+                Self.logger.info("Transcription engine rollback not implemented - state may be inconsistent")
+
+            case .textInsertion:
+                // Text insertion doesn't have persistent state to rollback
+                Self.logger.info("Text insertion rollback completed - no persistent state")
+
+            case .systemResources:
+                // System resources don't have rollback mechanisms
+                Self.logger.info("System resources rollback completed - no persistent state")
+            }
+
+            Self.logger.info("Rollback completed for \(component.displayName)")
+
+        } catch {
+            Self.logger.error("Rollback failed for \(component.displayName): \(error)")
+            // Don't throw here as we're already in an error state
+        }
+
+        // Clear the captured state
+        capturedStates.removeValue(forKey: component)
     }
 }
 
