@@ -249,11 +249,19 @@ final class AudioDiagnosticsTests: XCTestCase {
     
     // MARK: - Performance Tests
     
-    func testDiagnosticPerformance() async {
-        measure {
+    func testDiagnosticPerformance() async throws {
+        // Use measureWithMetrics for async operations
+        let metrics: [XCTMetric] = [XCTClockMetric()]
+        let measureOptions = XCTMeasureOptions()
+        measureOptions.iterationCount = 5
+
+        measure(metrics: metrics, options: measureOptions) {
+            let expectation = XCTestExpectation(description: "Diagnostic completion")
             Task {
                 _ = await diagnostics.runCompleteSystemCheck()
+                expectation.fulfill()
             }
+            wait(for: [expectation], timeout: 10.0)
         }
     }
     

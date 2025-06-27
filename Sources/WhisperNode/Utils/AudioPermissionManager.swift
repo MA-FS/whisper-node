@@ -113,9 +113,22 @@ public class AudioPermissionManager: ObservableObject {
     public var onPermissionDenied: ((String) -> Void)?
     
     // MARK: - Private Properties
-    
+
     private var monitoringTimer: Timer?
     private var lastKnownStatus: PermissionStatus = .notDetermined
+
+    /// Default monitoring interval in seconds
+    private static let defaultMonitoringInterval: TimeInterval = 10.0
+
+    /// Monitoring interval for permission status checks (configurable)
+    public var monitoringInterval: TimeInterval = AudioPermissionManager.defaultMonitoringInterval {
+        didSet {
+            if isMonitoring {
+                stopMonitoring()
+                startMonitoring()
+            }
+        }
+    }
     
     // MARK: - Initialization
     
@@ -247,8 +260,8 @@ public class AudioPermissionManager: ObservableObject {
         // Check status immediately
         updatePermissionStatus()
         
-        // Set up periodic monitoring (every 2 seconds)
-        monitoringTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        // Set up periodic monitoring with configurable interval
+        monitoringTimer = Timer.scheduledTimer(withTimeInterval: monitoringInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.checkForStatusChanges()
             }

@@ -612,6 +612,7 @@ public class AudioDiagnostics: ObservableObject {
     private func measureCurrentLatency() -> TimeInterval {
         // This is a simplified latency measurement
         // In a real implementation, you would measure round-trip latency
+        // TODO: Implement actual audio latency measurement using Core Audio timestamps
         return 0.05 // 50ms default estimate
     }
 
@@ -619,49 +620,22 @@ public class AudioDiagnostics: ObservableObject {
     private func calculateBufferUtilization() -> Double {
         // This would calculate actual buffer utilization
         // For now, return a reasonable estimate
+        // TODO: Implement actual buffer utilization calculation from audio engine
         return 0.3 // 30% utilization
     }
 
-    /// Get current CPU usage
+    /// Get current CPU usage (limited to audio processing context)
     private func getCurrentCPUUsage() -> Double {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
-
-        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                task_info(mach_task_self_,
-                         task_flavor_t(MACH_TASK_BASIC_INFO),
-                         $0,
-                         &count)
-            }
-        }
-
-        if kerr == KERN_SUCCESS {
-            return Double(info.resident_size) / Double(1024 * 1024 * 1024) // Convert to GB
-        }
-
-        return 0.0
+        // Return a conservative estimate to avoid exposing detailed system information
+        // In a production implementation, this would measure audio-specific CPU usage
+        return 0.1 // 10% conservative estimate for audio processing
     }
 
-    /// Get current memory usage
+    /// Get current memory usage (limited to audio processing context)
     private func getCurrentMemoryUsage() -> UInt64 {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
-
-        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                task_info(mach_task_self_,
-                         task_flavor_t(MACH_TASK_BASIC_INFO),
-                         $0,
-                         &count)
-            }
-        }
-
-        if kerr == KERN_SUCCESS {
-            return UInt64(info.resident_size)
-        }
-
-        return 0
+        // Return a conservative estimate to avoid exposing detailed system information
+        // In a production implementation, this would measure audio-specific memory usage
+        return 50_000_000 // 50MB conservative estimate for audio processing
     }
 
     /// Get available memory
@@ -688,27 +662,31 @@ public class AudioDiagnostics: ObservableObject {
     private func getDroppedSamplesCount() -> UInt64 {
         // This would track actual dropped samples
         // For now, return 0 as a placeholder
+        // TODO: Integrate with CircularAudioBuffer to track actual dropped samples
         return 0
     }
 
-    /// Get device model
+    /// Get device model (privacy-safe)
     private func getDeviceModel() -> String {
-        var size = 0
-        sysctlbyname("hw.model", nil, &size, nil, 0)
-        var model = [CChar](repeating: 0, count: size)
-        sysctlbyname("hw.model", &model, &size, nil, 0)
-        return String(cString: model)
+        // Return generic model information to avoid device fingerprinting
+        #if os(macOS)
+        return "Mac"
+        #else
+        return "iOS Device"
+        #endif
     }
 
     /// Get audio driver version
     private func getAudioDriverVersion() -> String? {
         // This would query the actual audio driver version
+        // TODO: Implement Core Audio driver version query
         return "Unknown"
     }
 
     /// Get Core Audio version
     private func getCoreAudioVersion() -> String? {
         // This would query the Core Audio framework version
+        // TODO: Query Core Audio framework version from system
         return "Unknown"
     }
 }

@@ -624,7 +624,9 @@ public class AudioCaptureEngine: ObservableObject {
         // If currently recording and default device changed, may need to restart
         if captureState == .recording {
             Self.logger.debug("Device list changed during recording, validating current setup")
-            validateCurrentAudioSetup()
+            Task {
+                await validateCurrentAudioSetupWithRecovery()
+            }
         }
     }
 
@@ -661,12 +663,46 @@ public class AudioCaptureEngine: ObservableObject {
         }
     }
 
-    /// Validate current audio setup
-    private func validateCurrentAudioSetup() {
+    /// Validate current audio setup with recovery actions
+    private func validateCurrentAudioSetupWithRecovery() async {
         let isValid = diagnostics.validateAudioConfiguration()
         if !isValid {
-            Self.logger.warning("Current audio setup validation failed")
-            // Could trigger a diagnostic report or user notification here
+            Self.logger.warning("Current audio setup validation failed, running diagnostics")
+
+            // Run comprehensive diagnostics to understand the issue
+            let report = await diagnostics.runCompleteSystemCheck()
+            Self.logger.error("Audio diagnostic report: \(self.diagnostics.formatDiagnosticReport(report))")
+
+            // Take recovery actions based on health status
+            switch report.overallHealth {
+            case .critical, .poor:
+                Self.logger.error("Critical audio system issues detected, stopping capture")
+                updateCaptureState(.error(.formatNotSupported))
+
+                // Update capture state to indicate error
+                // Note: Error callbacks would be handled by the UI layer
+
+            case .fair:
+                Self.logger.warning("Audio system issues detected, attempting recovery")
+                // Attempt to restart audio engine
+                if captureState == .recording {
+                    Task {
+                        stopCapture()
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+                        try? await startCapture()
+                    }
+                }
+
+            case .good, .excellent:
+                Self.logger.info("Audio system validation passed after detailed check")
+            }
+        }
+    }
+
+    /// Legacy validation method for backward compatibility
+    private func validateCurrentAudioSetup() {
+        Task {
+            await validateCurrentAudioSetupWithRecovery()
         }
     }
 

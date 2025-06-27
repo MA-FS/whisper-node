@@ -118,8 +118,8 @@ public class AudioDeviceManager: ObservableObject {
     
     // MARK: - Private Properties
     
-    private var deviceListenerProc: AudioObjectPropertyListenerProc?
-    private var isListenerInstalled = false
+    private nonisolated(unsafe) var deviceListenerProc: AudioObjectPropertyListenerProc?
+    private nonisolated(unsafe) var isListenerInstalled = false
     
     // MARK: - Initialization
     
@@ -129,8 +129,10 @@ public class AudioDeviceManager: ObservableObject {
     }
     
     deinit {
-        // Note: Cannot call async methods in deinit
-        // Monitoring will be cleaned up automatically
+        // Synchronously clean up Core Audio listeners to prevent memory leaks
+        if isListenerInstalled {
+            removeDeviceListenersSynchronously()
+        }
     }
     
     // MARK: - Public Interface
@@ -260,15 +262,16 @@ public class AudioDeviceManager: ObservableObject {
 
     // MARK: - Private Methods
 
-    /// Setup device monitoring infrastructure
+    /// Setup device monitoring infrastructure with thread safety
     private func setupDeviceMonitoring() {
         #if os(macOS)
         deviceListenerProc = { (objectID, numAddresses, addresses, clientData) in
             guard let clientData = clientData else { return noErr }
             let manager = Unmanaged<AudioDeviceManager>.fromOpaque(clientData).takeUnretainedValue()
 
-            Task { @MainActor in
-                manager.handleDeviceListChange()
+            // Use weak reference and safe async dispatch to prevent race conditions
+            Task { @MainActor [weak manager] in
+                await manager?.handleDeviceListChangeSafely()
             }
 
             return noErr
@@ -355,13 +358,54 @@ public class AudioDeviceManager: ObservableObject {
         #endif
     }
 
-    /// Handle device list changes
-    private func handleDeviceListChange() {
+    /// Remove Core Audio device listeners synchronously (for deinit)
+    private nonisolated func removeDeviceListenersSynchronously() {
+        #if os(macOS)
+        guard isListenerInstalled, let listenerProc = deviceListenerProc else { return }
+
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let clientData = Unmanaged.passUnretained(self).toOpaque()
+        AudioObjectRemovePropertyListener(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            listenerProc,
+            clientData
+        )
+
+        var defaultInputAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        AudioObjectRemovePropertyListener(
+            AudioObjectID(kAudioObjectSystemObject),
+            &defaultInputAddress,
+            listenerProc,
+            clientData
+        )
+
+        isListenerInstalled = false
+        #endif
+    }
+
+    /// Handle device list changes with thread safety
+    private func handleDeviceListChangeSafely() async {
+        // Capture current state to prevent race conditions
         let previousDevices = availableInputDevices
+        let previousDefaultDevice = defaultInputDevice
+
+        // Refresh device list
         refreshDeviceList()
 
         // Detect changes and notify
         let currentDevices = availableInputDevices
+        let currentDefaultDevice = defaultInputDevice
 
         // Find added devices
         let addedDevices = currentDevices.filter { current in
@@ -373,7 +417,7 @@ public class AudioDeviceManager: ObservableObject {
             currentDevices.contains { $0.id == previous.id } ? nil : previous.id
         }
 
-        // Notify callbacks
+        // Notify callbacks safely
         if !addedDevices.isEmpty || !removedDeviceIDs.isEmpty {
             onDeviceListChanged?(currentDevices)
 
@@ -387,10 +431,15 @@ public class AudioDeviceManager: ObservableObject {
         }
 
         // Check for default device change
-        let newDefaultDevice = getCurrentDefaultInputDevice()
-        if newDefaultDevice?.id != defaultInputDevice?.id {
-            defaultInputDevice = newDefaultDevice
-            onDefaultDeviceChanged?(newDefaultDevice)
+        if currentDefaultDevice?.id != previousDefaultDevice?.id {
+            onDefaultDeviceChanged?(currentDefaultDevice)
+        }
+    }
+
+    /// Legacy method for backward compatibility
+    private func handleDeviceListChange() {
+        Task { @MainActor in
+            await handleDeviceListChangeSafely()
         }
     }
 
@@ -505,8 +554,8 @@ public class AudioDeviceManager: ObservableObject {
         // Check if device is connected
         let isConnected = isDeviceConnected(deviceID)
 
-        // Check if this is the default device
-        let isDefault = (getCurrentDefaultInputDevice()?.id == deviceID)
+        // Check if this is the default device (already queried in refreshDeviceList)
+        let isDefault = (defaultInputDevice?.id == deviceID)
 
         return AudioDeviceInfo(
             id: deviceID,
@@ -524,7 +573,7 @@ public class AudioDeviceManager: ObservableObject {
         #endif
     }
 
-    /// Get device name
+    /// Get device name with safe buffer handling
     private func getDeviceName(_ deviceID: AudioDeviceID) -> String? {
         #if os(macOS)
         var propertyAddress = AudioObjectPropertyAddress(
@@ -533,15 +582,33 @@ public class AudioDeviceManager: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var dataSize: UInt32 = 0
-        var result = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, nil, &dataSize)
-        guard result == noErr else { return nil }
+        // First, get the actual data size
+        var actualSize: UInt32 = 0
+        var result = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, nil, &actualSize)
+        guard result == noErr else {
+            Self.logger.error("Failed to get device name size for device \(deviceID): \(result)")
+            return "Unknown Device"
+        }
 
-        let nameBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: Int(dataSize))
+        // Validate size is reasonable (prevent buffer overflow attacks)
+        guard actualSize > 0 && actualSize <= 512 else {
+            Self.logger.error("Invalid device name size \(actualSize) for device \(deviceID)")
+            return "Unknown Device"
+        }
+
+        // Allocate buffer based on actual size
+        let nameBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: Int(actualSize))
         defer { nameBuffer.deallocate() }
 
-        result = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, nil, &dataSize, nameBuffer)
-        guard result == noErr else { return nil }
+        // Get the actual data with validated size
+        result = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, nil, &actualSize, nameBuffer)
+        guard result == noErr else {
+            Self.logger.error("Failed to get device name data for device \(deviceID): \(result)")
+            return "Unknown Device"
+        }
+
+        // Ensure null termination for safety
+        nameBuffer[Int(actualSize) - 1] = 0
 
         return String(cString: nameBuffer)
         #else
@@ -549,7 +616,7 @@ public class AudioDeviceManager: ObservableObject {
         #endif
     }
 
-    /// Get device manufacturer
+    /// Get device manufacturer with safe buffer handling
     private func getDeviceManufacturer(_ deviceID: AudioDeviceID) -> String? {
         #if os(macOS)
         var propertyAddress = AudioObjectPropertyAddress(
@@ -558,15 +625,33 @@ public class AudioDeviceManager: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var dataSize: UInt32 = 0
-        var result = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, nil, &dataSize)
-        guard result == noErr else { return nil }
+        // First, get the actual data size
+        var actualSize: UInt32 = 0
+        var result = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, nil, &actualSize)
+        guard result == noErr else {
+            Self.logger.debug("Failed to get manufacturer size for device \(deviceID): \(result)")
+            return "Unknown"
+        }
 
-        let nameBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: Int(dataSize))
+        // Validate size is reasonable (prevent buffer overflow attacks)
+        guard actualSize > 0 && actualSize <= 512 else {
+            Self.logger.debug("Invalid manufacturer size \(actualSize) for device \(deviceID)")
+            return "Unknown"
+        }
+
+        // Allocate buffer based on actual size
+        let nameBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: Int(actualSize))
         defer { nameBuffer.deallocate() }
 
-        result = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, nil, &dataSize, nameBuffer)
-        guard result == noErr else { return nil }
+        // Get the actual data with validated size
+        result = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, nil, &actualSize, nameBuffer)
+        guard result == noErr else {
+            Self.logger.debug("Failed to get manufacturer data for device \(deviceID): \(result)")
+            return "Unknown"
+        }
+
+        // Ensure null termination for safety
+        nameBuffer[Int(actualSize) - 1] = 0
 
         return String(cString: nameBuffer)
         #else

@@ -171,7 +171,7 @@ final class AudioCaptureEngineTests: XCTestCase {
         }
     }
 
-    func testAudioSystemHealth() {
+    func testAudioSystemHealth() async {
         let isHealthy = audioEngine.isAudioSystemHealthy()
 
         // Should return boolean
@@ -180,11 +180,9 @@ final class AudioCaptureEngineTests: XCTestCase {
         // If unhealthy, there should be specific reasons
         if !isHealthy {
             // Run diagnostics to see what's wrong
-            Task {
-                let report = await audioEngine.runAudioDiagnostics()
-                let failedChecks = report.results.filter { !$0.passed }
-                XCTAssertFalse(failedChecks.isEmpty, "If system is unhealthy, there should be failed checks")
-            }
+            let report = await audioEngine.runAudioDiagnostics()
+            let failedChecks = report.results.filter { !$0.passed }
+            XCTAssertFalse(failedChecks.isEmpty, "If system is unhealthy, there should be failed checks")
         }
     }
 

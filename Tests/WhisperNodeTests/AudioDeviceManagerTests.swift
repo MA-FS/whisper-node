@@ -241,7 +241,7 @@ final class AudioDeviceManagerTests: XCTestCase {
         let devices = deviceManager.getAvailableInputDevices()
         
         guard !devices.isEmpty else {
-            throw XCTSkip("No devices available for performance testing")
+            throw XCTSkip("No audio input devices available - required for device validation performance testing")
         }
         
         measure {

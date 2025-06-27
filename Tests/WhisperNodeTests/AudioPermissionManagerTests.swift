@@ -249,14 +249,17 @@ final class AudioPermissionManagerTests: XCTestCase {
     func testPermissionStatusConsistency() {
         let status1 = permissionManager.checkPermissionStatus()
         let status2 = permissionManager.currentPermissionStatus
-        
+
         XCTAssertEqual(status1, status2, "Permission status should be consistent")
-        
+
         // Check again after a brief delay
+        let expectation = XCTestExpectation(description: "Delayed consistency check")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let status3 = self.permissionManager.checkPermissionStatus()
             XCTAssertEqual(status1, status3, "Permission status should remain consistent")
+            expectation.fulfill()
         }
+        wait(for: [expectation], timeout: 1.0)
     }
     
     // MARK: - Performance Tests
