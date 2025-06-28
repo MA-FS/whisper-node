@@ -65,6 +65,11 @@ public class WhisperNodeCore: ObservableObject {
     @Published public private(set) var isRecording = false
     @Published public private(set) var currentModel: String = "tiny.en"
 
+    /// Whether a Whisper model is currently loaded and ready for transcription
+    public var isModelLoaded: Bool {
+        return whisperEngine != nil
+    }
+
     // Permission monitoring
     private var permissionMonitorTimer: Timer?
     private var lastAccessibilityPermissionStatus = false
@@ -466,10 +471,25 @@ public class WhisperNodeCore: ObservableObject {
             if let engine = whisperEngine {
                 await engine.cleanupMemory()
             }
-            
+
             // Load new model
             loadModel(modelName)
         }
+    }
+
+    /// Clear audio buffers for recovery purposes
+    ///
+    /// Clears cached audio data and prepares the audio system for fresh operation.
+    /// This is useful for error recovery scenarios where the audio system needs
+    /// to be reset to a clean state.
+    public func clearAudioBuffers() {
+        Self.logger.info("Clearing audio buffers for recovery")
+
+        // Clear any cached audio data
+        audioEngine.clearBuffers()
+
+        // Reset any audio-related state
+        // The whisper engine itself will be reloaded by the recovery system if needed
     }
     
     /// Get current performance metrics

@@ -101,6 +101,9 @@ public enum TextInsertionError: Error, LocalizedError {
 /// - Note: Uses pasteboard fallback for complex Unicode characters
 /// - Warning: Performance may degrade with very long text (>1000 characters)
 public actor TextInsertionEngine {
+    /// Shared singleton instance
+    public static let shared = TextInsertionEngine()
+
     private static let logger = Logger(subsystem: "com.whispernode.core", category: "text-insertion")
 
     // Timing constants
@@ -110,7 +113,14 @@ public actor TextInsertionEngine {
     // Rate limiting
     private static let maxEventsPerSecond: Double = 100
     private var lastEventTime: CFAbsoluteTime = 0
-    
+
+    /// Whether text insertion is available (accessibility permissions granted)
+    public var isAvailable: Bool {
+        get async {
+            return await PermissionHelper.shared.checkPermissionsQuietly()
+        }
+    }
+
     /// Key code mapping for common characters
     private let keyCodeMap: [Character: CGKeyCode] = [
         // Letters
