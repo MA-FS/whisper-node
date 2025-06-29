@@ -317,7 +317,7 @@ private struct PermissionBanner: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.1) as Color)
+        .background(Color.orange.opacity(0.1))
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)

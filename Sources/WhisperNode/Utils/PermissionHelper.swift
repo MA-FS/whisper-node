@@ -45,9 +45,11 @@ public class PermissionHelper: ObservableObject {
     @Published public var isMonitoring = false
     
     // MARK: - Private Properties
-    
+
     private var monitoringTimer: Timer?
     private var appActivationObserver: NSObjectProtocol?
+    private var lastRefreshTime: Date = .distantPast
+    private let minimumRefreshInterval: TimeInterval = 0.5
     
     // MARK: - Callbacks
     
@@ -91,10 +93,12 @@ public class PermissionHelper: ObservableObject {
         let options = [trusted: false] as CFDictionary
         let result = AXIsProcessTrustedWithOptions(options)
 
-        // Enhanced debugging for permission issues
-        Self.logger.debug("Accessibility permission check: \(result ? "GRANTED" : "DENIED")")
-        Self.logger.debug("Bundle identifier: \(Bundle.main.bundleIdentifier ?? "unknown")")
-        Self.logger.debug("Process name: \(ProcessInfo.processInfo.processName)")
+        // Enhanced debugging for permission issues - only log when denied or first time
+        if !result {
+            Self.logger.debug("Accessibility permission check: DENIED")
+            Self.logger.debug("Bundle identifier: \(Bundle.main.bundleIdentifier ?? "unknown")")
+            Self.logger.debug("Process name: \(ProcessInfo.processInfo.processName)")
+        }
 
         return result
     }
@@ -177,6 +181,13 @@ public class PermissionHelper: ObservableObject {
     /// - Returns: Current permission status after refresh
     @discardableResult
     public func refreshPermissionStatus() -> Bool {
+        let now = Date()
+        guard now.timeIntervalSince(lastRefreshTime) >= minimumRefreshInterval else {
+            Self.logger.debug("Permission refresh rate limited - returning cached status")
+            return hasAccessibilityPermission
+        }
+        lastRefreshTime = now
+
         Self.logger.info("Manually refreshing accessibility permission status")
 
         // Force multiple checks to handle timing issues
@@ -385,14 +396,25 @@ public class PermissionHelper: ObservableObject {
 
     /// Restart the application
     private func restartApplication() {
-        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
-        let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
-        let task = Process()
-        task.launchPath = "/usr/bin/open"
-        task.arguments = [path]
-        task.launch()
+        guard let resourcePath = Bundle.main.resourcePath else {
+            Self.logger.error("Failed to get resource path for app restart")
+            return
+        }
 
-        NSApplication.shared.terminate(nil)
+        let url = URL(fileURLWithPath: resourcePath)
+        let appURL = url.deletingLastPathComponent().deletingLastPathComponent()
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = [appURL.path]
+
+        do {
+            try task.run()
+            Self.logger.info("Successfully initiated app restart")
+            NSApplication.shared.terminate(nil)
+        } catch {
+            Self.logger.error("Failed to restart application: \(error)")
+        }
     }
     
     // MARK: - Private Methods
