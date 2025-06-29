@@ -89,7 +89,14 @@ public class PermissionHelper: ObservableObject {
     public func checkPermissionsQuietly() -> Bool {
         let trusted = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
         let options = [trusted: false] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        let result = AXIsProcessTrustedWithOptions(options)
+
+        // Enhanced debugging for permission issues
+        Self.logger.debug("Accessibility permission check: \(result ? "GRANTED" : "DENIED")")
+        Self.logger.debug("Bundle identifier: \(Bundle.main.bundleIdentifier ?? "unknown")")
+        Self.logger.debug("Process name: \(ProcessInfo.processInfo.processName)")
+
+        return result
     }
     
     /// Check accessibility permissions with optional system prompt
@@ -171,11 +178,65 @@ public class PermissionHelper: ObservableObject {
     @discardableResult
     public func refreshPermissionStatus() -> Bool {
         Self.logger.info("Manually refreshing accessibility permission status")
+
+        // Force multiple checks to handle timing issues
+        let check1 = checkPermissionsQuietly()
+
+        // Small delay to handle potential system timing issues
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            let check2 = self?.checkPermissionsQuietly() ?? false
+            Self.logger.debug("Secondary permission check: \(check2 ? "GRANTED" : "DENIED")")
+
+            if check1 != check2 {
+                Self.logger.warning("Permission status inconsistent between checks: \(check1) vs \(check2)")
+                // Update with the more recent check
+                self?.updatePermissionStatus()
+            }
+        }
+
         updatePermissionStatus()
         Self.logger.info("Permission status after refresh: \(self.hasAccessibilityPermission)")
         return self.hasAccessibilityPermission
     }
-    
+
+    /// Show detailed permission help with troubleshooting steps
+    public func showPermissionHelp() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Help"
+        alert.informativeText = """
+        WhisperNode needs accessibility permissions to capture global hotkeys.
+
+        Troubleshooting Steps:
+
+        1. Open System Preferences → Privacy & Security → Accessibility
+        2. Look for "WhisperNode" in the list
+        3. If not found, click the "+" button and add WhisperNode manually
+        4. Make sure the checkbox next to WhisperNode is checked
+        5. Click the lock icon if you need to make changes
+
+        Advanced Troubleshooting:
+        • Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")
+        • Current status: \(hasAccessibilityPermission ? "Granted" : "Denied")
+        • If issues persist, try restarting WhisperNode after granting permissions
+
+        Note: Some security software may interfere with accessibility permissions.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "Check Again")
+        alert.addButton(withTitle: "Close")
+
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            openSystemPreferences()
+        case .alertSecondButtonReturn:
+            let _ = refreshPermissionStatus()
+        default:
+            break
+        }
+    }
+
     /// Show enhanced accessibility permission guidance dialog
     ///
     /// Displays a user-friendly dialog with step-by-step instructions for granting
@@ -271,30 +332,7 @@ public class PermissionHelper: ObservableObject {
         alert.runModal()
     }
     
-    /// Show additional help for accessibility permissions
-    ///
-    /// Displays detailed troubleshooting information for users who need additional
-    /// guidance with granting accessibility permissions.
-    public func showPermissionHelp() {
-        let alert = NSAlert()
-        alert.messageText = "Accessibility Permission Help"
-        alert.informativeText = """
-        If you're having trouble granting accessibility permissions:
 
-        1. Make sure WhisperNode is running when you check System Preferences
-        2. If WhisperNode doesn't appear in the list, try:
-           • Quit and restart WhisperNode
-           • Click the "+" button to manually add WhisperNode
-        3. If the checkbox is grayed out, click the lock icon first
-        4. After enabling, return to WhisperNode - it will work immediately
-
-        No restart is required! WhisperNode automatically detects permission changes.
-        """
-
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
 
     /// Show confirmation when permissions are successfully granted
     private func showPermissionGrantedConfirmation() {
@@ -321,12 +359,40 @@ public class PermissionHelper: ObservableObject {
         1. Opened System Preferences → Privacy & Security → Accessibility
         2. Found WhisperNode in the list and enabled it
         3. Clicked the lock icon if needed to make changes
+        4. If WhisperNode isn't in the list, try restarting the app
 
-        Try "Check Again" after granting permissions.
+        Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")
+
+        If the issue persists, try restarting WhisperNode after granting permissions.
         """
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        alert.addButton(withTitle: "Restart App")
+        alert.addButton(withTitle: "Try Again")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            // Restart app
+            restartApplication()
+        case .alertSecondButtonReturn:
+            // Try checking again
+            let _ = refreshPermissionStatus()
+        default:
+            break
+        }
+    }
+
+    /// Restart the application
+    private func restartApplication() {
+        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = [path]
+        task.launch()
+
+        NSApplication.shared.terminate(nil)
     }
     
     // MARK: - Private Methods
